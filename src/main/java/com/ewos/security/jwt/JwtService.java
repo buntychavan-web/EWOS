@@ -37,10 +37,6 @@ public class JwtService {
         return build(subject, claims, properties.accessTokenTtl());
     }
 
-    public String generateRefreshToken(String subject) {
-        return build(subject, Map.of("type", "refresh"), properties.refreshTokenTtl());
-    }
-
     public Jws<Claims> parse(String token) {
         return parser.parseSignedClaims(token);
     }

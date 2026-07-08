@@ -1,9 +1,9 @@
 # EWOS — Enterprise Workforce Operating System
 
-Production-ready foundation for the EWOS HRMS platform (Sprint 1). This
-repository contains the project skeleton only — no HRMS domain modules
-(Employee, Payroll, Leave, Attendance, Organization) have been implemented
-yet. Those arrive in later sprints.
+Backend for the EWOS HRMS platform. Sprint 1 delivered the project
+foundation; Sprint 2 adds the identity module (users, roles, permissions,
+JWT login, refresh-token rotation). No HRMS domain modules (Employee,
+Payroll, Leave, Attendance, Organization) have been implemented yet.
 
 ## Tech stack
 
@@ -28,6 +28,7 @@ yet. Those arrive in later sprints.
 src/main/java/com/ewos
 ├── EwosApplication.java              # entry point
 ├── config/                           # cross-cutting configuration
+│   ├── JpaConfig.java
 │   ├── OpenApiConfig.java
 │   └── RedisConfig.java
 ├── security/                         # security foundation
@@ -36,11 +37,35 @@ src/main/java/com/ewos
 │       ├── JwtProperties.java
 │       ├── JwtService.java
 │       └── JwtAuthenticationFilter.java
-└── common/
-    └── exception/                    # global error handling
-        ├── ApiError.java
-        ├── ApiException.java
-        └── GlobalExceptionHandler.java
+├── common/
+│   ├── exception/                    # global error handling
+│   │   ├── ApiError.java
+│   │   ├── ApiException.java
+│   │   └── GlobalExceptionHandler.java
+│   └── persistence/
+│       └── AuditableEntity.java      # UUID id + created/updated auditing
+└── identity/                         # Sprint 2 — users, roles, permissions
+    ├── api/
+    │   ├── AuthController.java
+    │   └── dto/
+    │       ├── LoginRequest.java
+    │       ├── RefreshRequest.java
+    │       └── TokenResponse.java
+    ├── application/
+    │   ├── AuthenticationService.java
+    │   ├── BootstrapProperties.java
+    │   └── IdentityBootstrap.java
+    ├── domain/
+    │   ├── Permission.java
+    │   ├── Role.java
+    │   ├── User.java
+    │   └── RefreshToken.java
+    └── infrastructure/
+        └── persistence/
+            ├── PermissionRepository.java
+            ├── RoleRepository.java
+            ├── UserRepository.java
+            └── RefreshTokenRepository.java
 
 src/main/resources
 ├── application.yml                   # base config
@@ -48,7 +73,10 @@ src/main/resources
 ├── application-test.yml              # test profile
 ├── application-prod.yml              # prod profile
 ├── logback-spring.xml                # logging config
-└── db/migration/V1__baseline.sql     # Flyway baseline
+└── db/migration/
+    ├── V1__baseline.sql              # extensions
+    ├── V2__create_identity_tables.sql
+    └── V3__seed_default_roles_permissions.sql
 ```
 
 HRMS bounded contexts will each live in their own `com.ewos.<context>`
@@ -127,10 +155,13 @@ Key environment variables:
 | `JWT_ISSUER`                    | JWT `iss` claim                      | `ewos`                     |
 | `JWT_ACCESS_TTL`                | Access-token lifetime                | `15m`                      |
 | `JWT_REFRESH_TTL`               | Refresh-token lifetime               | `7d`                       |
+| `ADMIN_USERNAME`                | Default admin username               | `admin`                    |
+| `ADMIN_EMAIL`                   | Default admin email                  | `admin@ewos.local`         |
+| `ADMIN_PASSWORD`                | Default admin bootstrap password     | `ChangeMe!Admin123`        |
 
 **Production** requires an externally provided `JWT_SECRET` of at least 256
-bits. The default value is a placeholder and must not be used outside
-local development.
+bits, plus an `ADMIN_PASSWORD` set explicitly at first boot. The default
+values are placeholders and must not be used outside local development.
 
 ## Profiles
 
@@ -148,12 +179,32 @@ local development.
   disabled.
 - All endpoints require authentication except:
   `/actuator/health/**`, `/actuator/info`, `/v3/api-docs/**`,
-  `/swagger-ui/**`.
+  `/swagger-ui/**`, `/api/v1/auth/login`, `/api/v1/auth/refresh`.
+- Access tokens are HS256-signed JWTs carrying `sub` (user id) and an
+  `authorities` claim (`ROLE_<name>` plus each permission code).
+- Refresh tokens are opaque, high-entropy strings persisted as SHA-256
+  hashes in `refresh_tokens` and **rotated on every use**; the presented
+  token is revoked as the new pair is issued, so reuse is detected on
+  the next call.
 - `JwtAuthenticationFilter` reads `Authorization: Bearer <token>`,
-  validates the signature and issuer via `JwtService`, and populates the
-  `SecurityContext`.
-- No `/login` or user store exists yet — that arrives with the identity
-  module in Sprint 2.
+  validates the signature and issuer via `JwtService`, and populates
+  the `SecurityContext` with the JWT's authorities.
+- Passwords are hashed with BCrypt via the shared `PasswordEncoder` bean.
+
+### Identity endpoints
+
+| Method | Path                    | Purpose                                             |
+| ------ | ----------------------- | --------------------------------------------------- |
+| POST   | `/api/v1/auth/login`    | Exchange username + password for an access/refresh pair |
+| POST   | `/api/v1/auth/refresh`  | Rotate a refresh token for a new pair               |
+
+### Default administrator
+
+On first boot `IdentityBootstrap` creates a `SYSTEM_ADMIN` user from
+`app.security.bootstrap.admin.*` if none exists. In non-dev environments
+override `ADMIN_PASSWORD` (and typically `ADMIN_USERNAME` / `ADMIN_EMAIL`)
+before the app starts, and rotate immediately after first login. The
+bootstrap is idempotent — it never touches an existing user.
 
 ## Database migrations
 
@@ -198,6 +249,6 @@ Docker must be running on the host for Testcontainers to work.
 ## What is NOT in this sprint
 
 - Employee, Payroll, Leave, Attendance, Organization modules
-- Authentication endpoints (`/login`, `/refresh`)
-- User / role persistence
-- Any REST controllers beyond what Spring Boot provides
+- Self-service registration / password reset flows
+- Multi-tenant / organization scoping of users
+- Account lockout, password-policy enforcement, MFA

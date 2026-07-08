@@ -62,6 +62,11 @@ app:
       issuer: ${JWT_ISSUER:ewos}
       access-token-ttl: ${JWT_ACCESS_TTL:15m}
       refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+    bootstrap:
+      admin:
+        username: ${ADMIN_USERNAME:admin}
+        email: ${ADMIN_EMAIL:admin@ewos.local}
+        password: ${ADMIN_PASSWORD:ChangeMe!Admin123}
 
 springdoc:
   api-docs:
