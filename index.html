@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Repository Selection</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<main>
+  <h1>Select a repository</h1>
+  <form id="lookup">
+    <label for="user">GitHub username or org</label>
+    <input id="user" name="user" type="text" placeholder="e.g. buntychavan-web" autocomplete="off" required />
+    <button type="submit">Load</button>
+  </form>
+
+  <p id="status" role="status" aria-live="polite"></p>
+
+  <ul id="repos" hidden></ul>
+
+  <section id="selection" hidden>
+    <h2>Selected</h2>
+    <p id="selected-name"></p>
+    <p><a id="selected-link" href="#" target="_blank" rel="noopener noreferrer">Open on GitHub</a></p>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
