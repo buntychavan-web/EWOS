@@ -12,6 +12,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+
 /**
  * Ensures the default System Administrator user exists on every boot.
  * Idempotent — does nothing if the user is already present.
@@ -54,6 +56,7 @@ public class IdentityBootstrap implements ApplicationRunner {
         user.setUsername(properties.username());
         user.setEmail(properties.email());
         user.setPasswordHash(passwordEncoder.encode(properties.password()));
+        user.setPasswordChangedAt(Instant.now());
         user.getRoles().add(admin);
         userRepository.save(user);
 

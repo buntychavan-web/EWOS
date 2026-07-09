@@ -23,6 +23,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 @Service
@@ -37,32 +38,42 @@ public class AuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final LoginHistoryRecorder loginHistoryRecorder;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthenticationService(UserRepository userRepository,
                                  RefreshTokenRepository refreshTokenRepository,
                                  PasswordEncoder passwordEncoder,
                                  JwtService jwtService,
-                                 JwtProperties jwtProperties) {
+                                 JwtProperties jwtProperties,
+                                 LoginHistoryRecorder loginHistoryRecorder) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
+        this.loginHistoryRecorder = loginHistoryRecorder;
     }
 
-    public TokenResponse login(String username, String rawPassword) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS));
+    public TokenResponse login(String username, String rawPassword, String ipAddress, String userAgent) {
+        Optional<User> maybeUser = userRepository.findByUsername(username);
+        if (maybeUser.isEmpty()) {
+            loginHistoryRecorder.record(null, username, ipAddress, userAgent, false, "unknown user");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
+        }
 
+        User user = maybeUser.get();
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            loginHistoryRecorder.record(user, username, ipAddress, userAgent, false, "invalid password");
             throw new ApiException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
         }
         if (!user.isEnabled() || !user.isAccountNonLocked()) {
+            loginHistoryRecorder.record(user, username, ipAddress, userAgent, false, "account disabled or locked");
             throw new ApiException(HttpStatus.FORBIDDEN, "Account is disabled or locked");
         }
 
         user.setLastLoginAt(Instant.now());
+        loginHistoryRecorder.record(user, username, ipAddress, userAgent, true, null);
         return issueTokens(user);
     }
 

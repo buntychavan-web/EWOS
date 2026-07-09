@@ -33,6 +33,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,10 +42,14 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AuthenticationServiceTest {
 
+    private static final String IP = "10.0.0.1";
+    private static final String UA = "junit";
+
     @Mock UserRepository userRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
     @Mock PasswordEncoder passwordEncoder;
     @Mock JwtService jwtService;
+    @Mock LoginHistoryRecorder loginHistoryRecorder;
 
     private final JwtProperties jwtProperties = new JwtProperties(
             "unit-test-secret-key-that-is-definitely-long-enough-for-hs256-signing",
@@ -54,7 +60,7 @@ class AuthenticationServiceTest {
     @BeforeEach
     void setUp() {
         service = new AuthenticationService(userRepository, refreshTokenRepository,
-                passwordEncoder, jwtService, jwtProperties);
+                passwordEncoder, jwtService, jwtProperties, loginHistoryRecorder);
         lenient().when(jwtService.generateAccessToken(any(), any())).thenReturn("stub-jwt");
     }
 
@@ -64,13 +70,15 @@ class AuthenticationServiceTest {
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
 
-        TokenResponse response = service.login("admin", "pw");
+        TokenResponse response = service.login("admin", "pw", IP, UA);
 
         assertThat(response.accessToken()).isEqualTo("stub-jwt");
         assertThat(response.refreshToken()).isNotBlank();
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(Duration.ofMinutes(15).toSeconds());
         assertThat(user.getLastLoginAt()).isNotNull();
+
+        verify(loginHistoryRecorder).record(eq(user), eq("admin"), eq(IP), eq(UA), eq(true), isNull());
 
         ArgumentCaptor<RefreshToken> captor = ArgumentCaptor.forClass(RefreshToken.class);
         verify(refreshTokenRepository).save(captor.capture());
@@ -87,7 +95,7 @@ class AuthenticationServiceTest {
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
 
-        service.login("admin", "pw");
+        service.login("admin", "pw", IP, UA);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
@@ -97,35 +105,42 @@ class AuthenticationServiceTest {
     }
 
     @Test
-    void loginRejectsUnknownUser() {
+    void loginRecordsUnknownUserFailure() {
         when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.login("ghost", "pw"))
+        assertThatThrownBy(() -> service.login("ghost", "pw", IP, UA))
                 .isInstanceOf(ApiException.class)
                 .extracting("status").isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        verify(loginHistoryRecorder).record(isNull(), eq("ghost"), eq(IP), eq(UA), eq(false), eq("unknown user"));
     }
 
     @Test
-    void loginRejectsBadPassword() {
+    void loginRecordsBadPasswordFailure() {
         User user = adminUser();
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("bad", user.getPasswordHash())).thenReturn(false);
 
-        assertThatThrownBy(() -> service.login("admin", "bad"))
+        assertThatThrownBy(() -> service.login("admin", "bad", IP, UA))
                 .isInstanceOf(ApiException.class)
                 .extracting("status").isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        verify(loginHistoryRecorder).record(eq(user), eq("admin"), eq(IP), eq(UA), eq(false), eq("invalid password"));
     }
 
     @Test
-    void loginRejectsDisabledAccount() {
+    void loginRecordsDisabledAccountFailure() {
         User user = adminUser();
         user.setEnabled(false);
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
 
-        assertThatThrownBy(() -> service.login("admin", "pw"))
+        assertThatThrownBy(() -> service.login("admin", "pw", IP, UA))
                 .isInstanceOf(ApiException.class)
                 .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);
+
+        verify(loginHistoryRecorder).record(eq(user), eq("admin"), eq(IP), eq(UA), eq(false),
+                eq("account disabled or locked"));
     }
 
     @Test
@@ -216,4 +231,5 @@ class AuthenticationServiceTest {
             throw new IllegalStateException(e);
         }
     }
+
 }

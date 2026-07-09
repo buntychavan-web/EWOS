@@ -67,6 +67,14 @@ app:
         username: ${ADMIN_USERNAME:admin}
         email: ${ADMIN_EMAIL:admin@ewos.local}
         password: ${ADMIN_PASSWORD:ChangeMe!Admin123}
+    password-policy:
+      min-length: ${PASSWORD_MIN_LENGTH:8}
+      max-length: ${PASSWORD_MAX_LENGTH:128}
+      require-uppercase: ${PASSWORD_REQUIRE_UPPERCASE:true}
+      require-lowercase: ${PASSWORD_REQUIRE_LOWERCASE:true}
+      require-digit: ${PASSWORD_REQUIRE_DIGIT:true}
+      require-special: ${PASSWORD_REQUIRE_SPECIAL:true}
+      history-size: ${PASSWORD_HISTORY_SIZE:5}
 
 springdoc:
   api-docs:

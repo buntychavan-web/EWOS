@@ -1,9 +1,12 @@
 # EWOS — Enterprise Workforce Operating System
 
-Backend for the EWOS HRMS platform. Sprint 1 delivered the project
-foundation; Sprint 2 adds the identity module (users, roles, permissions,
-JWT login, refresh-token rotation). No HRMS domain modules (Employee,
-Payroll, Leave, Attendance, Organization) have been implemented yet.
+Backend for the EWOS HRMS platform.
+
+- **Sprint 1** — project foundation.
+- **Sprint 2** — identity module: users/roles/permissions, JWT login, refresh-token rotation.
+- **Sprint 4** — user management: CRUD, enable/disable, reset & change password with configurable policy + reuse detection, paged/sorted/filtered search, `created_by`/`updated_by` auditing, `password_history`, `login_history`.
+
+No HRMS domain modules (Employee, Payroll, Leave, Attendance, Organization) have been implemented yet.
 
 ## Tech stack
 
@@ -158,6 +161,13 @@ Key environment variables:
 | `ADMIN_USERNAME`                | Default admin username               | `admin`                    |
 | `ADMIN_EMAIL`                   | Default admin email                  | `admin@ewos.local`         |
 | `ADMIN_PASSWORD`                | Default admin bootstrap password     | `ChangeMe!Admin123`        |
+| `PASSWORD_MIN_LENGTH`           | Minimum password length              | `8`                        |
+| `PASSWORD_MAX_LENGTH`           | Maximum password length              | `128`                      |
+| `PASSWORD_REQUIRE_UPPERCASE`    | Require at least one uppercase       | `true`                     |
+| `PASSWORD_REQUIRE_LOWERCASE`    | Require at least one lowercase       | `true`                     |
+| `PASSWORD_REQUIRE_DIGIT`        | Require at least one digit           | `true`                     |
+| `PASSWORD_REQUIRE_SPECIAL`      | Require at least one special char    | `true`                     |
+| `PASSWORD_HISTORY_SIZE`         | Number of past passwords blocked from reuse | `5`                 |
 
 **Production** requires an externally provided `JWT_SECRET` of at least 256
 bits, plus an `ADMIN_PASSWORD` set explicitly at first boot. The default
@@ -197,6 +207,26 @@ values are placeholders and must not be used outside local development.
 | ------ | ----------------------- | --------------------------------------------------- |
 | POST   | `/api/v1/auth/login`    | Exchange username + password for an access/refresh pair |
 | POST   | `/api/v1/auth/refresh`  | Rotate a refresh token for a new pair               |
+
+### User management endpoints
+
+| Method | Path                                    | Required authority | Purpose                                                      |
+| ------ | --------------------------------------- | ------------------ | ------------------------------------------------------------ |
+| POST   | `/api/v1/users`                         | `SYSTEM_ADMIN`     | Create a user                                                |
+| GET    | `/api/v1/users`                         | `USER_READ`        | Search — filters: `username`, `email`, `enabled`, `roleId`, `createdAfter`, `createdBefore`; standard `page`, `size`, `sort` |
+| GET    | `/api/v1/users/{id}`                    | `USER_READ`        | Fetch a single user                                          |
+| PUT    | `/api/v1/users/{id}`                    | `USER_WRITE`       | Update email and/or roles                                    |
+| PATCH  | `/api/v1/users/{id}/status`             | `USER_WRITE`       | Enable / disable an account                                  |
+| POST   | `/api/v1/users/{id}/reset-password`     | `USER_WRITE`       | Admin password reset                                         |
+| POST   | `/api/v1/users/me/change-password`      | authenticated      | Self-service password change (verifies current password)     |
+
+### Password policy
+
+Configurable via `app.security.password-policy.*` (env vars `PASSWORD_MIN_LENGTH`, `PASSWORD_REQUIRE_*`, `PASSWORD_HISTORY_SIZE`, etc.). Every password write path — create, admin reset, self-service change — runs the same validator and blocks reuse of the last `history-size` passwords stored in `password_history`.
+
+### Auditing
+
+`AuditableEntity` populates `created_at`, `updated_at`, `created_by`, `updated_by` automatically from the Spring Data auditing infrastructure. The `AuditorProvider` bean parses the JWT subject (a user UUID) out of the `SecurityContext`; anonymous flows (login, refresh, first-boot bootstrap) leave the auditor columns null. `login_history` records every login attempt — success and failure, including unknown usernames — in a `REQUIRES_NEW` transaction so failed-login rows survive the outer 401/403 rollback.
 
 ### Default administrator
 

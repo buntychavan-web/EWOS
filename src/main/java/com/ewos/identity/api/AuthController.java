@@ -12,7 +12,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,8 +44,12 @@ public class AuthController {
             @ApiResponse(responseCode = "403", description = "Account disabled or locked",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
-    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
-        return authenticationService.login(request.username(), request.password());
+    public TokenResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        return authenticationService.login(
+                request.username(),
+                request.password(),
+                extractClientIp(httpRequest),
+                httpRequest.getHeader("User-Agent"));
     }
 
     @PostMapping("/refresh")
@@ -58,5 +64,14 @@ public class AuthController {
     })
     public TokenResponse refresh(@Valid @RequestBody RefreshRequest request) {
         return authenticationService.refresh(request.refreshToken());
+    }
+
+    private static String extractClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(forwarded)) {
+            int comma = forwarded.indexOf(',');
+            return (comma >= 0 ? forwarded.substring(0, comma) : forwarded).trim();
+        }
+        return request.getRemoteAddr();
     }
 }
