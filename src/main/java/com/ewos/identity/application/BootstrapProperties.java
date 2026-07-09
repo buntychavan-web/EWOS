@@ -8,8 +8,4 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "app.security.bootstrap.admin")
 public record BootstrapProperties(
-        @NotBlank String username,
-        @NotBlank @Email String email,
-        @NotBlank String password
-) {
-}
+        @NotBlank String username, @NotBlank @Email String email, @NotBlank String password) {}

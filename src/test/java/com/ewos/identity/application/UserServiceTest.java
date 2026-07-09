@@ -1,28 +1,5 @@
 package com.ewos.identity.application;
 
-import com.ewos.common.exception.ApiException;
-import com.ewos.identity.api.dto.CreateUserRequest;
-import com.ewos.identity.api.dto.UpdateUserRequest;
-import com.ewos.identity.api.dto.UserResponse;
-import com.ewos.identity.domain.Role;
-import com.ewos.identity.domain.User;
-import com.ewos.identity.infrastructure.persistence.RoleRepository;
-import com.ewos.identity.infrastructure.persistence.UserRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
-
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,6 +11,28 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.ewos.common.exception.ApiException;
+import com.ewos.identity.api.dto.CreateUserRequest;
+import com.ewos.identity.api.dto.UpdateUserRequest;
+import com.ewos.identity.api.dto.UserResponse;
+import com.ewos.identity.domain.Role;
+import com.ewos.identity.domain.User;
+import com.ewos.identity.infrastructure.persistence.RoleRepository;
+import com.ewos.identity.infrastructure.persistence.UserRepository;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
@@ -48,13 +47,24 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new UserService(userRepository, roleRepository, passwordEncoder, passwordPolicy, passwordHistory);
-        lenient().when(userRepository.save(any(User.class))).thenAnswer(inv -> {
-            User u = inv.getArgument(0);
-            if (u.getId() == null) u.setId(UUID.randomUUID());
-            return u;
-        });
-        lenient().when(passwordEncoder.encode(anyString())).thenAnswer(inv -> "hash(" + inv.getArgument(0) + ")");
+        service =
+                new UserService(
+                        userRepository,
+                        roleRepository,
+                        passwordEncoder,
+                        passwordPolicy,
+                        passwordHistory);
+        lenient()
+                .when(userRepository.save(any(User.class)))
+                .thenAnswer(
+                        inv -> {
+                            User u = inv.getArgument(0);
+                            if (u.getId() == null) u.setId(UUID.randomUUID());
+                            return u;
+                        });
+        lenient()
+                .when(passwordEncoder.encode(anyString()))
+                .thenAnswer(inv -> "hash(" + inv.getArgument(0) + ")");
     }
 
     @Test
@@ -62,8 +72,14 @@ class UserServiceTest {
         Role role = role("USER");
         when(roleRepository.findAllById(Set.of(role.getId()))).thenReturn(List.of(role));
 
-        UserResponse response = service.create(new CreateUserRequest(
-                "jane", "jane@ewos.local", "Str0ng!Pass", Set.of(role.getId()), null));
+        UserResponse response =
+                service.create(
+                        new CreateUserRequest(
+                                "jane",
+                                "jane@ewos.local",
+                                "Str0ng!Pass",
+                                Set.of(role.getId()),
+                                null));
 
         verify(passwordPolicy).validate("Str0ng!Pass");
 
@@ -86,20 +102,36 @@ class UserServiceTest {
     void createRejectsDuplicateUsername() {
         when(userRepository.existsByUsername("jane")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create(new CreateUserRequest(
-                "jane", "jane@ewos.local", "Str0ng!Pass", Set.of(), null)))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        new CreateUserRequest(
+                                                "jane",
+                                                "jane@ewos.local",
+                                                "Str0ng!Pass",
+                                                Set.of(),
+                                                null)))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+                .extracting("status")
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
     void createRejectsDuplicateEmail() {
         when(userRepository.existsByEmail("jane@ewos.local")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create(new CreateUserRequest(
-                "jane", "jane@ewos.local", "Str0ng!Pass", Set.of(), null)))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        new CreateUserRequest(
+                                                "jane",
+                                                "jane@ewos.local",
+                                                "Str0ng!Pass",
+                                                Set.of(),
+                                                null)))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+                .extracting("status")
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
@@ -107,21 +139,34 @@ class UserServiceTest {
         UUID rid = UUID.randomUUID();
         when(roleRepository.findAllById(Set.of(rid))).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.create(new CreateUserRequest(
-                "jane", "jane@ewos.local", "Str0ng!Pass", Set.of(rid), null)))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        new CreateUserRequest(
+                                                "jane",
+                                                "jane@ewos.local",
+                                                "Str0ng!Pass",
+                                                Set.of(rid),
+                                                null)))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.BAD_REQUEST);
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
     void createPropagatesPolicyFailure() {
         doThrow(new ApiException(HttpStatus.BAD_REQUEST, "policy"))
-                .when(passwordPolicy).validate("weak");
+                .when(passwordPolicy)
+                .validate("weak");
 
-        assertThatThrownBy(() -> service.create(new CreateUserRequest(
-                "jane", "jane@ewos.local", "weak", Set.of(), null)))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        new CreateUserRequest(
+                                                "jane", "jane@ewos.local", "weak", Set.of(), null)))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.BAD_REQUEST);
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
 
         verify(userRepository, never()).save(any());
     }
@@ -144,8 +189,10 @@ class UserServiceTest {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(roleRepository.findAllById(Set.of(newRole.getId()))).thenReturn(List.of(newRole));
 
-        UserResponse response = service.update(user.getId(),
-                new UpdateUserRequest("new@ewos.local", Set.of(newRole.getId())));
+        UserResponse response =
+                service.update(
+                        user.getId(),
+                        new UpdateUserRequest("new@ewos.local", Set.of(newRole.getId())));
 
         assertThat(user.getEmail()).isEqualTo("new@ewos.local");
         assertThat(user.getRoles()).extracting(Role::getName).containsExactly("MANAGER");
@@ -158,10 +205,14 @@ class UserServiceTest {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(userRepository.existsByEmail("other@ewos.local")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.update(user.getId(),
-                new UpdateUserRequest("other@ewos.local", null)))
+        assertThatThrownBy(
+                        () ->
+                                service.update(
+                                        user.getId(),
+                                        new UpdateUserRequest("other@ewos.local", null)))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.CONFLICT);
+                .extracting("status")
+                .isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test
@@ -185,10 +236,11 @@ class UserServiceTest {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong-current", user.getPasswordHash())).thenReturn(false);
 
-        assertThatThrownBy(() -> service.changePassword(user.getId(),
-                "wrong-current", "Fresh!Pass1"))
+        assertThatThrownBy(
+                        () -> service.changePassword(user.getId(), "wrong-current", "Fresh!Pass1"))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.UNAUTHORIZED);
+                .extracting("status")
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
 
         verify(passwordHistory, never()).record(any(), any());
     }
@@ -211,7 +263,8 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> service.getById(id))
                 .isInstanceOf(ApiException.class)
-                .extracting("status").isEqualTo(HttpStatus.NOT_FOUND);
+                .extracting("status")
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     // --- fixtures -----------------------------------------------------------

@@ -1,10 +1,16 @@
 # EWOS — Enterprise Workforce Operating System
 
+![CI](https://github.com/buntychavan-web/EWOS/actions/workflows/ci.yml/badge.svg)
+![Java](https://img.shields.io/badge/Java-21-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-brightgreen)
+![Coverage floor](https://img.shields.io/badge/JaCoCo-%E2%89%A580%25-brightgreen)
+
 Backend for the EWOS HRMS platform.
 
 - **Sprint 1** — project foundation.
 - **Sprint 2** — identity module: users/roles/permissions, JWT login, refresh-token rotation.
 - **Sprint 4** — user management: CRUD, enable/disable, reset & change password with configurable policy + reuse detection, paged/sorted/filtered search, `created_by`/`updated_by` auditing, `password_history`, `login_history`.
+- **Sprint 5 (hardening)** — GitHub Actions CI, Spotless/Checkstyle/PMD/SpotBugs, JaCoCo 80% floor, soft delete + `@Version` optimistic locking on users/roles/permissions, refresh-token revocation on logout, richer login-audit event types, correlation-ID propagation, expanded API error coverage.
 
 No HRMS domain modules (Employee, Payroll, Leave, Attendance, Organization) have been implemented yet.
 
@@ -207,6 +213,7 @@ values are placeholders and must not be used outside local development.
 | ------ | ----------------------- | --------------------------------------------------- |
 | POST   | `/api/v1/auth/login`    | Exchange username + password for an access/refresh pair |
 | POST   | `/api/v1/auth/refresh`  | Rotate a refresh token for a new pair               |
+| POST   | `/api/v1/auth/logout`   | Revoke a refresh token (idempotent, 204 always)     |
 
 ### User management endpoints
 
@@ -219,6 +226,7 @@ values are placeholders and must not be used outside local development.
 | PATCH  | `/api/v1/users/{id}/status`             | `USER_WRITE`       | Enable / disable an account                                  |
 | POST   | `/api/v1/users/{id}/reset-password`     | `USER_WRITE`       | Admin password reset                                         |
 | POST   | `/api/v1/users/me/change-password`      | authenticated      | Self-service password change (verifies current password)     |
+| DELETE | `/api/v1/users/{id}`                    | `USER_DELETE`      | **Soft** delete — sets `deleted_at`; username/email become reusable |
 
 ### Password policy
 
@@ -264,6 +272,51 @@ mvn test
 ```
 
 Docker must be running on the host for Testcontainers to work.
+
+## Quality gates & CI
+
+Every push to `main`, `claude/**`, `feature/**`, `release/**` — and every PR into `main` — runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The workflow executes `mvn verify`, which enforces:
+
+| Gate       | Tool                                    | Fails the build on…                                     |
+| ---------- | --------------------------------------- | ------------------------------------------------------- |
+| Formatting | Spotless + Google Java Format (AOSP)    | any file not matching the formatter                     |
+| Style      | Checkstyle                              | rule violations from `config/checkstyle/checkstyle.xml` |
+| Static     | PMD                                     | rules from `config/pmd/pmd-ruleset.xml`                 |
+| Bugs       | SpotBugs                                | Medium+ findings, filtered by `config/spotbugs/spotbugs-exclude.xml` |
+| Coverage   | JaCoCo                                  | < **80 %** instruction coverage on the bundle           |
+| Tests      | JUnit 5 + Testcontainers                | any failing unit or integration test                    |
+
+Local commands:
+
+```bash
+mvn spotless:apply       # auto-format
+mvn -q verify            # full pipeline (needs Docker for Testcontainers)
+mvn -q test              # unit tests only
+```
+
+JaCoCo excludes bootstrap / configuration / DTO / entity / repository interface classes (see `pom.xml` for the exact list) so the 80 % floor targets business logic — services, controllers, security, and error handling.
+
+### Soft delete
+
+`users`, `roles`, and `permissions` extend `AuditableEntity` and each carry a `deleted_at` column plus a `version` field for optimistic locking. Hibernate `@SQLDelete` rewrites DELETE statements into `UPDATE … SET deleted_at = NOW()`, and `@SQLRestriction("deleted_at IS NULL")` transparently filters every query so soft-deleted rows never leak through. Uniqueness on human-visible columns (`username`, `email`, role `name`, permission `code`) is enforced by **partial unique indexes** — a deleted row keeps its historical value without blocking reuse.
+
+### Correlation IDs
+
+`CorrelationIdFilter` (`@Order(HIGHEST_PRECEDENCE)`) reads inbound `X-Request-ID` or mints a UUID, publishes it back on the response header, and puts it into the SLF4J MDC. Every log line and every `ApiError` body carries the same id, so a client can produce one string that ties together their request, the backend logs, and the error surfaced to the user.
+
+### Login audit
+
+`login_history` now discriminates events via `event_type`:
+
+| `event_type`      | Written when…                                                    |
+| ----------------- | ---------------------------------------------------------------- |
+| `LOGIN_SUCCESS`   | valid credentials, account enabled                               |
+| `LOGIN_FAILURE`   | unknown user, wrong password, or disabled/locked account         |
+| `LOGOUT`          | client explicitly hit `POST /api/v1/auth/logout`                 |
+| `REFRESH_SUCCESS` | refresh-token rotation succeeded                                 |
+| `REFRESH_FAILURE` | refresh token was unknown, revoked, or expired                   |
+
+Failed events are written in a `REQUIRES_NEW` transaction so 401/403 rollbacks don't lose the row.
 
 ## Coding standards
 

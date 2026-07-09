@@ -3,11 +3,12 @@ package com.ewos.identity.domain;
 import com.ewos.common.persistence.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-
 import java.time.Instant;
 
 @Entity
@@ -32,6 +33,10 @@ public class LoginHistory extends AuditableEntity {
 
     @Column(name = "failure_reason", length = 200)
     private String failureReason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type", nullable = false, length = 30)
+    private LoginEventType eventType;
 
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
@@ -82,6 +87,14 @@ public class LoginHistory extends AuditableEntity {
 
     public void setFailureReason(String failureReason) {
         this.failureReason = failureReason;
+    }
+
+    public LoginEventType getEventType() {
+        return eventType;
+    }
+
+    public void setEventType(LoginEventType eventType) {
+        this.eventType = eventType;
     }
 
     public Instant getOccurredAt() {

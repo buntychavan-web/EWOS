@@ -1,24 +1,23 @@
 package com.ewos.security.jwt;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.stereotype.Service;
-
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import javax.crypto.SecretKey;
+import org.springframework.stereotype.Service;
 
 /**
- * Foundation JWT service. Issues and validates HS256-signed access/refresh tokens.
- * No authentication endpoint is wired up yet — Sprint 1 provides the primitives only.
+ * Foundation JWT service. Issues and validates HS256-signed access/refresh tokens. No
+ * authentication endpoint is wired up yet — Sprint 1 provides the primitives only.
  */
 @Service
-public class JwtService {
+public final class JwtService {
 
     private final JwtProperties properties;
     private final SecretKey signingKey;
@@ -27,10 +26,8 @@ public class JwtService {
     public JwtService(JwtProperties properties) {
         this.properties = properties;
         this.signingKey = Keys.hmacShaKeyFor(properties.secret().getBytes(StandardCharsets.UTF_8));
-        this.parser = Jwts.parser()
-                .verifyWith(signingKey)
-                .requireIssuer(properties.issuer())
-                .build();
+        this.parser =
+                Jwts.parser().verifyWith(signingKey).requireIssuer(properties.issuer()).build();
     }
 
     public String generateAccessToken(String subject, Map<String, Object> claims) {

@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Filter parameters for {@code GET /api/v1/users}. Any field left null is
- * ignored. All string filters are case-insensitive substring matches.
+ * Filter parameters for {@code GET /api/v1/users}. Any field left null is ignored. All string
+ * filters are case-insensitive substring matches.
  */
 public record UserSearchCriteria(
         String username,
@@ -13,6 +13,4 @@ public record UserSearchCriteria(
         Boolean enabled,
         UUID roleId,
         Instant createdAfter,
-        Instant createdBefore
-) {
-}
+        Instant createdBefore) {}

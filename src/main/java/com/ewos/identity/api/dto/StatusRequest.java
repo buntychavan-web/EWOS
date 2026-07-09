@@ -5,7 +5,4 @@ import jakarta.validation.constraints.NotNull;
 
 @Schema(description = "Enable or disable a user account.")
 public record StatusRequest(
-        @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotNull Boolean enabled
-) {
-}
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) @NotNull Boolean enabled) {}

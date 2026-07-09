@@ -8,19 +8,23 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
-
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "users")
+@SQLDelete(sql = "UPDATE users SET deleted_at = NOW(), version = version + 1 WHERE id = ?")
+@SQLRestriction("deleted_at IS NULL")
 public class User extends AuditableEntity {
 
-    @Column(name = "username", nullable = false, unique = true, length = 150)
+    @Column(name = "username", nullable = false, length = 150)
     private String username;
 
-    @Column(name = "email", nullable = false, unique = true, length = 255)
+    @Column(name = "email", nullable = false, length = 255)
     private String email;
 
     @Column(name = "password_hash", nullable = false, length = 255)
@@ -38,12 +42,18 @@ public class User extends AuditableEntity {
     @Column(name = "password_changed_at")
     private Instant passwordChangedAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "user_roles",
             joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
+            inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
 
     public String getUsername() {
@@ -100,6 +110,14 @@ public class User extends AuditableEntity {
 
     public void setPasswordChangedAt(Instant passwordChangedAt) {
         this.passwordChangedAt = passwordChangedAt;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 
     public Set<Role> getRoles() {

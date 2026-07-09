@@ -1,5 +1,10 @@
 package com.ewos.identity.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.ewos.AbstractIntegrationTest;
 import com.ewos.identity.api.dto.LoginRequest;
 import com.ewos.identity.api.dto.RefreshRequest;
@@ -13,11 +18,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 @AutoConfigureMockMvc
 class AuthControllerIntegrationTest extends AbstractIntegrationTest {
 
@@ -27,11 +27,13 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void loginWithDefaultAdminIssuesTokens() throws Exception {
-        LoginRequest body = new LoginRequest(bootstrapProperties.username(), bootstrapProperties.password());
+        LoginRequest body =
+                new LoginRequest(bootstrapProperties.username(), bootstrapProperties.password());
 
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(body)))
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsBytes(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty())
@@ -43,9 +45,10 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
     void loginWithWrongPasswordReturns401() throws Exception {
         LoginRequest body = new LoginRequest(bootstrapProperties.username(), "definitely-wrong");
 
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(body)))
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsBytes(body)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
     }
@@ -54,9 +57,10 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
     void loginWithBlankFieldsReturns400() throws Exception {
         LoginRequest body = new LoginRequest("", "");
 
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(body)))
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsBytes(body)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
@@ -65,40 +69,56 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
     void refreshRotatesTokenAndOldTokenBecomesUnusable() throws Exception {
         TokenResponse firstPair = login();
 
-        MvcResult refreshResult = mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new RefreshRequest(firstPair.refreshToken()))))
-                .andExpect(status().isOk())
-                .andReturn();
+        MvcResult refreshResult =
+                mockMvc.perform(
+                                post("/api/v1/auth/refresh")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                objectMapper.writeValueAsBytes(
+                                                        new RefreshRequest(
+                                                                firstPair.refreshToken()))))
+                        .andExpect(status().isOk())
+                        .andReturn();
 
-        TokenResponse secondPair = objectMapper.readValue(
-                refreshResult.getResponse().getContentAsByteArray(), TokenResponse.class);
+        TokenResponse secondPair =
+                objectMapper.readValue(
+                        refreshResult.getResponse().getContentAsByteArray(), TokenResponse.class);
 
         assertThat(secondPair.accessToken()).isNotBlank();
         assertThat(secondPair.refreshToken()).isNotEqualTo(firstPair.refreshToken());
 
         // Reusing the rotated (now revoked) refresh token must be rejected.
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new RefreshRequest(firstPair.refreshToken()))))
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsBytes(
+                                                new RefreshRequest(firstPair.refreshToken()))))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void refreshWithUnknownTokenReturns401() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new RefreshRequest("does-not-exist"))))
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsBytes(
+                                                new RefreshRequest("does-not-exist"))))
                 .andExpect(status().isUnauthorized());
     }
 
     private TokenResponse login() throws Exception {
-        LoginRequest body = new LoginRequest(bootstrapProperties.username(), bootstrapProperties.password());
-        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(body)))
-                .andExpect(status().isOk())
-                .andReturn();
-        return objectMapper.readValue(result.getResponse().getContentAsByteArray(), TokenResponse.class);
+        LoginRequest body =
+                new LoginRequest(bootstrapProperties.username(), bootstrapProperties.password());
+        MvcResult result =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(objectMapper.writeValueAsBytes(body)))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        return objectMapper.readValue(
+                result.getResponse().getContentAsByteArray(), TokenResponse.class);
     }
 }

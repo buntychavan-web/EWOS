@@ -4,6 +4,7 @@ import com.ewos.identity.domain.Role;
 import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
+import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -12,11 +13,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-
 /**
- * Ensures the default System Administrator user exists on every boot.
- * Idempotent — does nothing if the user is already present.
+ * Ensures the default System Administrator user exists on every boot. Idempotent — does nothing if
+ * the user is already present.
  */
 @Component
 public class IdentityBootstrap implements ApplicationRunner {
@@ -30,10 +29,11 @@ public class IdentityBootstrap implements ApplicationRunner {
     private final PasswordEncoder passwordEncoder;
     private final BootstrapProperties properties;
 
-    public IdentityBootstrap(UserRepository userRepository,
-                             RoleRepository roleRepository,
-                             PasswordEncoder passwordEncoder,
-                             BootstrapProperties properties) {
+    public IdentityBootstrap(
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            PasswordEncoder passwordEncoder,
+            BootstrapProperties properties) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -44,13 +44,19 @@ public class IdentityBootstrap implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         if (userRepository.existsByUsername(properties.username())) {
-            log.debug("Default admin '{}' already present — skipping bootstrap.", properties.username());
+            log.debug(
+                    "Default admin '{}' already present — skipping bootstrap.",
+                    properties.username());
             return;
         }
 
-        Role admin = roleRepository.findByName(SYSTEM_ADMIN_ROLE)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Missing SYSTEM_ADMIN role — Flyway migrations may not have completed."));
+        Role admin =
+                roleRepository
+                        .findByName(SYSTEM_ADMIN_ROLE)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalStateException(
+                                                "Missing SYSTEM_ADMIN role — Flyway migrations may not have completed."));
 
         User user = new User();
         user.setUsername(properties.username());
@@ -60,7 +66,8 @@ public class IdentityBootstrap implements ApplicationRunner {
         user.getRoles().add(admin);
         userRepository.save(user);
 
-        log.warn("Bootstrapped default System Administrator '{}'. Change the password immediately.",
+        log.warn(
+                "Bootstrapped default System Administrator '{}'. Change the password immediately.",
                 properties.username());
     }
 }

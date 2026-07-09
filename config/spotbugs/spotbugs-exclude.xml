@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Records + JPA entities frequently expose internal state; the whole
+         codebase relies on Spring-managed lifecycles rather than defensive
+         copies. Suppressing the ergonomic noise. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- Records with Instant fields trigger this; Instant is immutable. -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,MS_EXPOSE_REP"/>
+    </Match>
+
+    <!-- Spring @ConfigurationProperties records look "unused" to SpotBugs -->
+    <Match>
+        <Class name="~.*Properties"/>
+        <Bug pattern="URF_UNREAD_FIELD"/>
+    </Match>
+
+    <!-- Test classes don't need the same rigor. -->
+    <Match>
+        <Class name="~.*Test"/>
+    </Match>
+    <Match>
+        <Class name="~.*IntegrationTest"/>
+    </Match>
+</FindBugsFilter>

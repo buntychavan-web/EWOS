@@ -17,16 +17,21 @@ public class OpenApiConfig {
     @Bean
     public OpenAPI ewosOpenAPI() {
         return new OpenAPI()
-                .info(new Info()
-                        .title("EWOS API")
-                        .version("v1")
-                        .description("Enterprise Workforce Operating System — HRMS platform API")
-                        .license(new License().name("Proprietary")))
-                .components(new Components()
-                        .addSecuritySchemes(SECURITY_SCHEME_NAME, new SecurityScheme()
-                                .type(SecurityScheme.Type.HTTP)
-                                .scheme("bearer")
-                                .bearerFormat("JWT")))
+                .info(
+                        new Info()
+                                .title("EWOS API")
+                                .version("v1")
+                                .description(
+                                        "Enterprise Workforce Operating System — HRMS platform API")
+                                .license(new License().name("Proprietary")))
+                .components(
+                        new Components()
+                                .addSecuritySchemes(
+                                        SECURITY_SCHEME_NAME,
+                                        new SecurityScheme()
+                                                .type(SecurityScheme.Type.HTTP)
+                                                .scheme("bearer")
+                                                .bearerFormat("JWT")))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME));
     }
 }

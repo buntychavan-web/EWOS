@@ -1,16 +1,14 @@
 package com.ewos.identity.application;
 
 import com.ewos.common.exception.ApiException;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * Enforces the configured {@link PasswordPolicyProperties}. Throws
- * {@link ApiException} with 400 Bad Request when the candidate fails —
- * the message lists every rule that was violated.
+ * Enforces the configured {@link PasswordPolicyProperties}. Throws {@link ApiException} with 400
+ * Bad Request when the candidate fails — the message lists every rule that was violated.
  */
 @Service
 public class PasswordPolicyValidator {
@@ -49,7 +47,8 @@ public class PasswordPolicyValidator {
         }
 
         if (!problems.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
                     "Password does not meet policy: " + String.join(", ", problems));
         }
     }

@@ -3,10 +3,12 @@ package com.ewos.common.exception;
 import org.springframework.http.HttpStatus;
 
 /**
- * Base runtime exception for expected application errors. Carries an HTTP status
- * so the global handler can translate it directly.
+ * Base runtime exception for expected application errors. Carries an HTTP status so the global
+ * handler can translate it directly.
  */
 public class ApiException extends RuntimeException {
+
+    private static final long serialVersionUID = 1L;
 
     private final HttpStatus status;
 

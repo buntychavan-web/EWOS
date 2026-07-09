@@ -1,10 +1,10 @@
 package com.ewos.identity.application;
 
-import com.ewos.common.exception.ApiException;
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.ewos.common.exception.ApiException;
+import org.junit.jupiter.api.Test;
 
 class PasswordPolicyValidatorTest {
 
@@ -52,9 +52,9 @@ class PasswordPolicyValidatorTest {
 
     @Test
     void relaxedPolicyAllowsSimplerPasswords() {
-        PasswordPolicyProperties relaxed = new PasswordPolicyProperties(6, 128, false, false, false, false, 0);
-        assertThatCode(() -> validator(relaxed).validate("simple"))
-                .doesNotThrowAnyException();
+        PasswordPolicyProperties relaxed =
+                new PasswordPolicyProperties(6, 128, false, false, false, false, 0);
+        assertThatCode(() -> validator(relaxed).validate("simple")).doesNotThrowAnyException();
     }
 
     @Test

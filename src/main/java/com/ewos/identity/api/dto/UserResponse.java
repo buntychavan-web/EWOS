@@ -1,7 +1,6 @@
 package com.ewos.identity.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -19,6 +18,4 @@ public record UserResponse(
         Instant createdAt,
         Instant updatedAt,
         UUID createdBy,
-        UUID updatedBy
-) {
-}
+        UUID updatedBy) {}

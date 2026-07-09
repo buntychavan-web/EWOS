@@ -5,7 +5,4 @@ import jakarta.validation.constraints.NotBlank;
 
 @Schema(description = "Administrative password reset. Bypasses current-password check.")
 public record ResetPasswordRequest(
-        @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank String newPassword
-) {
-}
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) @NotBlank String newPassword) {}

@@ -7,7 +7,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-
 import java.time.Instant;
 
 @Entity
@@ -25,7 +24,7 @@ public class RefreshToken extends AuditableEntity {
     private Instant expiresAt;
 
     @Column(name = "revoked", nullable = false)
-    private boolean revoked = false;
+    private boolean revoked;
 
     public String getTokenHash() {
         return tokenHash;

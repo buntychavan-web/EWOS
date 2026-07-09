@@ -9,9 +9,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Base class for integration tests. Starts a Postgres container shared across
- * the JVM (static Container + Ryuk reuse) so the Spring context boots against
- * a real database without needing docker-compose on the host.
+ * Base class for integration tests. Starts a Postgres container shared across the JVM (static
+ * Container + Ryuk reuse) so the Spring context boots against a real database without needing
+ * docker-compose on the host.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -19,10 +19,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 public abstract class AbstractIntegrationTest {
 
     @Container
-    protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-            .withDatabaseName("ewos_test")
-            .withUsername("ewos")
-            .withPassword("ewos");
+    protected static final PostgreSQLContainer<?> POSTGRES =
+            new PostgreSQLContainer<>("postgres:16-alpine")
+                    .withDatabaseName("ewos_test")
+                    .withUsername("ewos")
+                    .withPassword("ewos");
 
     @DynamicPropertySource
     static void registerDatasourceProperties(DynamicPropertyRegistry registry) {

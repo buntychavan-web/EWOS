@@ -5,10 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 
 @Schema(description = "Credentials submitted to obtain a fresh token pair.")
 public record LoginRequest(
-        @Schema(example = "admin", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank String username,
-
+        @Schema(example = "admin", requiredMode = Schema.RequiredMode.REQUIRED) @NotBlank
+                String username,
         @Schema(example = "ChangeMe!Admin123", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank String password
-) {
-}
+                @NotBlank
+                String password) {}

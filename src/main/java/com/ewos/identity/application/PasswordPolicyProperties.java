@@ -13,6 +13,4 @@ public record PasswordPolicyProperties(
         boolean requireLowercase,
         boolean requireDigit,
         boolean requireSpecial,
-        @Min(0) int historySize
-) {
-}
+        @Min(0) int historySize) {}

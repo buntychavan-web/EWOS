@@ -11,19 +11,18 @@ import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.identity.infrastructure.persistence.UserSpecifications;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional
@@ -35,11 +34,12 @@ public class UserService {
     private final PasswordPolicyValidator passwordPolicy;
     private final PasswordHistoryService passwordHistory;
 
-    public UserService(UserRepository userRepository,
-                       RoleRepository roleRepository,
-                       PasswordEncoder passwordEncoder,
-                       PasswordPolicyValidator passwordPolicy,
-                       PasswordHistoryService passwordHistory) {
+    public UserService(
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            PasswordEncoder passwordEncoder,
+            PasswordPolicyValidator passwordPolicy,
+            PasswordHistoryService passwordHistory) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -109,9 +109,20 @@ public class UserService {
         return toResponse(requireUser(id));
     }
 
+    /**
+     * Soft-deletes the user. Hibernate's {@code @SQLDelete} intercepts the DELETE and sets {@code
+     * deleted_at = NOW()}. Partial unique indexes on {@code username} / {@code email} keep those
+     * values reusable by future active users.
+     */
+    public void softDelete(UUID id) {
+        User user = requireUser(id);
+        userRepository.delete(user);
+    }
+
     @Transactional(readOnly = true)
     public Page<UserResponse> search(UserSearchCriteria criteria, Pageable pageable) {
-        return userRepository.findAll(UserSpecifications.matching(criteria), pageable)
+        return userRepository
+                .findAll(UserSpecifications.matching(criteria), pageable)
                 .map(this::toResponse);
     }
 
@@ -136,16 +147,16 @@ public class UserService {
     }
 
     private User requireUser(UUID id) {
-        return userRepository.findById(id)
+        return userRepository
+                .findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     private UserResponse toResponse(User user) {
-        Set<RoleSummary> roleSummaries = Optional.ofNullable(user.getRoles())
-                .orElse(Set.of())
-                .stream()
-                .map(role -> new RoleSummary(role.getId(), role.getName()))
-                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+        Set<RoleSummary> roleSummaries =
+                Optional.ofNullable(user.getRoles()).orElse(Set.of()).stream()
+                        .map(role -> new RoleSummary(role.getId(), role.getName()))
+                        .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
         return new UserResponse(
                 user.getId(),
                 user.getUsername(),
@@ -158,7 +169,6 @@ public class UserService {
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
                 user.getCreatedBy(),
-                user.getUpdatedBy()
-        );
+                user.getUpdatedBy());
     }
 }
