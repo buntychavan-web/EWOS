@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**', 'feature/**', 'release/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, verify, and enforce quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Format check (Spotless)
+        run: mvn -B -ntp spotless:check
+
+      - name: Static analysis
+        run: mvn -B -ntp checkstyle:check pmd:check spotbugs:check
+
+      - name: Compile + tests + coverage gate
+        run: mvn -B -ntp verify
+
+      - name: Upload JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          if-no-files-found: warn
+
+      - name: Upload Surefire test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: warn
