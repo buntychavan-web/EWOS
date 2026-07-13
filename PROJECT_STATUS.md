@@ -1,10 +1,11 @@
 # EWOS — Project Status
 
-_Last updated: 2026-07-09._
+_Last updated: 2026-07-13._
 
-Snapshot of the backend after Sprints 1, 2, 4, and 5 (hardening). This is
-the single source of truth for what is delivered, what quality gates are
-enforced, and what technical debt still exists.
+Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), and 6
+(Company Configuration). This is the single source of truth for what is
+delivered, what quality gates are enforced, and what technical debt still
+exists.
 
 ---
 
@@ -52,6 +53,19 @@ enforced, and what technical debt still exists.
 - **Login audit**: new `LoginEventType` enum (`LOGIN_SUCCESS`, `LOGIN_FAILURE`, `LOGOUT`, `REFRESH_SUCCESS`, `REFRESH_FAILURE`); refresh attempts audited with distinct failure reasons (`revoked` / `expired` / `unknown`); IP + User-Agent captured on refresh + logout too.
 - **API consistency**: `CorrelationIdFilter` (HIGHEST_PRECEDENCE) reads/mints `X-Request-ID`, publishes it on the response, and places it in the SLF4J MDC. `ApiError` carries a `correlationId` field. `GlobalExceptionHandler` gained handlers for `HttpMessageNotReadable`, `MissingServletRequestParameter`, `MethodArgumentTypeMismatch`, `HttpRequestMethodNotSupported`, `NoResourceFound`, and `OptimisticLockingFailure` — every 4xx/5xx now returns the same `ApiError` shape.
 - **README**: badges + `Quality gates & CI` section + endpoint updates + soft-delete / correlation-ID / login-audit docs.
+
+### Sprint 6 — Company Configuration
+- Flyway V6 — `tenants`, `companies`, `company_versions`, `statutory_registrations`, `company_bank_accounts`, `company_policy_assignments`, `company_shared_services`; seeds a `DEFAULT` tenant and the `COMPANY_READ` / `COMPANY_WRITE` / `COMPANY_DELETE` permissions granted to `SYSTEM_ADMIN`.
+- **Effective-dated profile**: `company_versions` holds every profile snapshot. A profile edit closes the previous window and opens a new row; historical rows are immutable. Enforced by `ux_company_versions_open` (partial unique index) + service-layer validation.
+- **Statutory registrations**: PAN / TAN / GST / PF / ESIC / PT / LWF, each with its own effective window; PAN is nationally unique across live rows.
+- **Bank accounts**: multiple per company, keyed by purpose (SALARY / FULL_AND_FINAL / REIMBURSEMENT / STATUTORY / VENDOR / OTHER).
+- **Policy assignments**: references-only (`policy_ref UUID`) to future policy tables (holiday calendar, payroll calendar, leave / attendance / shift, workflow). Non-overlap enforced per `(company, policy_type)`.
+- **Shared services**: HR / Payroll / Finance / IT team assignments, effective-dated.
+- **Clone**: `POST /api/v1/companies` accepts `cloneFromId` + optional `clonePolicyTypes` — blank / structure-only / reference-existing-policies modes. Statutory numbers and bank account numbers are never cloned (per-company entry required).
+- **Soft delete + @Version + audit** on every entity that extends `AuditableEntity`.
+- **APIs** at `/api/v1/companies/*`: create/get/search/update-profile/status/soft-delete + `/versions` + `/statutory-registrations` + `/bank-accounts` + `/policy-assignments` + `/shared-services`, each with its retire endpoint. Full springdoc annotations. Search supports paging / sorting / filtering.
+- **Tenant model**: `tenants` table with `isolation_policy ∈ {SHARED, SEGREGATED}` seeded to a `DEFAULT` tenant. Enforcement of SHARED vs SEGREGATED at query time is deferred to Sprint 6.1 (see ADR-0001).
+- **ADR-0001** (`docs/adr/0001-company-effective-dating-and-tenancy.md`) documents the effective-dating pattern, why overlap is enforced in the service layer rather than via `EXCLUDE USING gist`, why tenant isolation is stored-but-not-enforced this sprint, and the policy/team opaque-reference contract.
 
 ---
 
@@ -216,3 +230,4 @@ docker compose up --build
 ## 9. Change log for this document
 
 - **2026-07-09** — Initial version. Reflects the tip of the `claude/quality-hardening` branch after the Sprint 5 hardening PR.
+- **2026-07-13** — Sprint 6 (Company Configuration) added: `tenants` + `companies` + `company_versions` (effective-dated) + `statutory_registrations` + `company_bank_accounts` + `company_policy_assignments` + `company_shared_services`, clone modes, full REST surface at `/api/v1/companies/*`, ADR-0001 documenting effective-dating and tenancy. Deferred to Sprint 6.1: query-time enforcement of the tenant isolation policy (SHARED vs SEGREGATED), FK-enforced or read-time validation of opaque `policy_ref` / `team_ref`, DB-level temporal-overlap enforcement via `EXCLUDE USING gist`.
