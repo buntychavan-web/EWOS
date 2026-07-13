@@ -12,6 +12,9 @@ public final class Permissions {
     public static final String USER_DELETE = "USER_DELETE";
     public static final String ROLE_READ = "ROLE_READ";
     public static final String ROLE_WRITE = "ROLE_WRITE";
+    public static final String COMPANY_READ = "COMPANY_READ";
+    public static final String COMPANY_WRITE = "COMPANY_WRITE";
+    public static final String COMPANY_DELETE = "COMPANY_DELETE";
 
     private Permissions() {}
 }
