@@ -15,6 +15,9 @@ public final class Permissions {
     public static final String COMPANY_READ = "COMPANY_READ";
     public static final String COMPANY_WRITE = "COMPANY_WRITE";
     public static final String COMPANY_DELETE = "COMPANY_DELETE";
+    public static final String ORGANIZATION_READ = "ORGANIZATION_READ";
+    public static final String ORGANIZATION_WRITE = "ORGANIZATION_WRITE";
+    public static final String ORGANIZATION_DELETE = "ORGANIZATION_DELETE";
 
     private Permissions() {}
 }

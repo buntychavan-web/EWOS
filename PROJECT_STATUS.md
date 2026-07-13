@@ -2,10 +2,10 @@
 
 _Last updated: 2026-07-13._
 
-Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), and 6
-(Company Configuration). This is the single source of truth for what is
-delivered, what quality gates are enforced, and what technical debt still
-exists.
+Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), 6
+(Company Configuration), and 7 (Organization Structure). This is the
+single source of truth for what is delivered, what quality gates are
+enforced, and what technical debt still exists.
 
 ---
 
@@ -66,6 +66,20 @@ exists.
 - **APIs** at `/api/v1/companies/*`: create/get/search/update-profile/status/soft-delete + `/versions` + `/statutory-registrations` + `/bank-accounts` + `/policy-assignments` + `/shared-services`, each with its retire endpoint. Full springdoc annotations. Search supports paging / sorting / filtering.
 - **Tenant model**: `tenants` table with `isolation_policy ∈ {SHARED, SEGREGATED}` seeded to a `DEFAULT` tenant. Enforcement of SHARED vs SEGREGATED at query time is deferred to Sprint 6.1 (see ADR-0001).
 - **ADR-0001** (`docs/adr/0001-company-effective-dating-and-tenancy.md`) documents the effective-dating pattern, why overlap is enforced in the service layer rather than via `EXCLUDE USING gist`, why tenant isolation is stored-but-not-enforced this sprint, and the policy/team opaque-reference contract.
+
+### Sprint 7 — Organization Structure Engine
+- Flyway V7 — `organization_levels` (customer-configurable — nothing hardcoded), `organization_nodes` (master row referenced by employees), `organization_node_versions` (append-only structural history), `organization_node_inheritance_overrides` (per-node effective-dated override for ten inheritable resource kinds); seeds `ORGANIZATION_READ` / `ORGANIZATION_WRITE` / `ORGANIZATION_DELETE` and grants them to `SYSTEM_ADMIN`.
+- **Configurable levels**: `OrganizationLevelService` CRUDs levels; `code`, `name`, `displaySequence`, `parentLevelId` are all data. The platform ships zero hardcoded vocabulary — no `enum Level { BU, DIVISION, … }` anywhere in the code.
+- **Structural operations**: `OrganizationNodeService` supports rename, move (with cycle detection), merge (source deactivated + children reparented + versions on both sides), split (into N new nodes, optional deactivate-source), deactivate, reactivate. Every operation writes an `organization_node_versions` row so history is never lost.
+- **Move-doesn't-touch-employees invariant**: employees reference `organization_nodes.id`; moving a node mutates that master row's `parent_node_id` and appends a version row — every referencing employee is automatically re-parented without a single employee-row update.
+- **Inheritance engine**: `OrganizationInheritanceService.resolve(node, kind, asOf)` walks the parent chain returning the first live override, and returns unresolved so the consumer falls through to the company-level assignment (Sprint 6). Ten inheritable kinds: HOLIDAY_CALENDAR / PAYROLL_CALENDAR / LEAVE_POLICY / ATTENDANCE_POLICY / SHIFT_POLICY / WORKFLOW / COST_CENTRE / PROFIT_CENTRE / STATUTORY_REGISTRATION / SHARED_SERVICE.
+- **Hierarchy-based security**: `OrganizationSecurityService.accessibleNodeIds(tenantId, rootIds)` expands the given roots to include every descendant, so a manager assigned to a parent node gains access to every child automatically; empty roots ⇒ empty access (no silent open-tree).
+- **APIs** at `/api/v1/organization/*`:
+  - Levels: create / list / get / update / status / soft-delete.
+  - Nodes: create / search (paged + filtered) / get / tree / forest / rename / move / merge / split / deactivate / reactivate / soft-delete / versions.
+  - Inheritance: set-override / list / retire / resolve (`GET /nodes/{id}/inheritance/{kind}?asOf=…`).
+- **Soft delete + @Version + audit** on every entity; partial unique indexes on `(tenant_id, code)` for both levels and nodes so a soft-deleted row doesn't block reuse.
+- **ADR-0002** (`docs/adr/0002-organization-structure-engine.md`) documents the level-as-data decision, the append-only version log that keeps history without repointing employees, and the walk-up inheritance algorithm.
 
 ---
 
@@ -203,8 +217,13 @@ Prioritized. None of these blocks moving into the next sprint, but each should b
 14. **Refresh-token cleanup** — `RefreshTokenRepository` has a `deleteAllExpired(Instant)` query but no scheduled job runs it. Add `@Scheduled` daily sweep.
 15. **Coverage exclusions could shrink** — `common/persistence/AuditorProvider` and `common/web/CorrelationIdFilter` deserve tests; currently the coverage exemption on `common/**` masks them.
 
+### Sprint 7 deferrals (new)
+16. **`EXCLUDE USING gist` for temporal non-overlap on `organization_node_inheritance_overrides`** — same reasoning and follow-up as Sprint 6.
+17. **`override_ref` validation** — `override_ref` is an opaque UUID; the target tables (holiday calendar, cost centre, etc.) don't exist yet. Consumer modules must validate at read time when they land.
+18. **Hierarchy-based security caching** — `OrganizationSecurityService` loads the tree per call today. When it starts firing on hot paths, memoise per (tenant, user) in Redis and invalidate on any node version write.
+
 ### Not in scope for this repo
-16. Employee, Payroll, Leave, Attendance, and Organization modules — deferred to their respective sprints.
+19. Employee, Payroll, Leave, Attendance modules — deferred to their respective sprints. Once employees exist, `employees.organization_node_id` FKs to `organization_nodes.id` and region/department/branch are NEVER stored on the employee row (per ADR-0002).
 
 ---
 
@@ -231,3 +250,4 @@ docker compose up --build
 
 - **2026-07-09** — Initial version. Reflects the tip of the `claude/quality-hardening` branch after the Sprint 5 hardening PR.
 - **2026-07-13** — Sprint 6 (Company Configuration) added: `tenants` + `companies` + `company_versions` (effective-dated) + `statutory_registrations` + `company_bank_accounts` + `company_policy_assignments` + `company_shared_services`, clone modes, full REST surface at `/api/v1/companies/*`, ADR-0001 documenting effective-dating and tenancy. Deferred to Sprint 6.1: query-time enforcement of the tenant isolation policy (SHARED vs SEGREGATED), FK-enforced or read-time validation of opaque `policy_ref` / `team_ref`, DB-level temporal-overlap enforcement via `EXCLUDE USING gist`.
+- **2026-07-13** — Sprint 7 (Organization Structure Engine) added: configurable `organization_levels` (nothing hardcoded), `organization_nodes` master + append-only `organization_node_versions` history, effective-dated `organization_node_inheritance_overrides` (ten inheritable kinds), full REST surface at `/api/v1/organization/*` covering CRUD + tree + forest + move/merge/split/rename/deactivate/reactivate/version-history/inheritance-resolve, `OrganizationSecurityService` for hierarchy-based access expansion, ADR-0002 documenting level-as-data + append-only history + walk-up inheritance. Employees FK the node id so moves cost O(1) writes.
