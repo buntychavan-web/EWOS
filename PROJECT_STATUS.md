@@ -3,9 +3,9 @@
 _Last updated: 2026-07-13._
 
 Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), 6
-(Company Configuration), and 7 (Organization Structure). This is the
-single source of truth for what is delivered, what quality gates are
-enforced, and what technical debt still exists.
+(Company Configuration), 7 (Organization Structure), and 8.1 (Person
+Engine). This is the single source of truth for what is delivered,
+what quality gates are enforced, and what technical debt still exists.
 
 ---
 
@@ -80,6 +80,19 @@ enforced, and what technical debt still exists.
   - Inheritance: set-override / list / retire / resolve (`GET /nodes/{id}/inheritance/{kind}?asOf=…`).
 - **Soft delete + @Version + audit** on every entity; partial unique indexes on `(tenant_id, code)` for both levels and nodes so a soft-deleted row doesn't block reuse.
 - **ADR-0002** (`docs/adr/0002-organization-structure-engine.md`) documents the level-as-data decision, the append-only version log that keeps history without repointing employees, and the walk-up inheritance algorithm.
+
+### Sprint 8.1 — Person Engine
+- Flyway V8 — `persons` (immutable Group Person ID + tenant), `person_versions` (append-only effective-dated core profile), `person_contacts` / `person_addresses` / `person_emergency_contacts` / `person_family_members` / `person_education` / `person_identity_documents`, `person_duplicate_rules` (per-tenant data-driven rules) + `person_id_sequence` (monotonic, never-reused); seeds `PERSON_READ` / `PERSON_WRITE` / `PERSON_DELETE` / `PERSON_DUPLICATE_OVERRIDE` and grants them to `SYSTEM_ADMIN`. Also seeds the six default duplicate rules for the DEFAULT tenant.
+- **Group Person ID**: `PersonIdGenerator` produces `P000000001`-style ids via `nextval('person_id_sequence')`. Never reused, monotonic, safe under multi-node inserts.
+- **Effective-dated profile**: creating a Person opens version #1; every profile edit appends a new version and closes the previous one — historical rows are immutable. `change_reason` + `changed_by` + optional `approved_by` on every version row for statutory audit.
+- **Duplicate detection engine**: `DuplicateDetectionService` runs the enabled rules for the tenant (PAN / Aadhaar / Passport / Mobile / Email / Name+DOB), returns matches ordered by weight, and refuses create with `409` unless the caller supplies `overrideDuplicates=true` AND holds `PERSON_DUPLICATE_OVERRIDE` (else `403`). Rules are managed via `GET/PUT /api/v1/persons/duplicate-rules` — nothing is hardcoded.
+- **Profile readiness**: `ProfileReadinessService` returns per-section (basic / contact / address / emergency / education / family / documents) + overall completion percentages. Readiness is a signal, never a gate — partial profiles are always creatable.
+- **Uniqueness**: PAN + Aadhaar unique across all live rows in the DB via partial unique indexes; Group Person ID unique everywhere.
+- **Fast search**: `GET /api/v1/persons/search?q=…` hits Person ID / name substring / mobile / email / any identity document number, and returns unique persons.
+- **APIs** at `/api/v1/persons/*`: create / list / get / by-group-id / update-profile / status / soft-delete / versions / readiness / search / duplicate-check + sub-resources for contacts, addresses, emergency contacts, family, education, and identity documents. Full springdoc annotations, method-level `@PreAuthorize`.
+- **Soft delete + @Version + audit** on every entity.
+- **ADR-0003** (`docs/adr/0003-person-engine.md`) documents the identity model, sequence-backed IDs, effective-dating pattern, and data-driven duplicate detection.
+- **Business rules** (`docs/business-rules/person-engine.md`) enumerates every rule the Person module encodes with its enforcement point.
 
 ---
 
@@ -222,8 +235,14 @@ Prioritized. None of these blocks moving into the next sprint, but each should b
 17. **`override_ref` validation** — `override_ref` is an opaque UUID; the target tables (holiday calendar, cost centre, etc.) don't exist yet. Consumer modules must validate at read time when they land.
 18. **Hierarchy-based security caching** — `OrganizationSecurityService` loads the tree per call today. When it starts firing on hot paths, memoise per (tenant, user) in Redis and invalidate on any node version write.
 
+### Sprint 8.1 deferrals (new)
+19. **PII encryption for PAN / Aadhaar / Passport** — plain-text in Sprint 8.1. When encryption lands, add a searchable hash column so duplicate detection still works.
+20. **`PersonSearchService` and `DuplicateDetectionService.NAME_DOB`** load open versions into memory. Fine at HR scale; move to indexed `ILIKE` / trigram queries once a tenant crosses ~50k persons.
+21. **Child-entity full history** — address / family / emergency / education / document rows are soft-delete + `@Version` today, not effective-dated versioned. Promote to full versioning if regulators require it.
+22. **Duplicate-rule seeding for non-DEFAULT tenants** — V8 seeds only DEFAULT. Product must call `PUT /duplicate-rules/{id}` (or a seed script) for every new tenant.
+
 ### Not in scope for this repo
-19. Employee, Payroll, Leave, Attendance modules — deferred to their respective sprints. Once employees exist, `employees.organization_node_id` FKs to `organization_nodes.id` and region/department/branch are NEVER stored on the employee row (per ADR-0002).
+23. Employment, Payroll, Leave, Attendance modules — deferred to their respective sprints. Employment (Sprint 8.2) will FK `employments.person_id` → `persons.id` — never store person profile fields on the employment row.
 
 ---
 
@@ -251,3 +270,4 @@ docker compose up --build
 - **2026-07-09** — Initial version. Reflects the tip of the `claude/quality-hardening` branch after the Sprint 5 hardening PR.
 - **2026-07-13** — Sprint 6 (Company Configuration) added: `tenants` + `companies` + `company_versions` (effective-dated) + `statutory_registrations` + `company_bank_accounts` + `company_policy_assignments` + `company_shared_services`, clone modes, full REST surface at `/api/v1/companies/*`, ADR-0001 documenting effective-dating and tenancy. Deferred to Sprint 6.1: query-time enforcement of the tenant isolation policy (SHARED vs SEGREGATED), FK-enforced or read-time validation of opaque `policy_ref` / `team_ref`, DB-level temporal-overlap enforcement via `EXCLUDE USING gist`.
 - **2026-07-13** — Sprint 7 (Organization Structure Engine) added: configurable `organization_levels` (nothing hardcoded), `organization_nodes` master + append-only `organization_node_versions` history, effective-dated `organization_node_inheritance_overrides` (ten inheritable kinds), full REST surface at `/api/v1/organization/*` covering CRUD + tree + forest + move/merge/split/rename/deactivate/reactivate/version-history/inheritance-resolve, `OrganizationSecurityService` for hierarchy-based access expansion, ADR-0002 documenting level-as-data + append-only history + walk-up inheritance. Employees FK the node id so moves cost O(1) writes.
+- **2026-07-13** — Sprint 8.1 (Person Engine) added: `persons` (immutable `group_person_id` P000000001), append-only `person_versions` core profile, effective-dated `person_contacts`, `person_addresses` / `person_emergency_contacts` / `person_family_members` / `person_education` / `person_identity_documents` sub-resources, configurable `person_duplicate_rules` with six kinds (PAN / Aadhaar / Passport / Mobile / Email / Name+DOB), sequence-backed never-reused Person ID, profile-readiness engine that never blocks creation, full REST surface at `/api/v1/persons/*`, ADR-0003 + business-rules document. Deferred: PII encryption for PAN/Aadhaar/Passport, indexed name/DOB search, full-history versioning of child entities, per-tenant duplicate-rule seeding.
