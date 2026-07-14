@@ -94,6 +94,13 @@ what quality gates are enforced, and what technical debt still exists.
 - **ADR-0003** (`docs/adr/0003-person-engine.md`) documents the identity model, sequence-backed IDs, effective-dating pattern, and data-driven duplicate detection.
 - **Business rules** (`docs/business-rules/person-engine.md`) enumerates every rule the Person module encodes with its enforcement point.
 
+### Sprint 8.1.1 — Dashboard summary
+- Flyway V9 — seeds the `DASHBOARD_READ` permission and grants it to `SYSTEM_ADMIN`.
+- **New endpoint** `GET /api/dashboard/summary` returns `{employees, users, departments, roles}`. Users + roles are live counts over non-deleted rows; employees + departments return `0` until those modules ship (Sprint 8.2 employment, TBD departments).
+- **Single-query** aggregation via `DashboardCountsRepository.loadCounts()` — one native SELECT with subselects for both counters. No N+1, no per-module round trips.
+- Method-level `@PreAuthorize("hasAuthority('DASHBOARD_READ')")` + springdoc `@ApiResponses` covering 200/401/403.
+- Unit + integration tests (`DashboardServiceTest`, `DashboardControllerIntegrationTest`).
+
 ---
 
 ## 2. Checklist status (Sprint 5 mandate)

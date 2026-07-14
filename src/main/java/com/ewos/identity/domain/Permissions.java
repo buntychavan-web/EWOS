@@ -22,6 +22,7 @@ public final class Permissions {
     public static final String PERSON_WRITE = "PERSON_WRITE";
     public static final String PERSON_DELETE = "PERSON_DELETE";
     public static final String PERSON_DUPLICATE_OVERRIDE = "PERSON_DUPLICATE_OVERRIDE";
+    public static final String DASHBOARD_READ = "DASHBOARD_READ";
 
     private Permissions() {}
 }
