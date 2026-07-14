@@ -1,3 +1,9 @@
+app:
+  cors:
+    # Production explicitly requires APP_CORS_ALLOWED_ORIGINS to be set. Wildcards ('*')
+    # are rejected at start-up in this profile — see ADR-0004.
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
+
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL}

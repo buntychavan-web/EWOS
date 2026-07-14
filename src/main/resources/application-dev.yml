@@ -13,6 +13,13 @@ spring:
       hibernate:
         format_sql: true
 
+app:
+  cors:
+    # Local dev origins — Vite (5173), Create-React-App (3000), and their 127.0.0.1 aliases.
+    # Override via APP_CORS_ALLOWED_ORIGINS if the frontend runs elsewhere.
+    allowed-origins: >-
+      ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}
+
 logging:
   level:
     root: INFO

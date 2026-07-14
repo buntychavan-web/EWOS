@@ -624,16 +624,7 @@ Prioritised. Full list in [`PROJECT_STATUS.md § 7`](../PROJECT_STATUS.md).
 
 ### Blocks the frontend or the browser workflow
 
-1. **CORS is not configured.** `SecurityConfig` calls `.cors(Customizer.withDefaults())` but no `CorsConfigurationSource` bean is registered — browser requests from `http://localhost:5173` (or any origin ≠ backend) will be blocked. **Backend owns the fix**; frontend can work via a Vite proxy in the interim:
-
-   ```ts
-   // vite.config.ts
-   export default defineConfig({
-     server: { proxy: { '/api': 'http://localhost:8080', '/v3': 'http://localhost:8080' } },
-   });
-   ```
-
-   Tell the backend team when you need real CORS (needed for prod anyway).
+1. **CORS is configured** (resolved on branch `claude/cors-configuration`). Dev + test profiles allow `http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:3000`, `http://127.0.0.1:3000` out of the box. Override via `APP_CORS_ALLOWED_ORIGINS`. Production defaults to **empty** (deny-by-default) — set the env var per deploy. Wildcards (`*`) are rejected at start-up in the `prod` profile. See [ADR-0004](adr/0004-cors-configuration.md).
 
 2. **`JWT_SECRET` default is a placeholder.** Change it in every non-dev environment. Backend does not yet refuse to boot with the placeholder.
 
