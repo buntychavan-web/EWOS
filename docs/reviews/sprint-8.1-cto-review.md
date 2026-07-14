@@ -47,7 +47,7 @@ Cross-module dependencies: `person.domain.Person` and `person.domain.PersonDupli
 
 ---
 
-## 2. Database ER Diagram
+## 2. Database Schema / ER Diagram
 
 ```mermaid
 erDiagram
@@ -304,7 +304,7 @@ Highlights that a CTO should verify:
 
 ---
 
-## 9. Audit Implementation
+## 9. Audit Trail Implementation
 
 Two layers:
 
@@ -376,7 +376,7 @@ The binary 0/100 scoring on the collection sections is deliberate. A finer-grain
 
 ---
 
-## 12. Test Results
+## 12. Unit & Integration Test Results
 
 **Unit tests: 79 / 79 green.** (Ran locally on the review branch, excluding integration tests.)
 
@@ -430,7 +430,7 @@ The binary 0/100 scoring on the collection sections is deliberate. A finer-grain
 
 ---
 
-## 14. Known Limitations
+## 14. Known Issues
 
 Prioritised — none block Sprint 8.2, all documented in [ADR-0003](../adr/0003-person-engine.md) and [PROJECT_STATUS.md](../../PROJECT_STATUS.md).
 
@@ -470,7 +470,7 @@ Prioritised — none block Sprint 8.2, all documented in [ADR-0003](../adr/0003-
 
 ---
 
-## 16. Deviations from Approved Architecture
+## 16. Deviations from the Approved Architecture
 
 Full transparency. The following four deviations from the strict "follow existing decisions" mandate should be flagged for CTO awareness.
 
