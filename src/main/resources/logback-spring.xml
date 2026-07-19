@@ -4,8 +4,22 @@
 
     <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="ewos"/>
 
+    <!--
+      Text pattern — human-friendly, used for dev + test. Includes the WP-002A MDC keys
+      populated by CorrelationIdFilter + AccessLoggingFilter: correlationId, userId,
+      httpMethod, httpPath, httpStatus, clientIp.
+    -->
     <property name="CONSOLE_LOG_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${APP_NAME},%X{correlationId:-},%X{traceId:-},%X{spanId:-}] [%thread] %logger{40} - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [${APP_NAME},%X{correlationId:-},%X{userId:-},%X{httpMethod:-} %X{httpPath:-} %X{httpStatus:-},%X{clientIp:-}] [%thread] %logger{40} - %msg%n"/>
+
+    <!--
+      JSON pattern — used for the prod console appender so log aggregators (ELK, Loki,
+      Datadog) can ingest structured fields without a custom encoder dependency. Keys
+      are quoted; the message is escaped with %.-1replace via %msg (logback default
+      JSON-safe encoding). No new Maven dep required.
+    -->
+    <property name="JSON_LOG_PATTERN"
+              value='{"ts":"%d{yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX}","level":"%level","app":"${APP_NAME}","logger":"%logger","thread":"%thread","correlationId":"%X{correlationId:-}","userId":"%X{userId:-}","method":"%X{httpMethod:-}","path":"%X{httpPath:-}","status":"%X{httpStatus:-}","ip":"%X{clientIp:-}","msg":"%replace(%msg){&apos;&quot;&apos;,&apos;\\&quot;&apos;}"}%n'/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -29,6 +43,12 @@
     </springProfile>
 
     <springProfile name="prod">
+        <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${JSON_LOG_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_PATH:-/var/log/ewos}/ewos.log</file>
             <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
@@ -38,12 +58,12 @@
                 <totalSizeCap>2GB</totalSizeCap>
             </rollingPolicy>
             <encoder>
-                <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+                <pattern>${JSON_LOG_PATTERN}</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
         <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="CONSOLE_JSON"/>
             <appender-ref ref="FILE"/>
         </root>
     </springProfile>
