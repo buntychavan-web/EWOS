@@ -169,7 +169,7 @@ The 80 % JaCoCo floor is enforced against the aggregated coverage — i.e. unit 
 Prioritized. None of these blocks moving into the next sprint, but each should be tackled before the platform reaches production.
 
 ### High priority
-1. **`AbstractIntegrationTest` container reuse across classes** — currently each `@SpringBootTest` class starts its own Postgres container. In CI this doubles the integration-test wall time. Fix with a singleton container (`@Testcontainers(disabledWithoutDocker = true)` + static container reused via `@DynamicPropertySource` on a common base).
+1. ~~**`AbstractIntegrationTest` container reuse across classes**~~ ✅ **Resolved by PR #4.** `AbstractIntegrationTest` now uses the singleton-container pattern: one Postgres per JVM, started in a static initializer, terminated by Ryuk at JVM exit. See `CONTRIBUTING.md` § 6.4 and "Common pitfalls" below for the failure mode this closes.
 2. **No CORS bean is registered** — `SecurityConfig.cors(Customizer.withDefaults())` runs, but no `CorsConfigurationSource` bean exists, so cross-origin requests from a browser frontend will be blocked. Add a config-driven `CorsConfigurationSource` (planned in the login-API doc I published earlier — needs a follow-up commit).
 3. **Actuator scrape endpoints are unauthenticated for `/health` / `/health/**` / `/info` only** — but `/actuator/prometheus`, `/actuator/metrics`, `/actuator/env` etc. become reachable the moment those exposures are turned on. Add an explicit authenticated policy for anything beyond health/info before enabling the Prometheus endpoint.
 4. **`JWT_SECRET` default in `application.yml`** — dev-only placeholder. Production deployment should refuse to start if `JWT_SECRET` matches the placeholder. Add a `SmartLifecycle` check or `@PostConstruct` guard.
@@ -194,7 +194,71 @@ Prioritized. None of these blocks moving into the next sprint, but each should b
 
 ---
 
-## 8. How to run
+## 8. Common pitfalls
+
+Real issues we've hit in this repo, the failure modes, and how the codebase now prevents them. Read this before making changes in the neighborhood.
+
+### 8.1 Testcontainers + multiple `@SpringBootTest` classes in one JVM
+
+**Symptom.** Every request in one integration-test class returns `500` with a JDBC connection-refused root cause, while a *different* integration-test class in the same CI run passed. Local unit tests are all green.
+
+**Failure mode.** A static `@Container` field on an `@Testcontainers`-annotated base class scopes the container's lifecycle to *one* test class. The JUnit extension calls `container.start()` before the class and `container.stop()` after. The next `@SpringBootTest` class calls `start()` again on the same reference — but Testcontainers `GenericContainer.start()` is a **silent no-op on a container that has already been started and removed**. No exception, no restart. Spring's `@DynamicPropertySource` hands the *dead* port to Hikari, which times out at `connection-timeout` (default 30 s) per test attempt.
+
+We hit this in CI [run 28996473363](https://github.com/buntychavan-web/EWOS/actions/runs/28996473363): 14 `UserControllerIntegrationTest` cases each burned 30 s of "connection refused" before failing.
+
+**Prevention (already in place).** `AbstractIntegrationTest` uses the singleton-container pattern — start once in a `static { }` block, never call `stop()`, let Ryuk clean up at JVM exit. All `@SpringBootTest` classes in the JVM share one container. `CONTRIBUTING.md` § 6.4 documents this and forbids `@Testcontainers` / `@Container` in the codebase.
+
+### 8.2 Full-column `UNIQUE` on soft-deletable tables
+
+**Symptom.** Soft-deleting a user, then creating a new user with the same username, fails with a constraint violation instead of succeeding.
+
+**Failure mode.** A full-column `UNIQUE (username)` constraint counts the soft-deleted row. `SELECT` queries filter it out via `@SQLRestriction`; `INSERT` doesn't.
+
+**Prevention.** V5 migration replaced full-column `UNIQUE` on `users.username`, `users.email`, `roles.name`, `permissions.code` with **partial unique indexes** (`WHERE deleted_at IS NULL`). Any future soft-deletable table must follow the same pattern — `CONTRIBUTING.md` § 4 states the rule.
+
+### 8.3 Editing a merged Flyway migration
+
+**Symptom.** Production deploy aborts with `Validate failed: Migration checksum mismatch for migration V<n>`.
+
+**Failure mode.** Flyway records the checksum of each migration when it first runs. Editing the file — even a comment or whitespace — changes the checksum; Flyway refuses to continue.
+
+**Prevention.** Migrations are append-only. `CONTRIBUTING.md` § 4 forbids editing merged migrations; ship a new `V<next>__...sql` that alters/undoes.
+
+### 8.4 Auditor is null on public / bootstrap flows
+
+**Symptom.** Rows created by `IdentityBootstrap` or during login/refresh/logout have `created_by = NULL`.
+
+**Failure mode.** `AuditorProvider` returns `Optional.empty()` when the `SecurityContext` has no authenticated principal — which is exactly the case for the initial admin bootstrap and for anything hit through `/api/v1/auth/*` (those endpoints are `permitAll()`).
+
+**Prevention.** This is intentional and documented in `AuditorProvider`. Do **not** invent a "system" auditor to paper over it — that would obscure genuine anonymous writes. If a real use case emerges (e.g. attributing scheduled-job writes), add a distinct sentinel UUID with an explicit contract, don't reuse a real user id.
+
+### 8.5 Logging secrets or tokens
+
+**Symptom.** Access tokens, refresh tokens, or BCrypt hashes appear in stdout / log files.
+
+**Failure mode.** A well-meaning `log.info("...{}", tokenResponse)` prints the full `TokenResponse#toString()`, including the access + refresh tokens.
+
+**Prevention.** SLF4J is available; use it *only* on non-sensitive payloads. Refresh tokens are SHA-256 hashed before storage, so the plaintext exists in memory only during a single request. Do not log `TokenResponse`, `LoginRequest`, `ChangePasswordRequest`, `ResetPasswordRequest`, or their fields. Correlation IDs are safe to log — that's the point of the MDC.
+
+### 8.6 `Checkstyle` `ConstantName` vs SLF4J `log`
+
+**Symptom.** Checkstyle fails on every `private static final Logger log = ...` line because the default `ConstantName` rule expects `UPPER_SNAKE`.
+
+**Failure mode.** Checkstyle's out-of-the-box `ConstantName` treats `static final` fields as constants and enforces the case convention.
+
+**Prevention.** `config/checkstyle/checkstyle.xml` deliberately omits `ConstantName`. Lowercase `log` is idiomatic SLF4J and this repo prefers it. If you add a *real* constant (`public static final int MAX_FOO = 42`), do use `UPPER_SNAKE`.
+
+### 8.7 Loosening a quality gate to make CI green
+
+**Symptom.** Someone raises a JaCoCo threshold from 80 % to 60 %, or adds a broad `<exclude>com/ewos/**</exclude>` to shut up SpotBugs.
+
+**Failure mode.** The gate stops enforcing what it was there for. Regressions land quietly.
+
+**Prevention.** `CONTRIBUTING.md` § 2 lists this as prohibited without explicit reviewer + team-lead consent. The PR template's "Scope guardrails" checklist asks the author to confirm no gate was loosened. Reviewers should reject PRs that touch `pom.xml` gate configuration without a linked justification.
+
+---
+
+## 9. How to run
 
 Full instructions live in [`README.md`](./README.md). Quick reference:
 
@@ -213,6 +277,7 @@ docker compose up --build
 
 ---
 
-## 9. Change log for this document
+## 10. Change log for this document
 
 - **2026-07-09** — Initial version. Reflects the tip of the `claude/quality-hardening` branch after the Sprint 5 hardening PR.
+- **2026-07-09** — Added § 8 "Common pitfalls" with the Testcontainers singleton-container writeup, soft-delete/UNIQUE, Flyway checksum, null auditor, log-hygiene, Checkstyle-vs-SLF4J-log, and gate-loosening. Marked tech-debt item #1 as resolved by PR #4. Renumbered § 8 → § 9 and § 9 → § 10.

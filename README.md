@@ -14,6 +14,8 @@ Backend for the EWOS HRMS platform.
 
 No HRMS domain modules (Employee, Payroll, Leave, Attendance, Organization) have been implemented yet.
 
+> **Contributing?** Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first — it covers the branching model, the PR checklist ([`.github/pull_request_template.md`](./.github/pull_request_template.md)), quality-gate expectations, and Testcontainers rules. See [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) § 8 for common pitfalls we've hit and now guard against.
+
 ## Tech stack
 
 | Concern            | Choice                                 |
