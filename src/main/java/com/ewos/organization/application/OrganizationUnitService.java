@@ -91,9 +91,8 @@ public class OrganizationUnitService {
 
     @CacheEvict(
             value = TREE_CACHE,
-            allEntries = false,
-            key = "#existing.tenantId + ':' + #existing.companyId",
-            condition = "#existing != null")
+            key = "#tenantId + ':' + #result.companyId()",
+            condition = "#result != null")
     public OrganizationUnitResponse update(
             UUID tenantId, UUID id, UpdateOrganizationUnitRequest request) {
         OrganizationUnit existing = requireUnit(tenantId, id);
@@ -152,7 +151,7 @@ public class OrganizationUnitService {
             return mapper.toResponse(unit);
         }
         if (target == OrganizationUnitStatus.CLOSED) {
-            long activeKids = unitRepository.countChildren(id);
+            long activeKids = unitRepository.countNonClosedChildren(id);
             hierarchyPolicy.assertClosable(unit, activeKids);
             unit.setEffectiveTo(LocalDate.now());
         }

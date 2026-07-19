@@ -5,6 +5,7 @@ import com.ewos.organization.api.dto.CreateOrganizationUnitTypeRequest;
 import com.ewos.organization.api.dto.OrganizationUnitTypeResponse;
 import com.ewos.organization.api.dto.UpdateOrganizationUnitTypeRequest;
 import com.ewos.organization.domain.OrganizationUnitType;
+import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitTypeRepository;
 import com.ewos.shared.exception.ApiException;
 import java.util.List;
@@ -18,11 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrganizationUnitTypeService {
 
     private final OrganizationUnitTypeRepository repository;
+    private final OrganizationUnitRepository unitRepository;
     private final OrganizationMapper mapper;
 
     public OrganizationUnitTypeService(
-            OrganizationUnitTypeRepository repository, OrganizationMapper mapper) {
+            OrganizationUnitTypeRepository repository,
+            OrganizationUnitRepository unitRepository,
+            OrganizationMapper mapper) {
         this.repository = repository;
+        this.unitRepository = unitRepository;
         this.mapper = mapper;
     }
 
@@ -76,7 +81,16 @@ public class OrganizationUnitTypeService {
     }
 
     public void delete(UUID tenantId, UUID id) {
-        repository.delete(require(tenantId, id));
+        OrganizationUnitType type = require(tenantId, id);
+        long referencing = unitRepository.countByUnitTypeId(id);
+        if (referencing > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Unit type is referenced by "
+                            + referencing
+                            + " organization units; re-assign them before deletion");
+        }
+        repository.delete(type);
     }
 
     private OrganizationUnitType require(UUID tenantId, UUID id) {
