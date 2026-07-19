@@ -53,7 +53,8 @@ class UserServiceTest {
                         roleRepository,
                         passwordEncoder,
                         passwordPolicy,
-                        passwordHistory);
+                        passwordHistory,
+                        new com.ewos.identity.api.UserMapper());
         lenient()
                 .when(userRepository.save(any(User.class)))
                 .thenAnswer(
