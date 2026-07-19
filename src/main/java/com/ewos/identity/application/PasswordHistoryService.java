@@ -1,9 +1,9 @@
 package com.ewos.identity.application;
 
-import com.ewos.common.exception.ApiException;
 import com.ewos.identity.domain.PasswordHistory;
 import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.PasswordHistoryRepository;
+import com.ewos.shared.exception.ApiException;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;

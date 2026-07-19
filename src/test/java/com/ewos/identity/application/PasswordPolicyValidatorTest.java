@@ -3,7 +3,7 @@ package com.ewos.identity.application;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.ewos.common.exception.ApiException;
+import com.ewos.shared.exception.ApiException;
 import org.junit.jupiter.api.Test;
 
 class PasswordPolicyValidatorTest {

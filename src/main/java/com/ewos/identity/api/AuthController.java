@@ -1,10 +1,10 @@
 package com.ewos.identity.api;
 
-import com.ewos.common.exception.ApiError;
 import com.ewos.identity.api.dto.LoginRequest;
 import com.ewos.identity.api.dto.RefreshRequest;
 import com.ewos.identity.api.dto.TokenResponse;
 import com.ewos.identity.application.AuthenticationService;
+import com.ewos.shared.exception.ApiError;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

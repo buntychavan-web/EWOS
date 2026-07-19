@@ -12,7 +12,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ewos.common.exception.ApiException;
 import com.ewos.identity.api.dto.CreateUserRequest;
 import com.ewos.identity.api.dto.UpdateUserRequest;
 import com.ewos.identity.api.dto.UserResponse;
@@ -20,6 +19,7 @@ import com.ewos.identity.domain.Role;
 import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
+import com.ewos.shared.exception.ApiException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;

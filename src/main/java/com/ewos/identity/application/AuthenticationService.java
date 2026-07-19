@@ -1,6 +1,5 @@
 package com.ewos.identity.application;
 
-import com.ewos.common.exception.ApiException;
 import com.ewos.identity.api.dto.TokenResponse;
 import com.ewos.identity.domain.LoginEventType;
 import com.ewos.identity.domain.Permission;
@@ -8,9 +7,10 @@ import com.ewos.identity.domain.RefreshToken;
 import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
-import com.ewos.security.jwt.JwtProperties;
-import com.ewos.security.jwt.JwtService;
-import com.ewos.security.ratelimit.AccountLockoutService;
+import com.ewos.identity.infrastructure.security.jwt.JwtProperties;
+import com.ewos.identity.infrastructure.security.jwt.JwtService;
+import com.ewos.identity.infrastructure.security.ratelimit.AccountLockoutService;
+import com.ewos.shared.exception.ApiException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

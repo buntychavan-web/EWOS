@@ -2,8 +2,8 @@ package com.ewos.benchmarks;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ewos.security.jwt.JwtProperties;
-import com.ewos.security.jwt.JwtService;
+import com.ewos.identity.infrastructure.security.jwt.JwtProperties;
+import com.ewos.identity.infrastructure.security.jwt.JwtService;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;

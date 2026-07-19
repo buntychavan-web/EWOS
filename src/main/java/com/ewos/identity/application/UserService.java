@@ -1,6 +1,5 @@
 package com.ewos.identity.application;
 
-import com.ewos.common.exception.ApiException;
 import com.ewos.identity.api.dto.CreateUserRequest;
 import com.ewos.identity.api.dto.RoleSummary;
 import com.ewos.identity.api.dto.UpdateUserRequest;
@@ -11,6 +10,7 @@ import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.identity.infrastructure.persistence.UserSpecifications;
+import com.ewos.shared.exception.ApiException;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Optional;

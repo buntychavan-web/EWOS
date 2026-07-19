@@ -1,6 +1,6 @@
 package com.ewos.identity.application;
 
-import com.ewos.common.exception.ApiException;
+import com.ewos.shared.exception.ApiException;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;

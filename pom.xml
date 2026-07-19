@@ -301,7 +301,7 @@
         <configuration>
           <excludes>
             <exclude>com/ewos/EwosApplication.class</exclude>
-            <exclude>com/ewos/config/**</exclude>
+            <exclude>com/ewos/shared/config/**</exclude>
             <exclude>com/ewos/**/dto/**</exclude>
             <exclude>com/ewos/**/domain/**</exclude>
             <exclude>com/ewos/**/infrastructure/persistence/**</exclude>
