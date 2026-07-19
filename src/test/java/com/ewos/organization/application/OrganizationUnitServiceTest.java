@@ -149,7 +149,7 @@ class OrganizationUnitServiceTest {
         UUID company = UUID.randomUUID();
         OrganizationUnit u = unit(tenant, company, "LEAF", null);
         when(unitRepo.findByIdAndTenantId(u.getId(), tenant)).thenReturn(Optional.of(u));
-        when(unitRepo.countChildren(u.getId())).thenReturn(0L);
+        when(unitRepo.countNonClosedChildren(u.getId())).thenReturn(0L);
 
         service.changeStatus(tenant, u.getId(), OrganizationUnitStatus.CLOSED);
 
@@ -162,12 +162,12 @@ class OrganizationUnitServiceTest {
     }
 
     @Test
-    void closeRejectsWhenChildrenExist() {
+    void closeRejectsWhenNonClosedChildrenExist() {
         UUID tenant = UUID.randomUUID();
         UUID company = UUID.randomUUID();
         OrganizationUnit u = unit(tenant, company, "PARENT", null);
         when(unitRepo.findByIdAndTenantId(u.getId(), tenant)).thenReturn(Optional.of(u));
-        when(unitRepo.countChildren(u.getId())).thenReturn(2L);
+        when(unitRepo.countNonClosedChildren(u.getId())).thenReturn(2L);
 
         assertThatThrownBy(
                         () ->
@@ -175,6 +175,20 @@ class OrganizationUnitServiceTest {
                                         tenant, u.getId(), OrganizationUnitStatus.CLOSED))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("2 active children");
+    }
+
+    @Test
+    void closeAllowsWhenOnlyClosedChildrenExist() {
+        UUID tenant = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        OrganizationUnit u = unit(tenant, company, "PARENT", null);
+        when(unitRepo.findByIdAndTenantId(u.getId(), tenant)).thenReturn(Optional.of(u));
+        // Two children exist in total but both are already CLOSED, so nothing blocks closure.
+        when(unitRepo.countNonClosedChildren(u.getId())).thenReturn(0L);
+
+        service.changeStatus(tenant, u.getId(), OrganizationUnitStatus.CLOSED);
+
+        assertThat(u.getStatus()).isEqualTo(OrganizationUnitStatus.CLOSED);
     }
 
     @Test

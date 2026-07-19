@@ -10,6 +10,7 @@ import com.ewos.organization.api.dto.CreateOrganizationUnitTypeRequest;
 import com.ewos.organization.api.dto.OrganizationUnitTypeResponse;
 import com.ewos.organization.api.dto.UpdateOrganizationUnitTypeRequest;
 import com.ewos.organization.domain.OrganizationUnitType;
+import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitTypeRepository;
 import com.ewos.shared.exception.ApiException;
 import java.util.Optional;
@@ -24,12 +25,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class OrganizationUnitTypeServiceTest {
 
     @Mock OrganizationUnitTypeRepository repo;
+    @Mock OrganizationUnitRepository unitRepo;
 
     private OrganizationUnitTypeService service;
 
     @BeforeEach
     void setUp() {
-        service = new OrganizationUnitTypeService(repo, new OrganizationMapper());
+        service = new OrganizationUnitTypeService(repo, unitRepo, new OrganizationMapper());
         org.mockito.Mockito.lenient()
                 .when(repo.save(any(OrganizationUnitType.class)))
                 .thenAnswer(
@@ -104,5 +106,35 @@ class OrganizationUnitTypeServiceTest {
         assertThatThrownBy(() -> service.getById(tenant, id))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void deleteRejectsWhenUnitsStillReferenceTheType() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        OrganizationUnitType existing = new OrganizationUnitType();
+        existing.setId(id);
+        existing.setTenantId(tenant);
+        existing.setCode("DEPT");
+        when(repo.findByIdAndTenantId(id, tenant)).thenReturn(Optional.of(existing));
+        when(unitRepo.countByUnitTypeId(id)).thenReturn(5L);
+
+        assertThatThrownBy(() -> service.delete(tenant, id))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("5 organization units");
+    }
+
+    @Test
+    void deleteSucceedsWhenNoUnitsReferenceTheType() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        OrganizationUnitType existing = new OrganizationUnitType();
+        existing.setId(id);
+        existing.setTenantId(tenant);
+        existing.setCode("DEPT");
+        when(repo.findByIdAndTenantId(id, tenant)).thenReturn(Optional.of(existing));
+        when(unitRepo.countByUnitTypeId(id)).thenReturn(0L);
+
+        service.delete(tenant, id); // no throw
     }
 }

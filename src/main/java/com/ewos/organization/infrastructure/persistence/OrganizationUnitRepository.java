@@ -34,6 +34,21 @@ public interface OrganizationUnitRepository
     boolean existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
             UUID tenantId, UUID companyId, String code);
 
+    /**
+     * Counts children that would block a parent's closure — i.e. children not already in {@code
+     * CLOSED} status. The soft-delete filter is applied automatically by {@code @SQLRestriction} on
+     * {@link com.ewos.organization.domain.OrganizationUnit}.
+     */
+    @Query(
+            "select count(u) from OrganizationUnit u where u.parent.id = :parentId and u.status <>"
+                    + " com.ewos.organization.domain.OrganizationUnitStatus.CLOSED")
+    long countNonClosedChildren(@Param("parentId") UUID parentId);
+
+    /** All non-soft-deleted children, including CLOSED. Used by delete() to prevent orphaning. */
     @Query("select count(u) from OrganizationUnit u where u.parent.id = :parentId")
     long countChildren(@Param("parentId") UUID parentId);
+
+    /** Non-soft-deleted units referencing a given unit type; used to block type deletion. */
+    @Query("select count(u) from OrganizationUnit u where u.unitType.id = :unitTypeId")
+    long countByUnitTypeId(@Param("unitTypeId") UUID unitTypeId);
 }
