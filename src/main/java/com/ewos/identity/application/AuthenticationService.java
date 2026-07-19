@@ -10,6 +10,7 @@ import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.security.jwt.JwtProperties;
 import com.ewos.security.jwt.JwtService;
+import com.ewos.security.ratelimit.AccountLockoutService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -20,6 +21,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Stream;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -40,21 +42,25 @@ public class AuthenticationService {
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final LoginHistoryRecorder loginHistoryRecorder;
+    private final AccountLockoutService accountLockoutService;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public AuthenticationService(
             UserRepository userRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             JwtProperties jwtProperties,
-            LoginHistoryRecorder loginHistoryRecorder) {
+            LoginHistoryRecorder loginHistoryRecorder,
+            AccountLockoutService accountLockoutService) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
         this.loginHistoryRecorder = loginHistoryRecorder;
+        this.accountLockoutService = accountLockoutService;
     }
 
     public TokenResponse login(
@@ -72,14 +78,31 @@ public class AuthenticationService {
         }
 
         User user = maybeUser.get();
-        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+
+        // Time-based lockout must be checked before we spend cycles on bcrypt — an already-locked
+        // account should short-circuit.
+        try {
+            accountLockoutService.assertNotLocked(user);
+        } catch (ApiException locked) {
             loginHistoryRecorder.record(
                     LoginEventType.LOGIN_FAILURE,
                     user,
                     username,
                     ipAddress,
                     userAgent,
-                    "invalid password");
+                    "account temporarily locked");
+            throw locked;
+        }
+
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            boolean nowLocked = accountLockoutService.recordFailedAttempt(user);
+            loginHistoryRecorder.record(
+                    LoginEventType.LOGIN_FAILURE,
+                    user,
+                    username,
+                    ipAddress,
+                    userAgent,
+                    nowLocked ? "invalid password — account now locked" : "invalid password");
             throw new ApiException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
         }
         if (!user.isEnabled() || !user.isAccountNonLocked()) {
@@ -93,10 +116,12 @@ public class AuthenticationService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Account is disabled or locked");
         }
 
+        accountLockoutService.recordSuccessfulLogin(user);
         user.setLastLoginAt(Instant.now());
         loginHistoryRecorder.record(
                 LoginEventType.LOGIN_SUCCESS, user, username, ipAddress, userAgent, null);
-        return issueTokens(user);
+        // Fresh login → new family id. Device claims (WP later) populate the label.
+        return issueTokens(user, null, null);
     }
 
     public TokenResponse refresh(String presentedRefreshToken, String ipAddress, String userAgent) {
@@ -127,7 +152,10 @@ public class AuthenticationService {
         }
 
         stored.setRevoked(true);
+        stored.setRevokedReason("rotated");
         User user = stored.getUser();
+        // Carry the family id forward so device-based revocation (later WP) can still act on it.
+        UUID rotatingFamily = stored.getFamilyId();
         loginHistoryRecorder.record(
                 LoginEventType.REFRESH_SUCCESS,
                 user,
@@ -135,7 +163,7 @@ public class AuthenticationService {
                 ipAddress,
                 userAgent,
                 null);
-        return issueTokens(user);
+        return issueTokens(user, rotatingFamily, stored.getDeviceLabel());
     }
 
     /**
@@ -153,6 +181,7 @@ public class AuthenticationService {
                         rt -> {
                             if (!rt.isRevoked()) {
                                 rt.setRevoked(true);
+                                rt.setRevokedReason("logout");
                             }
                             User user = rt.getUser();
                             loginHistoryRecorder.record(
@@ -165,7 +194,7 @@ public class AuthenticationService {
                         });
     }
 
-    private TokenResponse issueTokens(User user) {
+    private TokenResponse issueTokens(User user, UUID inheritedFamilyId, String deviceLabel) {
         List<String> authorities = collectAuthorities(user);
 
         String accessToken =
@@ -178,6 +207,11 @@ public class AuthenticationService {
         rt.setTokenHash(sha256Hex(refreshValue));
         rt.setUser(user);
         rt.setExpiresAt(Instant.now().plus(jwtProperties.refreshTokenTtl()));
+        // If we're rotating an existing family, carry the id forward; otherwise a new family
+        // starts, with id == this token's id. The V7 migration back-fills the same shape for
+        // legacy rows.
+        rt.setFamilyId(inheritedFamilyId != null ? inheritedFamilyId : UUID.randomUUID());
+        rt.setDeviceLabel(deviceLabel);
         refreshTokenRepository.save(rt);
 
         return new TokenResponse(

@@ -36,6 +36,12 @@ public class User extends AuditableEntity {
     @Column(name = "account_non_locked", nullable = false)
     private boolean accountNonLocked = true;
 
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
@@ -94,6 +100,22 @@ public class User extends AuditableEntity {
 
     public void setAccountNonLocked(boolean accountNonLocked) {
         this.accountNonLocked = accountNonLocked;
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public void setFailedLoginAttempts(int failedLoginAttempts) {
+        this.failedLoginAttempts = failedLoginAttempts;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(Instant lockedUntil) {
+        this.lockedUntil = lockedUntil;
     }
 
     public Instant getLastLoginAt() {

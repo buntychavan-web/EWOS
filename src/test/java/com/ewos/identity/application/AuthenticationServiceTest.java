@@ -21,6 +21,8 @@ import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.security.jwt.JwtProperties;
 import com.ewos.security.jwt.JwtService;
+import com.ewos.security.ratelimit.AccountLockoutProperties;
+import com.ewos.security.ratelimit.AccountLockoutService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -67,6 +69,9 @@ class AuthenticationServiceTest {
 
     @BeforeEach
     void setUp() {
+        AccountLockoutService lockout =
+                new AccountLockoutService(
+                        new AccountLockoutProperties(true, 5, Duration.ofMinutes(15)));
         service =
                 new AuthenticationService(
                         userRepository,
@@ -74,7 +79,8 @@ class AuthenticationServiceTest {
                         passwordEncoder,
                         jwtService,
                         jwtProperties,
-                        loginHistoryRecorder);
+                        loginHistoryRecorder,
+                        lockout);
         lenient().when(jwtService.generateAccessToken(any(), any())).thenReturn("stub-jwt");
     }
 
