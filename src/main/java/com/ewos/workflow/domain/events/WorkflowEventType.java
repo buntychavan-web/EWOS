@@ -1,0 +1,13 @@
+package com.ewos.workflow.domain.events;
+
+public enum WorkflowEventType {
+    DEFINITION_PUBLISHED,
+    INSTANCE_STARTED,
+    STATE_ENTERED,
+    TASK_ASSIGNED,
+    TASK_COMPLETED,
+    TASK_ESCALATED,
+    INSTANCE_COMPLETED,
+    INSTANCE_CANCELLED,
+    INSTANCE_ERRORED
+}
