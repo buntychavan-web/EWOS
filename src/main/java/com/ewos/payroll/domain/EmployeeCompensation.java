@@ -48,6 +48,10 @@ public class EmployeeCompensation extends AuditableEntity {
     @JoinColumn(name = "employee_id", nullable = false, updatable = false)
     private Employee employee;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pay_group_id")
+    private PayGroup payGroup;
+
     @Column(name = "effective_from", nullable = false)
     private LocalDate effectiveFrom;
 
@@ -107,6 +111,14 @@ public class EmployeeCompensation extends AuditableEntity {
 
     public void setEmployee(Employee employee) {
         this.employee = employee;
+    }
+
+    public PayGroup getPayGroup() {
+        return payGroup;
+    }
+
+    public void setPayGroup(PayGroup payGroup) {
+        this.payGroup = payGroup;
     }
 
     public LocalDate getEffectiveFrom() {

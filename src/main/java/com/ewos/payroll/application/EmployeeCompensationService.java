@@ -9,6 +9,7 @@ import com.ewos.payroll.api.dto.EmployeeCompensationResponse;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.EmployeeCompensationLine;
 import com.ewos.payroll.domain.PayComponent;
+import com.ewos.payroll.domain.PayGroup;
 import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
 import com.ewos.payroll.infrastructure.persistence.EmployeeCompensationRepository;
@@ -35,6 +36,7 @@ public class EmployeeCompensationService {
     private final EmployeeCompensationRepository repository;
     private final EmployeeRepository employees;
     private final PayComponentService components;
+    private final PayGroupService payGroups;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
 
@@ -42,11 +44,13 @@ public class EmployeeCompensationService {
             EmployeeCompensationRepository repository,
             EmployeeRepository employees,
             PayComponentService components,
+            PayGroupService payGroups,
             PayrollMapper mapper,
             ApplicationEventPublisher events) {
         this.repository = repository;
         this.employees = employees;
         this.components = components;
+        this.payGroups = payGroups;
         this.mapper = mapper;
         this.events = events;
     }
@@ -75,10 +79,20 @@ public class EmployeeCompensationService {
                             }
                         });
 
+        PayGroup group = null;
+        if (request.payGroupId() != null) {
+            group = payGroups.require(request.tenantId(), request.payGroupId());
+            if (!group.getCompanyId().equals(request.companyId())) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST, "Pay group belongs to a different company");
+            }
+        }
+
         EmployeeCompensation c = new EmployeeCompensation();
         c.setTenantId(request.tenantId());
         c.setCompanyId(request.companyId());
         c.setEmployee(employee);
+        c.setPayGroup(group);
         c.setEffectiveFrom(request.effectiveFrom());
         c.setEffectiveTo(request.effectiveTo());
         c.setFrequency(request.frequency());

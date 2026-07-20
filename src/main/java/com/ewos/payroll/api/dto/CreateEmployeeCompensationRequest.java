@@ -15,6 +15,7 @@ public record CreateEmployeeCompensationRequest(
         @NotNull UUID tenantId,
         @NotNull UUID companyId,
         @NotNull UUID employeeId,
+        UUID payGroupId,
         @NotNull LocalDate effectiveFrom,
         LocalDate effectiveTo,
         @NotNull PayrollFrequency frequency,

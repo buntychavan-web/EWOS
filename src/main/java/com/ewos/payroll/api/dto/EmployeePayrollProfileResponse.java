@@ -1,23 +1,19 @@
 package com.ewos.payroll.api.dto;
 
-import com.ewos.payroll.domain.PayrollFrequency;
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-public record EmployeeCompensationResponse(
+public record EmployeePayrollProfileResponse(
         UUID id,
         UUID tenantId,
         UUID companyId,
         UUID employeeId,
         UUID payGroupId,
+        String taxRegime,
+        String countryCode,
+        Map<String, String> statutoryIdentifiers,
         LocalDate effectiveFrom,
         LocalDate effectiveTo,
-        PayrollFrequency frequency,
-        BigDecimal basicSalary,
-        String currency,
-        String notes,
         boolean active,
-        List<CompensationLineResponse> lines,
         long versionNo) {}
