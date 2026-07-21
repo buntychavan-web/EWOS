@@ -46,6 +46,16 @@ public class NoOpOfferNotifier implements OfferNotifier {
     }
 
     @Override
+    public void notifyOfferReminder(Offer offer) {
+        // no-op
+    }
+
+    @Override
+    public void notifyPreboardingTaskReminder(Offer offer, String taskName) {
+        // no-op
+    }
+
+    @Override
     public String providerId() {
         return PROVIDER;
     }

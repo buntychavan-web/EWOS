@@ -152,6 +152,14 @@ public class OfferController {
         return offers.markExpired(tenantId, id);
     }
 
+    @PostMapping("/{id}/remind")
+    @PreAuthorize("hasAuthority('OFFER_WRITE')")
+    @Operation(summary = "Send a reminder to the candidate about an EXTENDED offer")
+    public OfferResponse remind(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return offers.sendReminder(tenantId, id);
+    }
+
     @PostMapping("/{id}/negotiations")
     @PreAuthorize("hasAuthority('OFFER_WRITE')")
     @Operation(summary = "Log an offer negotiation round")

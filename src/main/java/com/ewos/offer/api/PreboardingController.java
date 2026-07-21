@@ -57,6 +57,14 @@ public class PreboardingController {
         return preboarding.tasksForChecklist(tenantId, id);
     }
 
+    @PostMapping("/tasks/{id}/remind")
+    @PreAuthorize("hasAuthority('PREBOARDING_WRITE')")
+    @Operation(summary = "Send a reminder for a pending / in-progress pre-boarding task")
+    public PreboardingTaskInstanceResponse remindTask(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return preboarding.sendTaskReminder(tenantId, id);
+    }
+
     @PutMapping("/tasks/{id}/status")
     @PreAuthorize("hasAuthority('PREBOARDING_WRITE')")
     @Operation(summary = "Update a task's status")

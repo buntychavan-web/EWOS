@@ -198,8 +198,9 @@ CREATE TABLE preboarding_task_templates (
     version_no        BIGINT      NOT NULL DEFAULT 0,
     CONSTRAINT ck_preboarding_task_type
         CHECK (task_type IN (
-            'DOCUMENT_COLLECTION','ID_VERIFICATION','BACKGROUND_VERIFICATION','MEDICAL_CHECK',
-            'IT_ASSET','EMAIL_ACCOUNT','EMPLOYEE_ID','JOINING_KIT','JOINING_CONFIRMATION','OTHER')),
+            'DOCUMENT_COLLECTION','ID_VERIFICATION','BACKGROUND_VERIFICATION','REFERENCE_CHECK',
+            'MEDICAL_CHECK','IT_ASSET','EMAIL_ACCOUNT','EMPLOYEE_ID','JOINING_KIT',
+            'JOINING_CONFIRMATION','OTHER')),
     CONSTRAINT ck_preboarding_task_owner
         CHECK (default_owner IN ('HR','IT','ADMIN','HIRING_MANAGER','CANDIDATE','RECRUITER','VENDOR'))
 );
@@ -283,8 +284,9 @@ CREATE TABLE preboarding_task_instances (
     version_no        BIGINT      NOT NULL DEFAULT 0,
     CONSTRAINT ck_preboarding_task_instances_task_type
         CHECK (task_type IN (
-            'DOCUMENT_COLLECTION','ID_VERIFICATION','BACKGROUND_VERIFICATION','MEDICAL_CHECK',
-            'IT_ASSET','EMAIL_ACCOUNT','EMPLOYEE_ID','JOINING_KIT','JOINING_CONFIRMATION','OTHER')),
+            'DOCUMENT_COLLECTION','ID_VERIFICATION','BACKGROUND_VERIFICATION','REFERENCE_CHECK',
+            'MEDICAL_CHECK','IT_ASSET','EMAIL_ACCOUNT','EMPLOYEE_ID','JOINING_KIT',
+            'JOINING_CONFIRMATION','OTHER')),
     CONSTRAINT ck_preboarding_task_instances_owner
         CHECK (owner IN ('HR','IT','ADMIN','HIRING_MANAGER','CANDIDATE','RECRUITER','VENDOR')),
     CONSTRAINT ck_preboarding_task_instances_status

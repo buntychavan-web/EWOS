@@ -7,6 +7,7 @@ import com.ewos.offer.infrastructure.bgv.NoOpBackgroundVerificationService;
 import com.ewos.offer.infrastructure.employeeid.SequentialEmployeeIdGenerator;
 import com.ewos.offer.infrastructure.medical.NoOpMedicalCheckService;
 import com.ewos.offer.infrastructure.notify.NoOpOfferNotifier;
+import com.ewos.offer.infrastructure.refcheck.NoOpReferenceCheckService;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +39,17 @@ class NoOpBindingsTest {
         notifier.notifyOfferExpired(new Offer());
         notifier.notifyOfferWithdrawn(new Offer());
         notifier.notifyCandidateJoined(new Offer());
+        notifier.notifyOfferReminder(new Offer());
+        notifier.notifyPreboardingTaskReminder(new Offer(), "task");
         assertThat(notifier.providerId()).isEqualTo("noop-offer-notifier");
+    }
+
+    @Test
+    void referenceCheckNoOps() {
+        NoOpReferenceCheckService rc = new NoOpReferenceCheckService();
+        assertThat(rc.initiate(new PreboardingTaskInstance())).isNull();
+        rc.cancel(new PreboardingTaskInstance());
+        assertThat(rc.providerId()).isEqualTo("noop-reference-check");
     }
 
     @Test

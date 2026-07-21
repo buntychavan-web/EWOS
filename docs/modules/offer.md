@@ -44,8 +44,9 @@ is the natural trigger for offer initiation (subscription is left to the deploym
 
 * `BackgroundVerificationService` + `NoOpBackgroundVerificationService`.
 * `MedicalCheckService` + `NoOpMedicalCheckService`.
+* `ReferenceCheckService` + `NoOpReferenceCheckService`.
 * `EmployeeIdGenerator` + `SequentialEmployeeIdGenerator` (produces `EMP-YYYYMM-XXXXXX`).
-* `OfferNotifier` + `NoOpOfferNotifier` (candidate + recruiter + hiring-manager + HR notifications).
+* `OfferNotifier` + `NoOpOfferNotifier` — covers extended / accepted / declined / revised / expired / withdrawn / joined **and** on-demand reminders for open offers and outstanding pre-boarding tasks.
 
 ## Offer lifecycle
 
@@ -70,14 +71,18 @@ PENDING → IN_PROGRESS → COMPLETED → JOINED   (all mandatory tasks done + j
 Checklist creation from an ACCEPTED offer is idempotent and materialises every active
 `PreboardingTaskTemplate` into an instance. On creation:
 
-* `BACKGROUND_VERIFICATION` and `MEDICAL_CHECK` tasks auto-initiate via the framework contract
-  and jump to `IN_PROGRESS` when the vendor returns a reference.
+* `BACKGROUND_VERIFICATION`, `MEDICAL_CHECK`, and `REFERENCE_CHECK` tasks auto-initiate via the
+  framework contracts and jump to `IN_PROGRESS` when the vendor returns a reference.
 * `EMPLOYEE_ID` tasks auto-generate a value and jump to `COMPLETED` immediately.
-* Other task types stay `PENDING` for the owner to drive.
+* Other task types (`DOCUMENT_COLLECTION`, `ID_VERIFICATION`, `IT_ASSET`, `EMAIL_ACCOUNT`,
+  `JOINING_KIT`, `JOINING_CONFIRMATION`, `OTHER`) stay `PENDING` for the owner to drive.
 
 ## Notifications
 `OfferNotifier` covers candidate, recruiter, hiring manager, and HR touchpoints for offer
-extended / accepted / declined / revised / expired / withdrawn and candidate joined.
+extended / accepted / declined / revised / expired / withdrawn and candidate joined. It also
+exposes on-demand reminder hooks (`POST /offers/{id}/remind`,
+`POST /preboarding/tasks/{id}/remind`) that a scheduler or ops team can trigger for open offers
+and outstanding pre-boarding tasks.
 
 ## Permissions
 
@@ -143,9 +148,10 @@ the subsequent employee-record activation.
 ## What T4 does NOT include (deferred)
 * Real letter-template rendering (Freemarker / Handlebars — hooks are in place; the body is
   stored as a text blob today).
-* Real BGV / medical vendor bindings — the framework contracts are ready; vendors ship per
-  tenant.
-* Automatic expiry-sweep cron — a `POST /offers/{id}/expire` endpoint is provided; scheduling
-  it is a deployment concern.
+* Real BGV / medical / reference-check vendor bindings — the framework contracts are ready;
+  vendors ship per tenant.
+* Scheduled reminder & expiry sweep — endpoints are provided (`POST /offers/{id}/expire`,
+  `POST /offers/{id}/remind`, `POST /preboarding/tasks/{id}/remind`); wiring them to a cron is
+  a deployment concern.
 * Auto-creation of an Employee master row on join — the checklist knows how to store an
   `employee_id`; the Employee module handles insertion via T5.

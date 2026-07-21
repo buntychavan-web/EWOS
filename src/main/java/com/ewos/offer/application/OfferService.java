@@ -345,6 +345,19 @@ public class OfferService {
         return mapper.toResponse(o);
     }
 
+    public OfferResponse sendReminder(UUID tenantId, UUID id) {
+        Offer o = require(tenantId, id);
+        if (o.getStatus() != OfferStatus.EXTENDED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Reminder is only meaningful for EXTENDED offers (current: "
+                            + o.getStatus()
+                            + ")");
+        }
+        notifier.notifyOfferReminder(o);
+        return mapper.toResponse(o);
+    }
+
     public OfferNegotiationResponse logNegotiation(
             UUID tenantId, UUID id, LogNegotiationRequest req) {
         Offer o = require(tenantId, id);

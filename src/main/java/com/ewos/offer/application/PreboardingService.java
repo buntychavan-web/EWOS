@@ -13,6 +13,7 @@ import com.ewos.offer.domain.MedicalCheckService;
 import com.ewos.offer.domain.Offer;
 import com.ewos.offer.domain.OfferNotifier;
 import com.ewos.offer.domain.OfferStatus;
+import com.ewos.offer.domain.ReferenceCheckService;
 import com.ewos.offer.domain.events.OfferEvent;
 import com.ewos.offer.domain.events.OfferEventType;
 import com.ewos.offer.domain.preboarding.PreboardingChecklist;
@@ -54,6 +55,7 @@ public class PreboardingService {
     private final EmployeeRepository employees;
     private final BackgroundVerificationService bgv;
     private final MedicalCheckService medical;
+    private final ReferenceCheckService referenceCheck;
     private final EmployeeIdGenerator employeeIdGenerator;
     private final OfferNotifier notifier;
     private final OfferMapper mapper;
@@ -67,6 +69,7 @@ public class PreboardingService {
             EmployeeRepository employees,
             BackgroundVerificationService bgv,
             MedicalCheckService medical,
+            ReferenceCheckService referenceCheck,
             EmployeeIdGenerator employeeIdGenerator,
             OfferNotifier notifier,
             OfferMapper mapper,
@@ -78,6 +81,7 @@ public class PreboardingService {
         this.employees = employees;
         this.bgv = bgv;
         this.medical = medical;
+        this.referenceCheck = referenceCheck;
         this.employeeIdGenerator = employeeIdGenerator;
         this.notifier = notifier;
         this.mapper = mapper;
@@ -219,6 +223,22 @@ public class PreboardingService {
         return mapper.toResponse(c);
     }
 
+    public PreboardingTaskInstanceResponse sendTaskReminder(UUID tenantId, UUID taskId) {
+        PreboardingTaskInstance t =
+                tasks.findByIdAndTenantId(taskId, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Preboarding task not found"));
+        if (t.isTerminal()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Task is already terminal — no reminder needed");
+        }
+        notifier.notifyPreboardingTaskReminder(t.getChecklist().getOffer(), t.getName());
+        return mapper.toResponse(t);
+    }
+
     @Transactional(readOnly = true)
     public PreboardingChecklistResponse getById(UUID tenantId, UUID checklistId) {
         return mapper.toResponse(require(tenantId, checklistId));
@@ -277,6 +297,14 @@ public class PreboardingService {
                     t.setStartedAt(Instant.now());
                 }
             }
+            case REFERENCE_CHECK -> {
+                String ref = referenceCheck.initiate(t);
+                if (ref != null) {
+                    t.setExternalRef(ref);
+                    t.setStatus(PreboardingTaskStatus.IN_PROGRESS);
+                    t.setStartedAt(Instant.now());
+                }
+            }
             case EMPLOYEE_ID -> {
                 String id = employeeIdGenerator.generate(c.getTenantId(), c.getCompanyId());
                 t.setExternalRef(id);
@@ -315,6 +343,10 @@ public class PreboardingService {
         if (target == PreboardingTaskStatus.FAILED
                 && t.getTaskType() == PreboardingTaskType.MEDICAL_CHECK) {
             medical.cancel(t);
+        }
+        if (target == PreboardingTaskStatus.FAILED
+                && t.getTaskType() == PreboardingTaskType.REFERENCE_CHECK) {
+            referenceCheck.cancel(t);
         }
         t.setStatus(target);
         if (notes != null) {
