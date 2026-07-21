@@ -30,15 +30,30 @@ public final class PayrollCalculator {
             BigDecimal gross,
             BigDecimal deductions,
             BigDecimal net,
-            BigDecimal basicApplied) {}
+            BigDecimal basicApplied,
+            BigDecimal lopDays) {}
 
     /**
-     * Compute payslip lines from a compensation record. Only ACTIVE components are included; a line
-     * whose component is inactive is silently skipped so the catalogue can be trimmed without
-     * re-editing existing compensations.
+     * Simple compute — no LOP, no arrears. Retained for backward compatibility with WP-009 callers
+     * and tests.
      */
     public ComputedPayslip compute(EmployeeCompensation compensation) {
-        BigDecimal basic = scale(compensation.getBasicSalary());
+        return compute(compensation, BigDecimal.ZERO, BigDecimal.ZERO, List.of());
+    }
+
+    /**
+     * Compute payslip lines from a compensation record with optional LOP and arrears. If {@code
+     * lopDays > 0} and {@code workingDays > 0} the basic-per-period is reduced by the ratio {@code
+     * (workingDays - lopDays) / workingDays} before percentage components resolve against it. Each
+     * arrear is appended as an extra earning/deduction line after the standard components.
+     */
+    public ComputedPayslip compute(
+            EmployeeCompensation compensation,
+            BigDecimal lopDays,
+            BigDecimal workingDays,
+            List<PayrollArrear> arrears) {
+        BigDecimal originalBasic = scale(compensation.getBasicSalary());
+        BigDecimal basic = reduceForLop(originalBasic, workingDays, lopDays);
         List<PayslipLine> lines = new ArrayList<>();
 
         // Basic salary is always the first line — it is the base of any percentage components.
@@ -74,6 +89,13 @@ public final class PayrollCalculator {
             lines.add(snapshotLine(component, amount, pctApplied));
         }
 
+        if (arrears != null) {
+            int nextOrder = 900;
+            for (PayrollArrear a : arrears) {
+                lines.add(arrearLine(a, nextOrder++));
+            }
+        }
+
         BigDecimal gross = BigDecimal.ZERO;
         BigDecimal deductions = BigDecimal.ZERO;
         for (PayslipLine l : lines) {
@@ -85,7 +107,41 @@ public final class PayrollCalculator {
         }
         BigDecimal net = scale(gross.subtract(deductions));
         return new ComputedPayslip(
-                lines, scale(gross), scale(deductions), net.max(BigDecimal.ZERO), basic);
+                lines,
+                scale(gross),
+                scale(deductions),
+                net.max(BigDecimal.ZERO),
+                basic,
+                lopDays == null ? BigDecimal.ZERO : lopDays);
+    }
+
+    private static BigDecimal reduceForLop(
+            BigDecimal basic, BigDecimal workingDays, BigDecimal lopDays) {
+        if (basic == null || basic.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        if (workingDays == null
+                || workingDays.signum() <= 0
+                || lopDays == null
+                || lopDays.signum() <= 0) {
+            return basic;
+        }
+        BigDecimal worked = workingDays.subtract(lopDays).max(BigDecimal.ZERO);
+        return basic.multiply(worked).divide(workingDays, MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private static PayslipLine arrearLine(PayrollArrear a, int sortOrder) {
+        PayslipLine line = new PayslipLine();
+        line.setComponentCodeSnapshot("ARREAR_" + a.getReasonCode());
+        String desc = a.getDescription();
+        line.setComponentNameSnapshot(
+                (desc == null || desc.isBlank()) ? "Arrear: " + a.getReasonCode() : desc);
+        line.setKind(a.getKind());
+        line.setCalculationType(PayComponentCalculationType.FIXED);
+        line.setAmount(a.getAmount() == null ? BigDecimal.ZERO : scale(a.getAmount()));
+        line.setPercentageApplied(BigDecimal.ZERO);
+        line.setSortOrder(sortOrder);
+        return line;
     }
 
     private static PayslipLine implicitBasicLine(BigDecimal basic) {

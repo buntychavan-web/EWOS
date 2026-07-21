@@ -23,6 +23,8 @@ public record PayslipResponse(
         BigDecimal grossAmount,
         BigDecimal deductionsAmount,
         BigDecimal netAmount,
+        BigDecimal lopDays,
+        BigDecimal basicEffective,
         PayslipStatus status,
         Instant finalizedAt,
         List<PayslipLineResponse> lines,

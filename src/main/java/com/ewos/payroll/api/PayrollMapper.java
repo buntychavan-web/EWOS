@@ -1,5 +1,6 @@
 package com.ewos.payroll.api;
 
+import com.ewos.payroll.api.dto.ArrearResponse;
 import com.ewos.payroll.api.dto.CompensationLineResponse;
 import com.ewos.payroll.api.dto.EmployeeBankAccountResponse;
 import com.ewos.payroll.api.dto.EmployeeCompensationResponse;
@@ -8,17 +9,21 @@ import com.ewos.payroll.api.dto.PayComponentResponse;
 import com.ewos.payroll.api.dto.PayGroupResponse;
 import com.ewos.payroll.api.dto.PayrollPeriodResponse;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
+import com.ewos.payroll.api.dto.PayrollValidationReportResponse;
 import com.ewos.payroll.api.dto.PayslipLineResponse;
 import com.ewos.payroll.api.dto.PayslipResponse;
 import com.ewos.payroll.api.dto.StatutorySettingResponse;
+import com.ewos.payroll.api.dto.ValidationIssueResponse;
 import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.EmployeeCompensationLine;
 import com.ewos.payroll.domain.EmployeePayrollProfile;
 import com.ewos.payroll.domain.PayComponent;
 import com.ewos.payroll.domain.PayGroup;
+import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollRun;
+import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.StatutorySetting;
@@ -27,6 +32,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -105,12 +111,15 @@ public final class PayrollMapper {
                 r.getCompletedAt(),
                 r.getFinalizedAt(),
                 r.getFinalizedBy(),
+                r.getFrozenAt(),
+                r.getFrozenBy(),
                 r.getFailedAt(),
                 r.getFailureReason(),
                 r.getEmployeesProcessed(),
                 r.getTotalGross(),
                 r.getTotalDeductions(),
                 r.getTotalNet(),
+                r.getValidationReportJson(),
                 r.getVersionNo());
     }
 
@@ -133,6 +142,8 @@ public final class PayrollMapper {
                 p.getGrossAmount(),
                 p.getDeductionsAmount(),
                 p.getNetAmount(),
+                p.getLopDays(),
+                p.getBasicEffective(),
                 p.getStatus(),
                 p.getFinalizedAt(),
                 lines,
@@ -212,6 +223,44 @@ public final class PayrollMapper {
                 p.getEffectiveTo(),
                 p.isActive(),
                 p.getVersionNo());
+    }
+
+    public ArrearResponse toResponse(PayrollArrear a) {
+        return new ArrearResponse(
+                a.getId(),
+                a.getTenantId(),
+                a.getCompanyId(),
+                a.getEmployee() != null ? a.getEmployee().getId() : null,
+                a.getPayrollRun() != null ? a.getPayrollRun().getId() : null,
+                a.getReasonCode(),
+                a.getDescription(),
+                a.getAmount(),
+                a.getKind(),
+                a.getForPeriodStart(),
+                a.getForPeriodEnd(),
+                a.isApplied(),
+                a.getAppliedAt(),
+                a.getVersionNo());
+    }
+
+    public PayrollValidationReportResponse toResponse(
+            UUID tenantId,
+            UUID companyId,
+            UUID payrollPeriodId,
+            int employeeCount,
+            PayrollValidationReport report) {
+        return new PayrollValidationReportResponse(
+                tenantId,
+                companyId,
+                payrollPeriodId,
+                report.isRunnable(),
+                employeeCount,
+                report.blockers().stream().map(PayrollMapper::toIssue).toList(),
+                report.warnings().stream().map(PayrollMapper::toIssue).toList());
+    }
+
+    private static ValidationIssueResponse toIssue(PayrollValidationReport.Issue i) {
+        return new ValidationIssueResponse(i.employeeId(), i.employeeName(), i.code(), i.message());
     }
 
     public static String writeIdentifiers(Map<String, String> identifiers) {
