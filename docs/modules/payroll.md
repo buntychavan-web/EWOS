@@ -2,6 +2,20 @@
 
 **Package:** `com.ewos.payroll` | **Depends on:** `shared`, `identity`, `employee`, `organization`, `leave`
 **Introduced:** WP-009 (base) | **Finalised:** M1–M7 (Business Bible Volume 4)
+**Release:** EWOS HCM — Enterprise Payroll Version 1.0 (tag `v1.0-payroll`, main commit `fce781e`)
+**Status:** FROZEN — see [Freeze policy](#freeze-policy) below.
+
+## Freeze policy
+The Payroll module is functionally complete per Volume 4 of the EWOS Business Bible and is frozen
+at v1.0. No further Payroll features will ship unless one of the following applies:
+
+1. **Critical defect** — a bug that prevents payroll from running correctly on production.
+2. **Production issue** — an operational incident requiring code changes.
+3. **Business Bible enhancement** — a formally documented revision to Volume 4.
+4. **Approved customer change request** — a signed-off CR referencing this freeze.
+
+Bug-fix branches follow the `claude/payroll-fix-<slug>` convention and require a linked issue.
+Any non-freeze-conforming Payroll PR is expected to be rejected on review.
 
 ## Purpose
 End-to-end enterprise payroll — configuration, processing, off-cycle runs, final settlement,
