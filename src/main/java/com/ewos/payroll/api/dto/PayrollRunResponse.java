@@ -16,10 +16,13 @@ public record PayrollRunResponse(
         Instant completedAt,
         Instant finalizedAt,
         UUID finalizedBy,
+        Instant frozenAt,
+        UUID frozenBy,
         Instant failedAt,
         String failureReason,
         int employeesProcessed,
         BigDecimal totalGross,
         BigDecimal totalDeductions,
         BigDecimal totalNet,
+        String validationReportJson,
         long versionNo) {}

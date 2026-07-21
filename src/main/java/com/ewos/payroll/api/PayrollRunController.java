@@ -42,10 +42,18 @@ public class PayrollRunController {
 
     @PostMapping("/{id}/finalize")
     @PreAuthorize("hasAuthority('PAYROLL_RUN')")
-    @Operation(summary = "Finalize a COMPLETED run; freezes every payslip")
+    @Operation(summary = "Finalize a COMPLETED run; flips every payslip to FINALIZED")
     public PayrollRunResponse finalizeRun(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return service.finalizeRun(tenantId, id);
+    }
+
+    @PostMapping("/{id}/freeze")
+    @PreAuthorize("hasAuthority('PAYROLL_ADMIN')")
+    @Operation(summary = "Freeze a FINALIZED run; terminal lock, no adjustments permitted after")
+    public PayrollRunResponse freeze(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return service.freeze(tenantId, id);
     }
 
     @GetMapping("/{id}")

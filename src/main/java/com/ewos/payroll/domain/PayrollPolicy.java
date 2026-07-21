@@ -73,10 +73,21 @@ public final class PayrollPolicy {
     /** Non-terminal to FAILED. */
     public void assertFailable(PayrollRun run) {
         if (run.getStatus() == PayrollRunStatus.FINALIZED
+                || run.getStatus() == PayrollRunStatus.FROZEN
                 || run.getStatus() == PayrollRunStatus.FAILED) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "Payroll run is already " + run.getStatus() + "; cannot mark FAILED");
+        }
+    }
+
+    /** FINALIZED → FROZEN. Once frozen no supplementary run may alter the payslips. */
+    public void assertFreezable(PayrollRun run) {
+        if (run.getStatus() != PayrollRunStatus.FINALIZED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Only FINALIZED payroll runs can be frozen; current status is "
+                            + run.getStatus());
         }
     }
 }

@@ -1,24 +1,32 @@
 package com.ewos.payroll.application;
 
 import com.ewos.employee.domain.Employee;
+import com.ewos.leave.domain.LeaveRequest;
+import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
 import com.ewos.payroll.domain.EmployeeCompensation;
+import com.ewos.payroll.domain.LopCalculator;
+import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.domain.PayrollCalculator;
 import com.ewos.payroll.domain.PayrollCalculator.ComputedPayslip;
 import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollRunStatus;
+import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.PayslipStatus;
 import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
+import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -30,20 +38,32 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Orchestrates payroll runs. Start reserves a {@link PayrollRun} in PENDING; process iterates over
- * every employee with an active compensation in the company, generates a DRAFT {@link Payslip} per
- * employee, and moves the run to COMPLETED. Finalize flips every payslip on the run to FINALIZED
- * and freezes the run.
+ * Orchestrates payroll runs.
+ *
+ * <ul>
+ *   <li>{@link #start(StartPayrollRunRequest)} — reserves a {@link PayrollRun}, transitions to
+ *       {@code PROCESSING}, generates a {@code DRAFT} payslip per active-compensation employee in
+ *       the company (consuming LOP from approved unpaid leave and pending arrears), then lands in
+ *       {@code COMPLETED} with aggregate totals.
+ *   <li>{@link #finalizeRun(UUID, UUID)} — flips every payslip on the run to {@code FINALIZED}.
+ *   <li>{@link #freeze(UUID, UUID)} — terminal lock; no supplementary or corrective run may adjust
+ *       this run's payslips.
+ * </ul>
  */
 @Service
 @Transactional
 public class PayrollRunService {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final PayrollRunRepository runs;
     private final PayslipRepository payslips;
     private final PayrollPeriodService periods;
     private final EmployeeCompensationService compensations;
     private final PayrollCalculator calculator;
+    private final LopCalculator lop;
+    private final PayrollArrearRepository arrears;
+    private final LeaveRequestRepository leaves;
     private final PayrollPolicy policy;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
@@ -54,6 +74,9 @@ public class PayrollRunService {
             PayrollPeriodService periods,
             EmployeeCompensationService compensations,
             PayrollCalculator calculator,
+            LopCalculator lop,
+            PayrollArrearRepository arrears,
+            LeaveRequestRepository leaves,
             PayrollPolicy policy,
             PayrollMapper mapper,
             ApplicationEventPublisher events) {
@@ -62,6 +85,9 @@ public class PayrollRunService {
         this.periods = periods;
         this.compensations = compensations;
         this.calculator = calculator;
+        this.lop = lop;
+        this.arrears = arrears;
+        this.leaves = leaves;
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
@@ -83,7 +109,6 @@ public class PayrollRunService {
         PayrollRun saved = runs.save(run);
         publishRun(PayrollEventType.RUN_STARTED, saved);
 
-        // Immediately transition to PROCESSING and generate payslips.
         saved.setStatus(PayrollRunStatus.PROCESSING);
         saved.setStartedAt(Instant.now());
         saved.setStartedBy(actor);
@@ -95,6 +120,8 @@ public class PayrollRunService {
         List<EmployeeCompensation> active =
                 compensations.activeForCompany(run.getTenantId(), run.getCompanyId());
 
+        BigDecimal workingDays =
+                lop.weekdaysBetween(period.getPeriodStart(), period.getPeriodEnd());
         BigDecimal totalGross = BigDecimal.ZERO;
         BigDecimal totalDeductions = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
@@ -106,7 +133,29 @@ public class PayrollRunService {
                 if (emp == null) {
                     continue;
                 }
-                ComputedPayslip computed = calculator.compute(comp);
+
+                List<LeaveRequest> approvedInPeriod =
+                        leaves.findApprovedOverlapping(
+                                run.getTenantId(),
+                                emp.getId(),
+                                period.getPeriodStart(),
+                                period.getPeriodEnd());
+                List<LeaveRequest> unpaidOnly =
+                        approvedInPeriod.stream()
+                                .filter(
+                                        lr ->
+                                                lr.getLeaveType() != null
+                                                        && !lr.getLeaveType().isPaid())
+                                .toList();
+                BigDecimal lopDays =
+                        lop.computeLopDays(
+                                unpaidOnly, period.getPeriodStart(), period.getPeriodEnd());
+
+                List<PayrollArrear> pendingArrears =
+                        arrears.findPendingForEmployee(run.getTenantId(), emp.getId());
+
+                ComputedPayslip computed =
+                        calculator.compute(comp, lopDays, workingDays, pendingArrears);
 
                 Payslip payslip = new Payslip();
                 payslip.setTenantId(run.getTenantId());
@@ -123,10 +172,19 @@ public class PayrollRunService {
                 payslip.setGrossAmount(computed.gross());
                 payslip.setDeductionsAmount(computed.deductions());
                 payslip.setNetAmount(computed.net());
+                payslip.setLopDays(computed.lopDays());
+                payslip.setBasicEffective(computed.basicApplied());
                 payslip.setStatus(PayslipStatus.DRAFT);
                 Payslip savedSlip = payslips.save(payslip);
                 for (PayslipLine line : computed.lines()) {
                     savedSlip.addLine(line);
+                }
+
+                Instant now = Instant.now();
+                for (PayrollArrear a : pendingArrears) {
+                    a.setPayrollRun(run);
+                    a.setApplied(true);
+                    a.setAppliedAt(now);
                 }
 
                 totalGross = totalGross.add(computed.gross());
@@ -169,6 +227,26 @@ public class PayrollRunService {
         run.setFinalizedBy(actor);
         publishRun(PayrollEventType.RUN_FINALIZED, run);
         return mapper.toResponse(run);
+    }
+
+    public PayrollRunResponse freeze(UUID tenantId, UUID id) {
+        PayrollRun run = require(tenantId, id);
+        policy.assertFreezable(run);
+        UUID actor = requireActor();
+        run.setStatus(PayrollRunStatus.FROZEN);
+        run.setFrozenAt(Instant.now());
+        run.setFrozenBy(actor);
+        publishRun(PayrollEventType.RUN_FROZEN, run);
+        return mapper.toResponse(run);
+    }
+
+    /** Stores a pre-run validation report onto the run row for audit. */
+    public void recordValidationReport(PayrollRun run, PayrollValidationReport report) {
+        try {
+            run.setValidationReportJson(JSON.writeValueAsString(report));
+        } catch (JsonProcessingException e) {
+            run.setValidationReportJson(null);
+        }
     }
 
     @Transactional(readOnly = true)

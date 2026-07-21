@@ -80,6 +80,12 @@ public class Payslip extends AuditableEntity {
     @Column(name = "net_amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal netAmount = BigDecimal.ZERO;
 
+    @Column(name = "lop_days", nullable = false, precision = 6, scale = 2)
+    private BigDecimal lopDays = BigDecimal.ZERO;
+
+    @Column(name = "basic_effective", nullable = false, precision = 18, scale = 4)
+    private BigDecimal basicEffective = BigDecimal.ZERO;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
     private PayslipStatus status = PayslipStatus.DRAFT;
@@ -212,6 +218,22 @@ public class Payslip extends AuditableEntity {
 
     public void setNetAmount(BigDecimal netAmount) {
         this.netAmount = netAmount;
+    }
+
+    public BigDecimal getLopDays() {
+        return lopDays;
+    }
+
+    public void setLopDays(BigDecimal lopDays) {
+        this.lopDays = lopDays;
+    }
+
+    public BigDecimal getBasicEffective() {
+        return basicEffective;
+    }
+
+    public void setBasicEffective(BigDecimal basicEffective) {
+        this.basicEffective = basicEffective;
     }
 
     public PayslipStatus getStatus() {

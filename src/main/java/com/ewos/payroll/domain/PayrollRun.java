@@ -13,8 +13,10 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.type.SqlTypes;
 
 /**
  * One payroll compute cycle over a {@link PayrollPeriod} for a single company. A run starts in
@@ -73,6 +75,16 @@ public class PayrollRun extends AuditableEntity {
 
     @Column(name = "total_net", nullable = false, precision = 18, scale = 4)
     private BigDecimal totalNet = BigDecimal.ZERO;
+
+    @Column(name = "frozen_at")
+    private Instant frozenAt;
+
+    @Column(name = "frozen_by")
+    private UUID frozenBy;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "validation_report", columnDefinition = "jsonb")
+    private String validationReportJson;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
@@ -199,6 +211,30 @@ public class PayrollRun extends AuditableEntity {
 
     public void setTotalNet(BigDecimal totalNet) {
         this.totalNet = totalNet;
+    }
+
+    public Instant getFrozenAt() {
+        return frozenAt;
+    }
+
+    public void setFrozenAt(Instant frozenAt) {
+        this.frozenAt = frozenAt;
+    }
+
+    public UUID getFrozenBy() {
+        return frozenBy;
+    }
+
+    public void setFrozenBy(UUID frozenBy) {
+        this.frozenBy = frozenBy;
+    }
+
+    public String getValidationReportJson() {
+        return validationReportJson;
+    }
+
+    public void setValidationReportJson(String validationReportJson) {
+        this.validationReportJson = validationReportJson;
     }
 
     public Instant getDeletedAt() {
