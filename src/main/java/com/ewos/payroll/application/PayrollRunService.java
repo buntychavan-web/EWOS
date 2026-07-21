@@ -15,6 +15,7 @@ import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollRunStatus;
+import com.ewos.payroll.domain.PayrollRunType;
 import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
@@ -99,26 +100,68 @@ public class PayrollRunService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Period belongs to a different company");
         }
         policy.assertRunnable(period);
-        UUID actor = requireActor();
+        return doStart(period, PayrollRunType.REGULAR, null);
+    }
 
+    /**
+     * Off-cycle supplementary run: processes only the given employees against the given period. The
+     * period does not need to be LOCKED — supplementary runs are corrections and may target any
+     * period status other than CLOSED.
+     */
+    public PayrollRunResponse startSupplementary(
+            UUID tenantId, UUID companyId, UUID payrollPeriodId, List<UUID> employeeIds) {
+        if (employeeIds == null || employeeIds.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Supplementary run requires at least one employee");
+        }
+        PayrollPeriod period = periods.require(tenantId, payrollPeriodId);
+        if (!period.getCompanyId().equals(companyId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Period belongs to a different company");
+        }
+        if (period.getStatus() == com.ewos.payroll.domain.PayrollPeriodStatus.CLOSED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Cannot run supplementary payroll against a CLOSED period");
+        }
+        return doStart(period, PayrollRunType.SUPPLEMENTARY, employeeIds);
+    }
+
+    /** Internal: creates a FINAL_SETTLEMENT run for a single employee. */
+    public PayrollRun startFinalSettlement(
+            UUID tenantId, UUID companyId, UUID periodId, UUID employeeId) {
+        PayrollPeriod period = periods.require(tenantId, periodId);
+        if (!period.getCompanyId().equals(companyId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Period belongs to a different company");
+        }
+        PayrollRunResponse resp =
+                doStart(period, PayrollRunType.FINAL_SETTLEMENT, List.of(employeeId));
+        return runs.findByIdAndTenantId(resp.id(), tenantId).orElseThrow();
+    }
+
+    private PayrollRunResponse doStart(
+            PayrollPeriod period, PayrollRunType runType, List<UUID> employeeFilter) {
+        UUID actor = requireActor();
         PayrollRun run = new PayrollRun();
-        run.setTenantId(request.tenantId());
-        run.setCompanyId(request.companyId());
+        run.setTenantId(period.getTenantId());
+        run.setCompanyId(period.getCompanyId());
         run.setPayrollPeriod(period);
         run.setStatus(PayrollRunStatus.PENDING);
+        run.setRunType(runType);
         PayrollRun saved = runs.save(run);
         publishRun(PayrollEventType.RUN_STARTED, saved);
 
         saved.setStatus(PayrollRunStatus.PROCESSING);
         saved.setStartedAt(Instant.now());
         saved.setStartedBy(actor);
-        processPayslips(saved, period);
+        processPayslips(saved, period, employeeFilter);
         return mapper.toResponse(saved);
     }
 
-    private void processPayslips(PayrollRun run, PayrollPeriod period) {
+    private void processPayslips(PayrollRun run, PayrollPeriod period, List<UUID> employeeFilter) {
         List<EmployeeCompensation> active =
-                compensations.activeForCompany(run.getTenantId(), run.getCompanyId());
+                (employeeFilter == null)
+                        ? compensations.activeForCompany(run.getTenantId(), run.getCompanyId())
+                        : compensations.activeForEmployeeIds(run.getTenantId(), employeeFilter);
 
         BigDecimal workingDays =
                 lop.weekdaysBetween(period.getPeriodStart(), period.getPeriodEnd());

@@ -29,4 +29,11 @@ public interface EmployeeCompensationRepository extends JpaRepository<EmployeeCo
                     + " :companyId and c.active = true")
     List<EmployeeCompensation> findActiveForCompany(
             @Param("tenantId") UUID tenantId, @Param("companyId") UUID companyId);
+
+    @Query(
+            "select c from EmployeeCompensation c where c.tenantId = :tenantId "
+                    + "and c.employee.id in :employeeIds and c.active = true")
+    List<EmployeeCompensation> findActiveForEmployeeIds(
+            @Param("tenantId") UUID tenantId,
+            @Param("employeeIds") java.util.Collection<UUID> employeeIds);
 }

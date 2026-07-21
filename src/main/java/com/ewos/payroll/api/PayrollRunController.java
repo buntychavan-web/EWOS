@@ -2,6 +2,7 @@ package com.ewos.payroll.api;
 
 import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
+import com.ewos.payroll.api.dto.StartSupplementaryRunRequest;
 import com.ewos.payroll.application.PayrollRunService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,6 +47,21 @@ public class PayrollRunController {
     public PayrollRunResponse finalizeRun(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return service.finalizeRun(tenantId, id);
+    }
+
+    @PostMapping("/supplementary")
+    @PreAuthorize("hasAuthority('PAYROLL_RUN')")
+    @Operation(summary = "Start an off-cycle SUPPLEMENTARY run for selected employees")
+    public ResponseEntity<PayrollRunResponse> startSupplementary(
+            @Valid @RequestBody StartSupplementaryRunRequest request) {
+        PayrollRunResponse created =
+                service.startSupplementary(
+                        request.tenantId(),
+                        request.companyId(),
+                        request.payrollPeriodId(),
+                        request.employeeIds());
+        return ResponseEntity.created(URI.create("/api/v1/payroll/runs/" + created.id()))
+                .body(created);
     }
 
     @PostMapping("/{id}/freeze")
