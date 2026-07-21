@@ -15,6 +15,8 @@ import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.PayrollValidationReportResponse;
 import com.ewos.payroll.api.dto.PayslipLineResponse;
 import com.ewos.payroll.api.dto.PayslipResponse;
+import com.ewos.payroll.api.dto.StatutoryChallanResponse;
+import com.ewos.payroll.api.dto.StatutoryDeductionResponse;
 import com.ewos.payroll.api.dto.StatutorySettingResponse;
 import com.ewos.payroll.api.dto.ValidationIssueResponse;
 import com.ewos.payroll.domain.BankAdvice;
@@ -32,6 +34,8 @@ import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
+import com.ewos.payroll.domain.StatutoryChallan;
+import com.ewos.payroll.domain.StatutoryDeduction;
 import com.ewos.payroll.domain.StatutorySetting;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -230,6 +234,51 @@ public final class PayrollMapper {
                 p.getEffectiveTo(),
                 p.isActive(),
                 p.getVersionNo());
+    }
+
+    public StatutoryDeductionResponse toResponse(StatutoryDeduction d) {
+        return new StatutoryDeductionResponse(
+                d.getId(),
+                d.getTenantId(),
+                d.getCompanyId(),
+                d.getPayrollRun() != null ? d.getPayrollRun().getId() : null,
+                d.getPayslip() != null ? d.getPayslip().getId() : null,
+                d.getEmployee() != null ? d.getEmployee().getId() : null,
+                d.getJurisdiction(),
+                d.getCode(),
+                d.getPeriodMonth(),
+                d.getTaxableBase(),
+                d.getEmployeeContribution(),
+                d.getEmployerContribution(),
+                d.getTotalAmount(),
+                d.getCurrency(),
+                d.getStatutoryChallan() != null ? d.getStatutoryChallan().getId() : null,
+                d.getVersionNo());
+    }
+
+    public StatutoryChallanResponse toResponse(StatutoryChallan c) {
+        return new StatutoryChallanResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getJurisdiction(),
+                c.getCode(),
+                c.getPeriodMonth(),
+                c.getTotalEmployees(),
+                c.getTotalTaxableBase(),
+                c.getTotalEmployeeContribution(),
+                c.getTotalEmployerContribution(),
+                c.getTotalAmount(),
+                c.getCurrency(),
+                c.getStatus(),
+                c.getFiledAt(),
+                c.getFiledBy(),
+                c.getFilingReference(),
+                c.getPaidAt(),
+                c.getPaidBy(),
+                c.getPaymentReference(),
+                c.getNotes(),
+                c.getVersionNo());
     }
 
     public BankAdviceResponse toResponse(BankAdvice a) {
