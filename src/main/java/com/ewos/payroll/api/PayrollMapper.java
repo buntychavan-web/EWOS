@@ -1,6 +1,7 @@
 package com.ewos.payroll.api;
 
 import com.ewos.payroll.api.dto.ArrearResponse;
+import com.ewos.payroll.api.dto.BankAdviceResponse;
 import com.ewos.payroll.api.dto.CompensationLineResponse;
 import com.ewos.payroll.api.dto.EmployeeBankAccountResponse;
 import com.ewos.payroll.api.dto.EmployeeCompensationResponse;
@@ -8,6 +9,7 @@ import com.ewos.payroll.api.dto.EmployeePayrollProfileResponse;
 import com.ewos.payroll.api.dto.FinalSettlementResponse;
 import com.ewos.payroll.api.dto.PayComponentResponse;
 import com.ewos.payroll.api.dto.PayGroupResponse;
+import com.ewos.payroll.api.dto.PaymentInstructionResponse;
 import com.ewos.payroll.api.dto.PayrollPeriodResponse;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.PayrollValidationReportResponse;
@@ -15,6 +17,7 @@ import com.ewos.payroll.api.dto.PayslipLineResponse;
 import com.ewos.payroll.api.dto.PayslipResponse;
 import com.ewos.payroll.api.dto.StatutorySettingResponse;
 import com.ewos.payroll.api.dto.ValidationIssueResponse;
+import com.ewos.payroll.domain.BankAdvice;
 import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.EmployeeCompensationLine;
@@ -22,6 +25,7 @@ import com.ewos.payroll.domain.EmployeePayrollProfile;
 import com.ewos.payroll.domain.FinalSettlement;
 import com.ewos.payroll.domain.PayComponent;
 import com.ewos.payroll.domain.PayGroup;
+import com.ewos.payroll.domain.PaymentInstruction;
 import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollRun;
@@ -225,6 +229,58 @@ public final class PayrollMapper {
                 p.getEffectiveFrom(),
                 p.getEffectiveTo(),
                 p.isActive(),
+                p.getVersionNo());
+    }
+
+    public BankAdviceResponse toResponse(BankAdvice a) {
+        List<PaymentInstructionResponse> lines =
+                a.getInstructions().stream().map(PayrollMapper::toResponseInner).toList();
+        return new BankAdviceResponse(
+                a.getId(),
+                a.getTenantId(),
+                a.getCompanyId(),
+                a.getPayrollRun() != null ? a.getPayrollRun().getId() : null,
+                a.getAdviceNumber(),
+                a.getAdviceDate(),
+                a.getCurrency(),
+                a.getFileFormat(),
+                a.getTotalCount(),
+                a.getTotalAmount(),
+                a.getStatus(),
+                a.getGeneratedAt(),
+                a.getGeneratedBy(),
+                a.getAcknowledgedAt(),
+                a.getAcknowledgedBy(),
+                a.getSettledAt(),
+                a.getNotes(),
+                lines,
+                a.getVersionNo());
+    }
+
+    public PaymentInstructionResponse toResponse(PaymentInstruction p) {
+        return toResponseInner(p);
+    }
+
+    private static PaymentInstructionResponse toResponseInner(PaymentInstruction p) {
+        return new PaymentInstructionResponse(
+                p.getId(),
+                p.getTenantId(),
+                p.getCompanyId(),
+                p.getBankAdvice() != null ? p.getBankAdvice().getId() : null,
+                p.getPayslip() != null ? p.getPayslip().getId() : null,
+                p.getEmployee() != null ? p.getEmployee().getId() : null,
+                p.getEmployeeBankAccount() != null ? p.getEmployeeBankAccount().getId() : null,
+                p.getBankNameSnapshot(),
+                p.getAccountHolderSnapshot(),
+                p.getAccountNumberMasked(),
+                p.getRoutingCodeSnapshot(),
+                p.getSwiftBicSnapshot(),
+                p.getAmount(),
+                p.getCurrency(),
+                p.getStatus(),
+                p.getSettlementReference(),
+                p.getSettledAt(),
+                p.getFailureReason(),
                 p.getVersionNo());
     }
 
