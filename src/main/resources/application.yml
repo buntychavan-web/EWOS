@@ -54,6 +54,16 @@ management:
       enabled: true
 
 app:
+  purge:
+    # Framework ships disabled. Turn on per-job when operations is ready to
+    # own the retention decisions.
+    enabled: ${APP_PURGE_ENABLED:false}
+    cron: ${APP_PURGE_CRON:0 15 3 * * *}
+    zone: ${APP_PURGE_ZONE:UTC}
+    expired-refresh-token-retention: ${APP_PURGE_REFRESH_RETENTION:30d}
+    soft-deleted-row-retention: ${APP_PURGE_SOFT_DELETE_RETENTION:365d}
+    expired-refresh-tokens-enabled: ${APP_PURGE_REFRESH_ENABLED:false}
+    soft-deleted-rows-enabled: ${APP_PURGE_SOFT_DELETE_ENABLED:false}
   redis:
     enabled: true
   security:
@@ -75,6 +85,25 @@ app:
       require-digit: ${PASSWORD_REQUIRE_DIGIT:true}
       require-special: ${PASSWORD_REQUIRE_SPECIAL:true}
       history-size: ${PASSWORD_HISTORY_SIZE:5}
+    lockout:
+      enabled: ${AUTH_LOCKOUT_ENABLED:true}
+      max-attempts: ${AUTH_LOCKOUT_MAX_ATTEMPTS:5}
+      lock-duration: ${AUTH_LOCKOUT_DURATION:15m}
+    rate-limit:
+      enabled: ${AUTH_RATELIMIT_ENABLED:true}
+      max-attempts: ${AUTH_RATELIMIT_MAX_ATTEMPTS:60}
+      window: ${AUTH_RATELIMIT_WINDOW:1m}
+  cors:
+    # Empty by default. Each profile (dev/test/prod) supplies its own list; prod
+    # requires the operator to set APP_CORS_ALLOWED_ORIGINS explicitly.
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
+    allowed-origin-patterns: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:}
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD
+    allowed-headers: Authorization,Content-Type,Accept,Origin,X-Request-ID,X-Requested-With
+    exposed-headers: X-Request-ID,Location
+    allow-credentials: ${APP_CORS_ALLOW_CREDENTIALS:true}
+    max-age: ${APP_CORS_MAX_AGE:1h}
+    path-patterns: /**
 
 springdoc:
   api-docs:

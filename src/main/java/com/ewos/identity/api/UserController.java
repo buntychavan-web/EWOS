@@ -1,7 +1,5 @@
 package com.ewos.identity.api;
 
-import com.ewos.common.exception.ApiError;
-import com.ewos.common.exception.ApiException;
 import com.ewos.identity.api.dto.ChangePasswordRequest;
 import com.ewos.identity.api.dto.CreateUserRequest;
 import com.ewos.identity.api.dto.ResetPasswordRequest;
@@ -10,6 +8,8 @@ import com.ewos.identity.api.dto.UpdateUserRequest;
 import com.ewos.identity.api.dto.UserResponse;
 import com.ewos.identity.api.dto.UserSearchCriteria;
 import com.ewos.identity.application.UserService;
+import com.ewos.shared.exception.ApiError;
+import com.ewos.shared.exception.ApiException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;

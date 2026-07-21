@@ -1,10 +1,37 @@
+# Build outputs — always rebuild from source in the container.
 target/
-.git/
-.gitignore
+**/target/
+
+# Local IDE + editor state.
 .idea/
 *.iml
 .vscode/
-.mvn/wrapper/maven-wrapper.jar
+.settings/
+.project
+.classpath
+
+# VCS.
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# OS junk.
 **/.DS_Store
+Thumbs.db
+
+# Local Maven wrapper cache (real wrappers are self-bootstrapping).
+.mvn/wrapper/maven-wrapper.jar
+
+# Docs and scripts unrelated to the runtime image.
 README.md
+CONTRIBUTING.md
 docs/
+scripts/
+
+# Local dev artefacts we never want inside the image.
+*.log
+*.env
+.env
+.env.*
+!.env.example

@@ -1,6 +1,6 @@
 package com.ewos.identity.domain;
 
-import com.ewos.common.persistence.AuditableEntity;
+import com.ewos.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

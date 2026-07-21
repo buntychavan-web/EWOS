@@ -87,6 +87,16 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-redis</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-cache</artifactId>
+    </dependency>
+
+    <!-- Messaging -->
+    <dependency>
+      <groupId>org.springframework.kafka</groupId>
+      <artifactId>spring-kafka</artifactId>
+    </dependency>
 
     <!-- Observability -->
     <dependency>
@@ -151,6 +161,16 @@
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>kafka</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.kafka</groupId>
+      <artifactId>spring-kafka-test</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -283,6 +303,16 @@
         </executions>
       </plugin>
 
+      <!-- Surefire: exclude @Tag("benchmark") tests from the normal test run.
+           Run benchmarks explicitly with:  mvn test -Dgroups=benchmark -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>benchmark</excludedGroups>
+        </configuration>
+      </plugin>
+
       <!-- JaCoCo: 80% instruction coverage minimum -->
       <plugin>
         <groupId>org.jacoco</groupId>
@@ -291,7 +321,7 @@
         <configuration>
           <excludes>
             <exclude>com/ewos/EwosApplication.class</exclude>
-            <exclude>com/ewos/config/**</exclude>
+            <exclude>com/ewos/shared/config/**</exclude>
             <exclude>com/ewos/**/dto/**</exclude>
             <exclude>com/ewos/**/domain/**</exclude>
             <exclude>com/ewos/**/infrastructure/persistence/**</exclude>
