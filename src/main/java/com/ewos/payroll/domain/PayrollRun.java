@@ -43,6 +43,10 @@ public class PayrollRun extends AuditableEntity {
     @Column(name = "status", nullable = false, length = 32)
     private PayrollRunStatus status = PayrollRunStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "run_type", nullable = false, length = 32)
+    private PayrollRunType runType = PayrollRunType.REGULAR;
+
     @Column(name = "started_at")
     private Instant startedAt;
 
@@ -123,6 +127,14 @@ public class PayrollRun extends AuditableEntity {
 
     public void setStatus(PayrollRunStatus status) {
         this.status = status;
+    }
+
+    public PayrollRunType getRunType() {
+        return runType;
+    }
+
+    public void setRunType(PayrollRunType runType) {
+        this.runType = runType;
     }
 
     public Instant getStartedAt() {

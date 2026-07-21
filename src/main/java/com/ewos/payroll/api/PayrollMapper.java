@@ -5,6 +5,7 @@ import com.ewos.payroll.api.dto.CompensationLineResponse;
 import com.ewos.payroll.api.dto.EmployeeBankAccountResponse;
 import com.ewos.payroll.api.dto.EmployeeCompensationResponse;
 import com.ewos.payroll.api.dto.EmployeePayrollProfileResponse;
+import com.ewos.payroll.api.dto.FinalSettlementResponse;
 import com.ewos.payroll.api.dto.PayComponentResponse;
 import com.ewos.payroll.api.dto.PayGroupResponse;
 import com.ewos.payroll.api.dto.PayrollPeriodResponse;
@@ -18,6 +19,7 @@ import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.EmployeeCompensationLine;
 import com.ewos.payroll.domain.EmployeePayrollProfile;
+import com.ewos.payroll.domain.FinalSettlement;
 import com.ewos.payroll.domain.PayComponent;
 import com.ewos.payroll.domain.PayGroup;
 import com.ewos.payroll.domain.PayrollArrear;
@@ -106,6 +108,7 @@ public final class PayrollMapper {
                 r.getCompanyId(),
                 r.getPayrollPeriod() != null ? r.getPayrollPeriod().getId() : null,
                 r.getStatus(),
+                r.getRunType(),
                 r.getStartedAt(),
                 r.getStartedBy(),
                 r.getCompletedAt(),
@@ -223,6 +226,32 @@ public final class PayrollMapper {
                 p.getEffectiveTo(),
                 p.isActive(),
                 p.getVersionNo());
+    }
+
+    public FinalSettlementResponse toResponse(FinalSettlement s) {
+        return new FinalSettlementResponse(
+                s.getId(),
+                s.getTenantId(),
+                s.getCompanyId(),
+                s.getEmployee() != null ? s.getEmployee().getId() : null,
+                s.getTerminationDate(),
+                s.getLastWorkingDate(),
+                s.getUnusedLeaveDays(),
+                s.getEncashmentAmount(),
+                s.getGratuityAmount(),
+                s.getNoticePayRecovery(),
+                s.getNoticePayReceivable(),
+                s.getOtherEarnings(),
+                s.getOtherDeductions(),
+                s.getCurrency(),
+                s.getStatus(),
+                s.getApprovedAt(),
+                s.getApprovedBy(),
+                s.getSettledAt(),
+                s.getSettledBy(),
+                s.getSettlementRun() != null ? s.getSettlementRun().getId() : null,
+                s.getNotes(),
+                s.getVersionNo());
     }
 
     public ArrearResponse toResponse(PayrollArrear a) {

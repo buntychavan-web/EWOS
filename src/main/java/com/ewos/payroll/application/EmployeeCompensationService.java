@@ -147,6 +147,13 @@ public class EmployeeCompensationService {
         return repository.findActiveForCompany(tenantId, companyId);
     }
 
+    /** Active compensations restricted to a set of employees; used by supplementary/F&F runs. */
+    @Transactional(readOnly = true)
+    public List<EmployeeCompensation> activeForEmployeeIds(
+            UUID tenantId, java.util.Collection<UUID> employeeIds) {
+        return repository.findActiveForEmployeeIds(tenantId, employeeIds);
+    }
+
     public EmployeeCompensation require(UUID tenantId, UUID id) {
         return repository
                 .findByIdAndTenantId(id, tenantId)

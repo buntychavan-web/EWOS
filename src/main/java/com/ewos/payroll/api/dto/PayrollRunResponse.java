@@ -1,6 +1,7 @@
 package com.ewos.payroll.api.dto;
 
 import com.ewos.payroll.domain.PayrollRunStatus;
+import com.ewos.payroll.domain.PayrollRunType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -11,6 +12,7 @@ public record PayrollRunResponse(
         UUID companyId,
         UUID payrollPeriodId,
         PayrollRunStatus status,
+        PayrollRunType runType,
         Instant startedAt,
         UUID startedBy,
         Instant completedAt,
