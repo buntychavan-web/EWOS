@@ -1,0 +1,19 @@
+package com.ewos.probation.domain.events;
+
+/** Probation lifecycle event codes published on {@code ewos.probation.event}. */
+public enum ProbationEventType {
+    PROBATION_OPENED,
+    PROBATION_EXTENDED,
+    MANAGER_REVIEW_RECORDED,
+    HR_RECOMMENDATION_RECORDED,
+    CONFIRMATION_SUBMITTED,
+    CONFIRMATION_APPROVED,
+    CONFIRMATION_REJECTED,
+    PROBATION_CONFIRMED,
+    PROBATION_TERMINATED,
+    PROBATION_CANCELLED,
+    CONFIRMATION_LETTER_ISSUED,
+    POLICY_CREATED,
+    POLICY_UPDATED,
+    POLICY_DEACTIVATED
+}
