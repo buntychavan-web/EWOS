@@ -1,0 +1,22 @@
+package com.ewos.exit.domain.events;
+
+/** Exit lifecycle event codes published on {@code ewos.exit.event}. */
+public enum ExitEventType {
+    RESIGNATION_SUBMITTED,
+    RESIGNATION_ACCEPTED,
+    RESIGNATION_WITHDRAWN,
+    RESIGNATION_CANCELLED,
+    NOTICE_STARTED,
+    BUYOUT_APPLIED,
+    CLEARANCE_CREATED,
+    CLEARANCE_UPDATED,
+    CLEARANCE_CLEARED,
+    CLEARANCE_BLOCKED,
+    KT_ITEM_ADDED,
+    KT_ITEM_COMPLETED,
+    EXIT_INTERVIEW_RECORDED,
+    EXIT_DOCUMENT_ISSUED,
+    EMPLOYEE_EXITED,
+    ALUMNI_CREATED,
+    ALUMNI_UPDATED
+}
