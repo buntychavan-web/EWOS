@@ -91,7 +91,7 @@ public final class PayrollMapper {
 
     public EmployeeCompensationResponse toResponse(EmployeeCompensation c) {
         List<CompensationLineResponse> lines =
-                c.getLines().stream().map(PayrollMapper::toLineResponse).toList();
+                c.getLines().stream().map(l -> toCompensationLineResponse(l)).toList();
         return new EmployeeCompensationResponse(
                 c.getId(),
                 c.getTenantId(),
@@ -136,7 +136,7 @@ public final class PayrollMapper {
 
     public PayslipResponse toResponse(Payslip p) {
         List<PayslipLineResponse> lines =
-                p.getLines().stream().map(PayrollMapper::toLineResponse).toList();
+                p.getLines().stream().map(l -> toPayslipLineResponse(l)).toList();
         return new PayslipResponse(
                 p.getId(),
                 p.getTenantId(),
@@ -161,7 +161,7 @@ public final class PayrollMapper {
                 p.getVersionNo());
     }
 
-    private static CompensationLineResponse toLineResponse(EmployeeCompensationLine l) {
+    private static CompensationLineResponse toCompensationLineResponse(EmployeeCompensationLine l) {
         return new CompensationLineResponse(
                 l.getId(),
                 l.getPayComponent() != null ? l.getPayComponent().getId() : null,
@@ -389,8 +389,8 @@ public final class PayrollMapper {
                 payrollPeriodId,
                 report.isRunnable(),
                 employeeCount,
-                report.blockers().stream().map(PayrollMapper::toIssue).toList(),
-                report.warnings().stream().map(PayrollMapper::toIssue).toList());
+                report.blockers().stream().map(i -> toIssue(i)).toList(),
+                report.warnings().stream().map(i -> toIssue(i)).toList());
     }
 
     private static ValidationIssueResponse toIssue(PayrollValidationReport.Issue i) {
@@ -420,7 +420,7 @@ public final class PayrollMapper {
         }
     }
 
-    private static PayslipLineResponse toLineResponse(PayslipLine l) {
+    private static PayslipLineResponse toPayslipLineResponse(PayslipLine l) {
         return new PayslipLineResponse(
                 l.getId(),
                 l.getPayComponent() != null ? l.getPayComponent().getId() : null,

@@ -47,8 +47,8 @@ public class RecruitmentMapper {
                 r.getFilledCount(),
                 r.getPriority(),
                 r.getJustification(),
-                idOf(r.getHiringManager()),
-                idOf(r.getRecruiter()),
+                employeeIdOf(r.getHiringManager()),
+                employeeIdOf(r.getRecruiter()),
                 r.getTargetStartDate(),
                 r.getBudgetCurrency(),
                 r.getBudgetAmount(),
@@ -68,7 +68,7 @@ public class RecruitmentMapper {
         return u == null ? null : u.getId();
     }
 
-    private UUID idOf(Employee e) {
+    private UUID employeeIdOf(Employee e) {
         return e == null ? null : e.getId();
     }
 }
