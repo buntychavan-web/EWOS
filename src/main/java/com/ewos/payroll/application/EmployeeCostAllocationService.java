@@ -13,6 +13,7 @@ import com.ewos.payroll.infrastructure.persistence.BusinessUnitRepository;
 import com.ewos.payroll.infrastructure.persistence.CostCentreRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeeCostAllocationRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -29,21 +30,26 @@ public class EmployeeCostAllocationService {
     private final CostCentreRepository costCentres;
     private final BusinessUnitRepository businessUnits;
     private final OrganizationUnitRepository orgUnits;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public EmployeeCostAllocationService(
             EmployeeCostAllocationRepository repository,
             EmployeeRepository employees,
             CostCentreRepository costCentres,
             BusinessUnitRepository businessUnits,
-            OrganizationUnitRepository orgUnits) {
+            OrganizationUnitRepository orgUnits,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
         this.costCentres = costCentres;
         this.businessUnits = businessUnits;
         this.orgUnits = orgUnits;
+        this.guard = guard;
     }
 
     public EmployeeCostAllocationResponse create(CreateEmployeeCostAllocationRequest r) {
+        guard.requireAccessForCompany(r.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(r.employeeId(), r.tenantId())
@@ -99,9 +105,10 @@ public class EmployeeCostAllocationService {
 
     @Transactional(readOnly = true)
     public List<EmployeeCostAllocationResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return repository.findActiveForEmployee(tenantId, employeeId).stream()
-                .map(EmployeeCostAllocationService::toResponse)
-                .toList();
+        List<EmployeeCostAllocation> found = repository.findActiveForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(
+                found.stream().map(EmployeeCostAllocation::getCompanyId).toList());
+        return found.stream().map(EmployeeCostAllocationService::toResponse).toList();
     }
 
     public void deactivate(UUID tenantId, UUID id) {
@@ -112,6 +119,7 @@ public class EmployeeCostAllocationService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Cost allocation not found"));
+        guard.requireAccessForCompany(a.getCompanyId());
         a.setActive(false);
     }
 

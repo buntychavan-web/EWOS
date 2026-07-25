@@ -8,6 +8,7 @@ import com.ewos.payroll.api.dto.EmployeeBankAccountResponse;
 import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.infrastructure.persistence.EmployeeBankAccountRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -26,17 +27,21 @@ public class EmployeeBankAccountService {
     private final EmployeeBankAccountRepository repository;
     private final EmployeeRepository employees;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
     public EmployeeBankAccountService(
             EmployeeBankAccountRepository repository,
             EmployeeRepository employees,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public EmployeeBankAccountResponse create(CreateEmployeeBankAccountRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(request.employeeId(), request.tenantId())
@@ -73,6 +78,7 @@ public class EmployeeBankAccountService {
 
     public EmployeeBankAccountResponse setPrimary(UUID tenantId, UUID id) {
         EmployeeBankAccount b = require(tenantId, id);
+        guard.requireAccessForCompany(b.getCompanyId());
         if (!b.isActive()) {
             throw new ApiException(
                     HttpStatus.CONFLICT, "Inactive accounts cannot be marked primary");
@@ -87,20 +93,24 @@ public class EmployeeBankAccountService {
 
     public void deactivate(UUID tenantId, UUID id) {
         EmployeeBankAccount b = require(tenantId, id);
+        guard.requireAccessForCompany(b.getCompanyId());
         b.setActive(false);
         b.setPrimary(false);
     }
 
     @Transactional(readOnly = true)
     public EmployeeBankAccountResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        EmployeeBankAccount b = require(tenantId, id);
+        guard.requireAccessForCompany(b.getCompanyId());
+        return mapper.toResponse(b);
     }
 
     @Transactional(readOnly = true)
     public List<EmployeeBankAccountResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return repository.findAllForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<EmployeeBankAccount> found = repository.findAllForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(
+                found.stream().map(EmployeeBankAccount::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)

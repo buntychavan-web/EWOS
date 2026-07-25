@@ -14,6 +14,7 @@ import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.infrastructure.persistence.FinalSettlementRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -45,21 +46,26 @@ public class FinalSettlementService {
     private final PayrollArrearRepository arrears;
     private final PayrollRunService runs;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public FinalSettlementService(
             FinalSettlementRepository repository,
             EmployeeRepository employees,
             PayrollArrearRepository arrears,
             PayrollRunService runs,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
         this.arrears = arrears;
         this.runs = runs;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public FinalSettlementResponse create(CreateFinalSettlementRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(request.employeeId(), request.tenantId())
@@ -96,6 +102,7 @@ public class FinalSettlementService {
 
     public FinalSettlementResponse update(UUID tenantId, UUID id, UpdateFinalSettlementRequest r) {
         FinalSettlement s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
         if (s.getStatus() != FinalSettlementStatus.DRAFT) {
             throw new ApiException(HttpStatus.CONFLICT, "Only DRAFT settlements can be edited");
         }
@@ -134,6 +141,7 @@ public class FinalSettlementService {
 
     public FinalSettlementResponse approve(UUID tenantId, UUID id) {
         FinalSettlement s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
         if (s.getStatus() != FinalSettlementStatus.DRAFT) {
             throw new ApiException(HttpStatus.CONFLICT, "Only DRAFT settlements can be approved");
         }
@@ -147,6 +155,7 @@ public class FinalSettlementService {
 
     public FinalSettlementResponse settle(UUID tenantId, UUID id, UUID payrollPeriodId) {
         FinalSettlement s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
         if (s.getStatus() != FinalSettlementStatus.APPROVED) {
             throw new ApiException(HttpStatus.CONFLICT, "Only APPROVED settlements can be settled");
         }
@@ -163,6 +172,7 @@ public class FinalSettlementService {
 
     public FinalSettlementResponse cancel(UUID tenantId, UUID id) {
         FinalSettlement s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
         if (s.getStatus() == FinalSettlementStatus.SETTLED) {
             throw new ApiException(HttpStatus.CONFLICT, "Settled records cannot be cancelled");
         }
@@ -172,12 +182,15 @@ public class FinalSettlementService {
 
     @Transactional(readOnly = true)
     public FinalSettlementResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        FinalSettlement s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
+        return mapper.toResponse(s);
     }
 
     @Transactional(readOnly = true)
     public List<FinalSettlementResponse> byStatus(
             UUID tenantId, UUID companyId, FinalSettlementStatus status) {
+        guard.requireAccessForCompany(companyId);
         return repository
                 .findAllByTenantIdAndCompanyIdAndStatusOrderByCreatedAtDesc(
                         tenantId, companyId, status)

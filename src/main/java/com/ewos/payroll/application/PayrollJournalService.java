@@ -17,6 +17,7 @@ import com.ewos.payroll.infrastructure.persistence.PayrollJournalRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -39,21 +40,25 @@ public class PayrollJournalService {
     private final PayslipRepository payslips;
     private final PayrollJournalGenerator generator;
     private final PayrollJournalCsvExporter csv;
+    private final ClientAccessGuard guard;
 
     public PayrollJournalService(
             PayrollJournalRepository journals,
             PayrollRunRepository runs,
             PayslipRepository payslips,
             PayrollJournalGenerator generator,
-            PayrollJournalCsvExporter csv) {
+            PayrollJournalCsvExporter csv,
+            ClientAccessGuard guard) {
         this.journals = journals;
         this.runs = runs;
         this.payslips = payslips;
         this.generator = generator;
         this.csv = csv;
+        this.guard = guard;
     }
 
     public PayrollJournalResponse generate(GeneratePayrollJournalRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         PayrollRun run =
                 runs.findByIdAndTenantId(request.payrollRunId(), request.tenantId())
                         .orElseThrow(
@@ -107,6 +112,7 @@ public class PayrollJournalService {
 
     public PayrollJournalResponse approve(UUID tenantId, UUID id) {
         PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
         if (j.getStatus() != PayrollJournalStatus.DRAFT) {
             throw new ApiException(HttpStatus.CONFLICT, "Only DRAFT journals can be approved");
         }
@@ -127,6 +133,7 @@ public class PayrollJournalService {
 
     public PayrollJournalResponse post(UUID tenantId, UUID id) {
         PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
         if (j.getStatus() != PayrollJournalStatus.APPROVED) {
             throw new ApiException(HttpStatus.CONFLICT, "Only APPROVED journals can be posted");
         }
@@ -139,6 +146,7 @@ public class PayrollJournalService {
 
     public PayrollJournalResponse cancel(UUID tenantId, UUID id) {
         PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
         if (j.getStatus() == PayrollJournalStatus.POSTED
                 || j.getStatus() == PayrollJournalStatus.EXPORTED) {
             throw new ApiException(
@@ -151,6 +159,7 @@ public class PayrollJournalService {
     public PayrollJournalResponse recordExport(
             UUID tenantId, UUID id, String format, String reference) {
         PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
         if (j.getStatus() != PayrollJournalStatus.POSTED) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
@@ -167,12 +176,15 @@ public class PayrollJournalService {
 
     @Transactional(readOnly = true)
     public String exportCsv(UUID tenantId, UUID id) {
-        return csv.export(require(tenantId, id));
+        PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
+        return csv.export(j);
     }
 
     @Transactional(readOnly = true)
     public JournalReconciliationResponse reconcile(UUID tenantId, UUID id) {
         PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
         PayrollRun run = j.getPayrollRun();
         BigDecimal expenseDebit = BigDecimal.ZERO;
         for (PayrollJournalLine line : j.getLines()) {
@@ -197,14 +209,16 @@ public class PayrollJournalService {
 
     @Transactional(readOnly = true)
     public PayrollJournalResponse getById(UUID tenantId, UUID id) {
-        return toResponse(require(tenantId, id));
+        PayrollJournal j = require(tenantId, id);
+        guard.requireAccessForCompany(j.getCompanyId());
+        return toResponse(j);
     }
 
     @Transactional(readOnly = true)
     public List<PayrollJournalResponse> forRun(UUID tenantId, UUID runId) {
-        return journals.findAllForRun(tenantId, runId).stream()
-                .map(PayrollJournalService::toResponse)
-                .toList();
+        List<PayrollJournal> found = journals.findAllForRun(tenantId, runId);
+        guard.requireAccessForCompanies(found.stream().map(PayrollJournal::getCompanyId).toList());
+        return found.stream().map(PayrollJournalService::toResponse).toList();
     }
 
     private PayrollJournal require(UUID tenantId, UUID id) {

@@ -9,6 +9,7 @@ import com.ewos.payroll.domain.EmployeePayrollProfile;
 import com.ewos.payroll.domain.PayGroup;
 import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -28,19 +29,24 @@ public class EmployeePayrollProfileService {
     private final EmployeeRepository employees;
     private final PayGroupService payGroups;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public EmployeePayrollProfileService(
             EmployeePayrollProfileRepository repository,
             EmployeeRepository employees,
             PayGroupService payGroups,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
         this.payGroups = payGroups;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public EmployeePayrollProfileResponse create(CreateEmployeePayrollProfileRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(request.employeeId(), request.tenantId())
@@ -87,7 +93,9 @@ public class EmployeePayrollProfileService {
 
     @Transactional(readOnly = true)
     public EmployeePayrollProfileResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        EmployeePayrollProfile p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
+        return mapper.toResponse(p);
     }
 
     @Transactional(readOnly = true)
@@ -101,21 +109,25 @@ public class EmployeePayrollProfileService {
                                                 HttpStatus.NOT_FOUND,
                                                 "No active payroll profile for employee "
                                                         + employeeId));
+        guard.requireAccessForCompany(p.getCompanyId());
         return mapper.toResponse(p);
     }
 
     @Transactional(readOnly = true)
     public List<EmployeePayrollProfileResponse> historyForEmployee(UUID tenantId, UUID employeeId) {
-        return repository.findHistoryForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<EmployeePayrollProfile> found =
+                repository.findHistoryForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(
+                found.stream().map(EmployeePayrollProfile::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<EmployeePayrollProfileResponse> forPayGroup(UUID tenantId, UUID payGroupId) {
-        return repository.findActiveByPayGroup(tenantId, payGroupId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<EmployeePayrollProfile> found = repository.findActiveByPayGroup(tenantId, payGroupId);
+        guard.requireAccessForCompanies(
+                found.stream().map(EmployeePayrollProfile::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     public EmployeePayrollProfile require(UUID tenantId, UUID id) {

@@ -26,6 +26,7 @@ import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -68,7 +69,9 @@ public class PayrollRunService {
     private final PayrollPolicy policy;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
             PayrollRunRepository runs,
             PayslipRepository payslips,
@@ -80,7 +83,8 @@ public class PayrollRunService {
             LeaveRequestRepository leaves,
             PayrollPolicy policy,
             PayrollMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -92,9 +96,11 @@ public class PayrollRunService {
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         PayrollPeriod period = periods.require(request.tenantId(), request.payrollPeriodId());
         if (!period.getCompanyId().equals(request.companyId())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Period belongs to a different company");
@@ -110,6 +116,7 @@ public class PayrollRunService {
      */
     public PayrollRunResponse startSupplementary(
             UUID tenantId, UUID companyId, UUID payrollPeriodId, List<UUID> employeeIds) {
+        guard.requireAccessForCompany(companyId);
         if (employeeIds == null || employeeIds.isEmpty()) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "Supplementary run requires at least one employee");
@@ -257,6 +264,7 @@ public class PayrollRunService {
 
     public PayrollRunResponse finalizeRun(UUID tenantId, UUID id) {
         PayrollRun run = require(tenantId, id);
+        guard.requireAccessForCompany(run.getCompanyId());
         policy.assertFinalizable(run);
         UUID actor = requireActor();
         Instant now = Instant.now();
@@ -274,6 +282,7 @@ public class PayrollRunService {
 
     public PayrollRunResponse freeze(UUID tenantId, UUID id) {
         PayrollRun run = require(tenantId, id);
+        guard.requireAccessForCompany(run.getCompanyId());
         policy.assertFreezable(run);
         UUID actor = requireActor();
         run.setStatus(PayrollRunStatus.FROZEN);
@@ -294,12 +303,16 @@ public class PayrollRunService {
 
     @Transactional(readOnly = true)
     public PayrollRunResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        PayrollRun run = require(tenantId, id);
+        guard.requireAccessForCompany(run.getCompanyId());
+        return mapper.toResponse(run);
     }
 
     @Transactional(readOnly = true)
     public List<PayrollRunResponse> forPeriod(UUID tenantId, UUID periodId) {
-        return runs.findAllForPeriod(tenantId, periodId).stream().map(mapper::toResponse).toList();
+        List<PayrollRun> found = runs.findAllForPeriod(tenantId, periodId);
+        guard.requireAccessForCompanies(found.stream().map(PayrollRun::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     private PayrollRun require(UUID tenantId, UUID id) {

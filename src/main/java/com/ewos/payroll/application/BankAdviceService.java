@@ -17,6 +17,7 @@ import com.ewos.payroll.infrastructure.persistence.EmployeeBankAccountRepository
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -49,23 +50,28 @@ public class BankAdviceService {
     private final EmployeeBankAccountRepository bankAccounts;
     private final BankAdviceCsvExporter csv;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public BankAdviceService(
             BankAdviceRepository advices,
             PayrollRunRepository runs,
             PayslipRepository payslips,
             EmployeeBankAccountRepository bankAccounts,
             BankAdviceCsvExporter csv,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.advices = advices;
         this.runs = runs;
         this.payslips = payslips;
         this.bankAccounts = bankAccounts;
         this.csv = csv;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public BankAdviceResponse generate(GenerateBankAdviceRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         PayrollRun run =
                 runs.findByIdAndTenantId(request.payrollRunId(), request.tenantId())
                         .orElseThrow(
@@ -164,11 +170,13 @@ public class BankAdviceService {
     @Transactional(readOnly = true)
     public String export(UUID tenantId, UUID adviceId) {
         BankAdvice advice = require(tenantId, adviceId);
+        guard.requireAccessForCompany(advice.getCompanyId());
         return csv.export(advice, advice.getInstructions());
     }
 
     public BankAdviceResponse acknowledge(UUID tenantId, UUID id) {
         BankAdvice a = require(tenantId, id);
+        guard.requireAccessForCompany(a.getCompanyId());
         if (a.getStatus() != BankAdviceStatus.GENERATED) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
@@ -184,6 +192,7 @@ public class BankAdviceService {
 
     public BankAdviceResponse markFailed(UUID tenantId, UUID id, String reason) {
         BankAdvice a = require(tenantId, id);
+        guard.requireAccessForCompany(a.getCompanyId());
         if (a.getStatus() == BankAdviceStatus.SETTLED) {
             throw new ApiException(HttpStatus.CONFLICT, "Settled advices cannot be failed");
         }
@@ -195,6 +204,7 @@ public class BankAdviceService {
     public BankAdviceResponse markInstructionPaid(
             UUID tenantId, UUID adviceId, UUID instructionId, String settlementReference) {
         BankAdvice a = require(tenantId, adviceId);
+        guard.requireAccessForCompany(a.getCompanyId());
         PaymentInstruction p = findInstruction(a, instructionId);
         if (p.getStatus() != PaymentInstructionStatus.PENDING) {
             throw new ApiException(
@@ -210,6 +220,7 @@ public class BankAdviceService {
     public BankAdviceResponse markInstructionFailed(
             UUID tenantId, UUID adviceId, UUID instructionId, String reason) {
         BankAdvice a = require(tenantId, adviceId);
+        guard.requireAccessForCompany(a.getCompanyId());
         PaymentInstruction p = findInstruction(a, instructionId);
         if (p.getStatus() != PaymentInstructionStatus.PENDING) {
             throw new ApiException(
@@ -234,12 +245,16 @@ public class BankAdviceService {
 
     @Transactional(readOnly = true)
     public BankAdviceResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        BankAdvice a = require(tenantId, id);
+        guard.requireAccessForCompany(a.getCompanyId());
+        return mapper.toResponse(a);
     }
 
     @Transactional(readOnly = true)
     public List<BankAdviceResponse> forRun(UUID tenantId, UUID runId) {
-        return advices.findAllForRun(tenantId, runId).stream().map(mapper::toResponse).toList();
+        List<BankAdvice> found = advices.findAllForRun(tenantId, runId);
+        guard.requireAccessForCompanies(found.stream().map(BankAdvice::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     private PaymentInstruction findInstruction(BankAdvice a, UUID instructionId) {

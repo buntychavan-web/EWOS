@@ -3,12 +3,14 @@ package com.ewos.tenancy.api;
 import com.ewos.tenancy.api.dto.ClientAssignmentResponse;
 import com.ewos.tenancy.api.dto.ClientResponse;
 import com.ewos.tenancy.api.dto.CompanyResponse;
+import com.ewos.tenancy.api.dto.PayrollCollaborationResponse;
 import com.ewos.tenancy.api.dto.PayrollServiceProviderResponse;
 import com.ewos.tenancy.api.dto.ServiceOfferingResponse;
 import com.ewos.tenancy.api.dto.TenantResponse;
 import com.ewos.tenancy.domain.Client;
 import com.ewos.tenancy.domain.ClientAssignment;
 import com.ewos.tenancy.domain.Company;
+import com.ewos.tenancy.domain.PayrollCollaboration;
 import com.ewos.tenancy.domain.PayrollServiceProvider;
 import com.ewos.tenancy.domain.ServiceOffering;
 import com.ewos.tenancy.domain.Tenant;
@@ -114,5 +116,22 @@ public final class TenancyMapper {
                 assignment.getCreatedBy(),
                 assignment.getUpdatedBy(),
                 assignment.getVersionNo());
+    }
+
+    public PayrollCollaborationResponse toResponse(PayrollCollaboration collaboration) {
+        return new PayrollCollaborationResponse(
+                collaboration.getId(),
+                collaboration.getClient().getId(),
+                collaboration.getProvider().getId(),
+                collaboration.getScope(),
+                collaboration.getStatus(),
+                collaboration.getEffectiveFrom(),
+                collaboration.getEffectiveTo(),
+                collaboration.getSlaDays(),
+                collaboration.getCreatedAt(),
+                collaboration.getUpdatedAt(),
+                collaboration.getCreatedBy(),
+                collaboration.getUpdatedBy(),
+                collaboration.getVersionNo());
     }
 }

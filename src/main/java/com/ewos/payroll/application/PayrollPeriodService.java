@@ -11,6 +11,7 @@ import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
 import com.ewos.payroll.infrastructure.persistence.PayrollPeriodRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,19 +29,24 @@ public class PayrollPeriodService {
     private final PayrollPolicy policy;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollPeriodService(
             PayrollPeriodRepository repository,
             PayrollPolicy policy,
             PayrollMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public PayrollPeriodResponse create(CreatePayrollPeriodRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         if (repository.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 request.tenantId(), request.companyId(), request.code())) {
             throw new ApiException(
@@ -68,6 +74,7 @@ public class PayrollPeriodService {
     public PayrollPeriodResponse update(
             UUID tenantId, UUID id, UpdatePayrollPeriodRequest request) {
         PayrollPeriod p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
         policy.assertEditable(p);
         if (request.code() != null && !request.code().equalsIgnoreCase(p.getCode())) {
             if (repository.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
@@ -101,6 +108,7 @@ public class PayrollPeriodService {
 
     public PayrollPeriodResponse lock(UUID tenantId, UUID id) {
         PayrollPeriod p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
         policy.assertLockable(p);
         UUID actor = requireActor();
         p.setStatus(PayrollPeriodStatus.LOCKED);
@@ -112,6 +120,7 @@ public class PayrollPeriodService {
 
     public PayrollPeriodResponse close(UUID tenantId, UUID id) {
         PayrollPeriod p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
         policy.assertClosable(p);
         UUID actor = requireActor();
         p.setStatus(PayrollPeriodStatus.CLOSED);
@@ -123,11 +132,14 @@ public class PayrollPeriodService {
 
     @Transactional(readOnly = true)
     public PayrollPeriodResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        PayrollPeriod p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
+        return mapper.toResponse(p);
     }
 
     @Transactional(readOnly = true)
     public List<PayrollPeriodResponse> forCompany(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return repository.findAllForCompany(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -135,11 +147,10 @@ public class PayrollPeriodService {
 
     @Transactional(readOnly = true)
     public List<PayrollPeriodResponse> byStatus(UUID tenantId, PayrollPeriodStatus status) {
-        return repository
-                .findAllByTenantIdAndStatusOrderByPeriodStartDesc(tenantId, status)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<PayrollPeriod> found =
+                repository.findAllByTenantIdAndStatusOrderByPeriodStartDesc(tenantId, status);
+        guard.requireAccessForCompanies(found.stream().map(PayrollPeriod::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     public PayrollPeriod require(UUID tenantId, UUID id) {

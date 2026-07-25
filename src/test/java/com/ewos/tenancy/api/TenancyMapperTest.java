@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.ewos.tenancy.api.dto.ClientAssignmentResponse;
 import com.ewos.tenancy.api.dto.ClientResponse;
 import com.ewos.tenancy.api.dto.CompanyResponse;
+import com.ewos.tenancy.api.dto.PayrollCollaborationResponse;
 import com.ewos.tenancy.api.dto.PayrollServiceProviderResponse;
 import com.ewos.tenancy.api.dto.ServiceOfferingResponse;
 import com.ewos.tenancy.api.dto.TenantResponse;
@@ -14,6 +15,8 @@ import com.ewos.tenancy.domain.ClientAssignmentScopeRole;
 import com.ewos.tenancy.domain.ClientStatus;
 import com.ewos.tenancy.domain.Company;
 import com.ewos.tenancy.domain.CompanyStatus;
+import com.ewos.tenancy.domain.PayrollCollaboration;
+import com.ewos.tenancy.domain.PayrollCollaborationScope;
 import com.ewos.tenancy.domain.PayrollServiceProvider;
 import com.ewos.tenancy.domain.ProviderStatus;
 import com.ewos.tenancy.domain.ServiceOffering;
@@ -160,5 +163,31 @@ class TenancyMapperTest {
         service.setId(UUID.randomUUID());
         assignment.setService(service);
         assertThat(mapper.toResponse(assignment).serviceId()).isEqualTo(service.getId());
+    }
+
+    @Test
+    void payrollCollaborationMapsAllFieldsIncludingClientAndProvider() {
+        Client client = new Client();
+        client.setId(UUID.randomUUID());
+        PayrollServiceProvider provider = new PayrollServiceProvider();
+        provider.setId(UUID.randomUUID());
+
+        PayrollCollaboration collaboration = new PayrollCollaboration();
+        collaboration.setId(UUID.randomUUID());
+        collaboration.setClient(client);
+        collaboration.setProvider(provider);
+        collaboration.setScope(PayrollCollaborationScope.STATUTORY_ONLY);
+        collaboration.setEffectiveFrom(LocalDate.of(2026, 1, 1));
+        collaboration.setEffectiveTo(LocalDate.of(2026, 12, 31));
+        collaboration.setSlaDays(3);
+
+        PayrollCollaborationResponse r = mapper.toResponse(collaboration);
+
+        assertThat(r.clientId()).isEqualTo(client.getId());
+        assertThat(r.providerId()).isEqualTo(provider.getId());
+        assertThat(r.scope()).isEqualTo(PayrollCollaborationScope.STATUTORY_ONLY);
+        assertThat(r.effectiveFrom()).isEqualTo(LocalDate.of(2026, 1, 1));
+        assertThat(r.effectiveTo()).isEqualTo(LocalDate.of(2026, 12, 31));
+        assertThat(r.slaDays()).isEqualTo(3);
     }
 }

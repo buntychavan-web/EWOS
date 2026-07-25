@@ -12,6 +12,7 @@ import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryDeductionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -37,18 +38,22 @@ public class StatutoryDeductionService {
     private final PayslipRepository payslips;
     private final StatutoryClassifier classifier;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public StatutoryDeductionService(
             StatutoryDeductionRepository repository,
             PayrollRunRepository runs,
             PayslipRepository payslips,
             StatutoryClassifier classifier,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.runs = runs;
         this.payslips = payslips;
         this.classifier = classifier;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     /**
@@ -63,6 +68,7 @@ public class StatutoryDeductionService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Payroll run not found"));
+        guard.requireAccessForCompany(run.getCompanyId());
         int inserted = 0;
         for (Payslip slip : payslips.findAllForRun(tenantId, runId)) {
             Map<String, StatutoryDeduction> existingByCode = new HashMap<>();
@@ -112,33 +118,41 @@ public class StatutoryDeductionService {
 
     @Transactional(readOnly = true)
     public StatutoryDeductionResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(
+        StatutoryDeduction d =
                 repository
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
-                                                "Statutory deduction not found")));
+                                                "Statutory deduction not found"));
+        guard.requireAccessForCompany(d.getCompanyId());
+        return mapper.toResponse(d);
     }
 
     @Transactional(readOnly = true)
     public List<StatutoryDeductionResponse> forPayslip(UUID tenantId, UUID payslipId) {
-        return repository.findAllForPayslip(tenantId, payslipId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<StatutoryDeduction> found = repository.findAllForPayslip(tenantId, payslipId);
+        guard.requireAccessForCompanies(
+                found.stream().map(StatutoryDeduction::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<StatutoryDeductionResponse> forRun(UUID tenantId, UUID runId) {
-        return repository.findAllForRun(tenantId, runId).stream().map(mapper::toResponse).toList();
+        List<StatutoryDeduction> found = repository.findAllForRun(tenantId, runId);
+        guard.requireAccessForCompanies(
+                found.stream().map(StatutoryDeduction::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<StatutoryDeductionResponse> forEmployeeMonth(
             UUID tenantId, UUID employeeId, int periodMonth) {
-        return repository.findForEmployeeMonth(tenantId, employeeId, periodMonth).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<StatutoryDeduction> found =
+                repository.findForEmployeeMonth(tenantId, employeeId, periodMonth);
+        guard.requireAccessForCompanies(
+                found.stream().map(StatutoryDeduction::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 }

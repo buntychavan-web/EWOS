@@ -15,6 +15,7 @@ import com.ewos.payroll.infrastructure.persistence.PayrollJournalRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -43,19 +44,23 @@ public class PayrollReportsService {
     private final PayrollRunRepository runs;
     private final PayslipRepository payslips;
     private final PayrollJournalRepository journals;
+    private final ClientAccessGuard guard;
 
     public PayrollReportsService(
             PayrollRunRepository runs,
             PayslipRepository payslips,
-            PayrollJournalRepository journals) {
+            PayrollJournalRepository journals,
+            ClientAccessGuard guard) {
         this.runs = runs;
         this.payslips = payslips;
         this.journals = journals;
+        this.guard = guard;
     }
 
     // ---- Registers --------------------------------------------------------
 
     public RegisterResponse salaryRegisterForRun(UUID tenantId, UUID companyId, UUID runId) {
+        guard.requireAccessForCompany(companyId);
         PayrollRun run = requireRun(tenantId, runId, companyId);
         return buildRegister(
                 "SALARY_REGISTER",
@@ -65,6 +70,7 @@ public class PayrollReportsService {
     }
 
     public RegisterResponse payrollRegisterForPeriod(UUID tenantId, UUID companyId, UUID periodId) {
+        guard.requireAccessForCompany(companyId);
         List<Payslip> all = new ArrayList<>();
         for (PayrollRun r : runs.findAllForPeriod(tenantId, periodId)) {
             if (r.getCompanyId().equals(companyId)) {
@@ -75,6 +81,7 @@ public class PayrollReportsService {
     }
 
     public RegisterResponse supplementaryRegister(UUID tenantId, UUID companyId, UUID runId) {
+        guard.requireAccessForCompany(companyId);
         PayrollRun run = requireRun(tenantId, runId, companyId);
         if (run.getRunType() != PayrollRunType.SUPPLEMENTARY) {
             throw new ApiException(
@@ -88,6 +95,7 @@ public class PayrollReportsService {
     }
 
     public RegisterResponse finalSettlementRegister(UUID tenantId, UUID companyId, UUID runId) {
+        guard.requireAccessForCompany(companyId);
         PayrollRun run = requireRun(tenantId, runId, companyId);
         if (run.getRunType() != PayrollRunType.FINAL_SETTLEMENT) {
             throw new ApiException(
@@ -132,6 +140,7 @@ public class PayrollReportsService {
             UUID currentRunId,
             UUID previousRunId,
             java.util.function.Function<Payslip, BigDecimal> extractor) {
+        guard.requireAccessForCompany(companyId);
         List<Payslip> current = payslips.findAllForRun(tenantId, currentRunId);
         List<Payslip> previous = payslips.findAllForRun(tenantId, previousRunId);
         current.forEach(p -> requireCompany(p, companyId));
@@ -190,6 +199,13 @@ public class PayrollReportsService {
     // ---- Cost centre report ----------------------------------------------
 
     public List<CostCentreReportRowResponse> costCentreReport(UUID tenantId, UUID runId) {
+        PayrollRun run =
+                runs.findByIdAndTenantId(runId, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Payroll run not found"));
+        guard.requireAccessForCompany(run.getCompanyId());
         Map<String, BigDecimal[]> agg = new TreeMap<>();
         journals.findAllForRun(tenantId, runId)
                 .forEach(
@@ -225,11 +241,13 @@ public class PayrollReportsService {
     // ---- Dashboards ------------------------------------------------------
 
     public PayrollDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return new PayrollDashboardResponse(
                 tenantId, companyId, 0, 0, 0, 0, 0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     public ExecutiveDashboardResponse executiveDashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return new ExecutiveDashboardResponse(
                 tenantId,
                 companyId,

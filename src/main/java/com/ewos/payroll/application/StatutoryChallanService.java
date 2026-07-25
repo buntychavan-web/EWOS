@@ -9,6 +9,7 @@ import com.ewos.payroll.domain.StatutoryDeduction;
 import com.ewos.payroll.infrastructure.persistence.StatutoryChallanRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryDeductionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashSet;
@@ -32,17 +33,21 @@ public class StatutoryChallanService {
     private final StatutoryChallanRepository challans;
     private final StatutoryDeductionRepository deductions;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
     public StatutoryChallanService(
             StatutoryChallanRepository challans,
             StatutoryDeductionRepository deductions,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.challans = challans;
         this.deductions = deductions;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public StatutoryChallanResponse rollUp(RollUpChallanRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         StatutoryChallan c =
                 challans.findByScope(
                                 request.tenantId(),
@@ -107,6 +112,7 @@ public class StatutoryChallanService {
 
     public StatutoryChallanResponse file(UUID tenantId, UUID id, String filingReference) {
         StatutoryChallan c = require(tenantId, id);
+        guard.requireAccessForCompany(c.getCompanyId());
         if (c.getStatus() != StatutoryChallanStatus.DRAFT) {
             throw new ApiException(HttpStatus.CONFLICT, "Only DRAFT challans can be filed");
         }
@@ -120,6 +126,7 @@ public class StatutoryChallanService {
 
     public StatutoryChallanResponse pay(UUID tenantId, UUID id, String paymentReference) {
         StatutoryChallan c = require(tenantId, id);
+        guard.requireAccessForCompany(c.getCompanyId());
         if (c.getStatus() != StatutoryChallanStatus.FILED) {
             throw new ApiException(HttpStatus.CONFLICT, "Only FILED challans can be paid");
         }
@@ -133,6 +140,7 @@ public class StatutoryChallanService {
 
     public StatutoryChallanResponse cancel(UUID tenantId, UUID id) {
         StatutoryChallan c = require(tenantId, id);
+        guard.requireAccessForCompany(c.getCompanyId());
         if (c.getStatus() == StatutoryChallanStatus.PAID) {
             throw new ApiException(HttpStatus.CONFLICT, "Paid challans cannot be cancelled");
         }
@@ -142,11 +150,14 @@ public class StatutoryChallanService {
 
     @Transactional(readOnly = true)
     public StatutoryChallanResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        StatutoryChallan c = require(tenantId, id);
+        guard.requireAccessForCompany(c.getCompanyId());
+        return mapper.toResponse(c);
     }
 
     @Transactional(readOnly = true)
     public List<StatutoryChallanResponse> forMonth(UUID tenantId, UUID companyId, int periodMonth) {
+        guard.requireAccessForCompany(companyId);
         return challans
                 .findAllByTenantIdAndCompanyIdAndPeriodMonthOrderByCodeAsc(
                         tenantId, companyId, periodMonth)
@@ -158,6 +169,7 @@ public class StatutoryChallanService {
     @Transactional(readOnly = true)
     public List<StatutoryChallanResponse> byStatus(
             UUID tenantId, UUID companyId, StatutoryChallanStatus status) {
+        guard.requireAccessForCompany(companyId);
         return challans
                 .findAllByTenantIdAndCompanyIdAndStatusOrderByPeriodMonthDesc(
                         tenantId, companyId, status)

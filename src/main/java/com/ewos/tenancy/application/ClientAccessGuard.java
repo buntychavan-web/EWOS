@@ -2,9 +2,14 @@ package com.ewos.tenancy.application;
 
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.domain.ClientAssignment;
+import com.ewos.tenancy.domain.Company;
 import com.ewos.tenancy.infrastructure.persistence.ClientAssignmentRepository;
+import com.ewos.tenancy.infrastructure.persistence.CompanyRepository;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -32,9 +37,12 @@ import org.springframework.stereotype.Component;
 public class ClientAccessGuard {
 
     private final ClientAssignmentRepository repository;
+    private final CompanyRepository companyRepository;
 
-    public ClientAccessGuard(ClientAssignmentRepository repository) {
+    public ClientAccessGuard(
+            ClientAssignmentRepository repository, CompanyRepository companyRepository) {
         this.repository = repository;
+        this.companyRepository = companyRepository;
     }
 
     /**
@@ -73,6 +81,35 @@ public class ClientAccessGuard {
         }
         if (!accessibleClientIds().contains(clientId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Not authorized for this client");
+        }
+    }
+
+    /**
+     * Resolves the client that owns {@code companyId} and delegates to {@link
+     * #requireAccess(UUID)}. This is what Sprint 14.2 uses to Chinese-Wall-scope Payroll: every
+     * payroll table already carries a {@code company_id}, and {@code companies.client_id} (Sprint
+     * 14.1) is the missing link — no new column on any Payroll table was needed.
+     */
+    public void requireAccessForCompany(UUID companyId) {
+        if (hasUnrestrictedAccess()) {
+            return;
+        }
+        Optional<Company> company = companyRepository.findById(companyId);
+        UUID clientId = company.map(c -> c.getClient().getId()).orElse(null);
+        if (clientId == null || !accessibleClientIds().contains(clientId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Not authorized for this company");
+        }
+    }
+
+    /**
+     * Guards every distinct company id present in a Payroll result set — the shape a "list by
+     * employeeId/runId/payslipId" query returns, where the caller has no single companyId to check
+     * up front. A run/payslip/etc. belongs to exactly one company in practice, so this is normally
+     * one check; it still holds if that ever isn't true.
+     */
+    public void requireAccessForCompanies(Collection<UUID> companyIds) {
+        for (UUID companyId : new LinkedHashSet<>(companyIds)) {
+            requireAccessForCompany(companyId);
         }
     }
 

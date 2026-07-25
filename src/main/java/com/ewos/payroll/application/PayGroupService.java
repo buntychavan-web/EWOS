@@ -7,10 +7,10 @@ import com.ewos.payroll.api.dto.UpdatePayGroupRequest;
 import com.ewos.payroll.domain.PayGroup;
 import com.ewos.payroll.infrastructure.persistence.PayGroupRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,14 +24,18 @@ public class PayGroupService {
 
     private final PayGroupRepository repository;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
-    public PayGroupService(PayGroupRepository repository, PayrollMapper mapper) {
+    public PayGroupService(
+            PayGroupRepository repository, PayrollMapper mapper, ClientAccessGuard guard) {
         this.repository = repository;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     @CacheEvict(value = CACHE, allEntries = true)
     public PayGroupResponse create(CreatePayGroupRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         if (repository.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 request.tenantId(), request.companyId(), request.code())) {
             throw new ApiException(
@@ -55,6 +59,7 @@ public class PayGroupService {
     @CacheEvict(value = CACHE, allEntries = true)
     public PayGroupResponse update(UUID tenantId, UUID id, UpdatePayGroupRequest request) {
         PayGroup g = require(tenantId, id);
+        guard.requireAccessForCompany(g.getCompanyId());
         if (request.name() != null) {
             g.setName(request.name());
         }
@@ -76,14 +81,18 @@ public class PayGroupService {
         return mapper.toResponse(g);
     }
 
-    @Cacheable(value = CACHE, key = "#tenantId + ':' + #id")
+    // Not @Cacheable: authorization must run on every call, and a cache hit would bypass it —
+    // an unassigned caller could read a cached response left behind by an authorized one.
     @Transactional(readOnly = true)
     public PayGroupResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        PayGroup g = require(tenantId, id);
+        guard.requireAccessForCompany(g.getCompanyId());
+        return mapper.toResponse(g);
     }
 
     @Transactional(readOnly = true)
     public List<PayGroupResponse> forCompany(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return repository.findAllByTenantIdAndCompanyIdOrderByNameAsc(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -91,7 +100,9 @@ public class PayGroupService {
 
     @CacheEvict(value = CACHE, allEntries = true)
     public void delete(UUID tenantId, UUID id) {
-        repository.delete(require(tenantId, id));
+        PayGroup g = require(tenantId, id);
+        guard.requireAccessForCompany(g.getCompanyId());
+        repository.delete(g);
     }
 
     public PayGroup require(UUID tenantId, UUID id) {

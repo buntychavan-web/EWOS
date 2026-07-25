@@ -7,6 +7,7 @@ import com.ewos.payroll.domain.ScheduledReport;
 import com.ewos.payroll.domain.ScheduledReportFormat;
 import com.ewos.payroll.infrastructure.persistence.ScheduledReportRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -23,12 +24,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class ScheduledReportService {
 
     private final ScheduledReportRepository repository;
+    private final ClientAccessGuard guard;
 
-    public ScheduledReportService(ScheduledReportRepository repository) {
+    public ScheduledReportService(ScheduledReportRepository repository, ClientAccessGuard guard) {
         this.repository = repository;
+        this.guard = guard;
     }
 
     public ScheduledReportResponse create(CreateScheduledReportRequest r) {
+        guard.requireAccessForCompany(r.companyId());
         ScheduledReport s = new ScheduledReport();
         s.setTenantId(r.tenantId());
         s.setCompanyId(r.companyId());
@@ -46,20 +50,26 @@ public class ScheduledReportService {
 
     public void deactivate(UUID tenantId, UUID id) {
         ScheduledReport s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
         s.setActive(false);
     }
 
     public void delete(UUID tenantId, UUID id) {
-        repository.delete(require(tenantId, id));
+        ScheduledReport s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
+        repository.delete(s);
     }
 
     @Transactional(readOnly = true)
     public ScheduledReportResponse getById(UUID tenantId, UUID id) {
-        return toResponse(require(tenantId, id));
+        ScheduledReport s = require(tenantId, id);
+        guard.requireAccessForCompany(s.getCompanyId());
+        return toResponse(s);
     }
 
     @Transactional(readOnly = true)
     public List<ScheduledReportResponse> list(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return repository.findAllByTenantIdAndCompanyIdOrderByNameAsc(tenantId, companyId).stream()
                 .map(ScheduledReportService::toResponse)
                 .toList();

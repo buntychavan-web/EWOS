@@ -8,6 +8,7 @@ import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.PayrollValidator;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -26,20 +27,25 @@ public class PayrollValidationService {
     private final EmployeeCompensationService compensations;
     private final PayrollValidator validator;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollValidationService(
             PayrollPeriodService periods,
             EmployeeCompensationService compensations,
             PayrollValidator validator,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.periods = periods;
         this.compensations = compensations;
         this.validator = validator;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public PayrollValidationReportResponse validate(
             UUID tenantId, UUID companyId, UUID payrollPeriodId) {
+        guard.requireAccessForCompany(companyId);
         PayrollPeriod period = periods.require(tenantId, payrollPeriodId);
         if (!period.getCompanyId().equals(companyId)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Period belongs to a different company");

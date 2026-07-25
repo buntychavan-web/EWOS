@@ -27,4 +27,7 @@ public interface PayrollPeriodRepository extends JpaRepository<PayrollPeriod, UU
 
     List<PayrollPeriod> findAllByTenantIdAndStatusOrderByPeriodStartDesc(
             UUID tenantId, PayrollPeriodStatus status);
+
+    List<PayrollPeriod> findAllByTenantIdAndCompanyIdInOrderByPayDateAsc(
+            UUID tenantId, List<UUID> companyIds);
 }

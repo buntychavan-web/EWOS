@@ -18,6 +18,7 @@ import com.ewos.payroll.infrastructure.persistence.CostCentreRepository;
 import com.ewos.payroll.infrastructure.persistence.GLAccountRepository;
 import com.ewos.payroll.infrastructure.persistence.GLMappingRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -33,21 +34,25 @@ public class GlConfigService {
     private final BusinessUnitRepository businessUnits;
     private final GLAccountRepository accounts;
     private final GLMappingRepository mappings;
+    private final ClientAccessGuard guard;
 
     public GlConfigService(
             CostCentreRepository costCentres,
             BusinessUnitRepository businessUnits,
             GLAccountRepository accounts,
-            GLMappingRepository mappings) {
+            GLMappingRepository mappings,
+            ClientAccessGuard guard) {
         this.costCentres = costCentres;
         this.businessUnits = businessUnits;
         this.accounts = accounts;
         this.mappings = mappings;
+        this.guard = guard;
     }
 
     // ---------- cost centres ------------------------------------------------
 
     public CostCentreResponse createCostCentre(CreateCostCentreRequest r) {
+        guard.requireAccessForCompany(r.companyId());
         if (costCentres.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 r.tenantId(), r.companyId(), r.code())) {
             throw new ApiException(HttpStatus.CONFLICT, "Cost centre code already in use");
@@ -66,6 +71,7 @@ public class GlConfigService {
 
     @Transactional(readOnly = true)
     public List<CostCentreResponse> listCostCentres(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return costCentres.findAllByTenantIdAndCompanyIdOrderByCodeAsc(tenantId, companyId).stream()
                 .map(GlConfigService::toResponse)
                 .toList();
@@ -79,12 +85,14 @@ public class GlConfigService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Cost centre not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
         costCentres.delete(c);
     }
 
     // ---------- business units ---------------------------------------------
 
     public BusinessUnitResponse createBusinessUnit(CreateBusinessUnitRequest r) {
+        guard.requireAccessForCompany(r.companyId());
         if (businessUnits.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 r.tenantId(), r.companyId(), r.code())) {
             throw new ApiException(HttpStatus.CONFLICT, "Business unit code already in use");
@@ -103,6 +111,7 @@ public class GlConfigService {
 
     @Transactional(readOnly = true)
     public List<BusinessUnitResponse> listBusinessUnits(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return businessUnits
                 .findAllByTenantIdAndCompanyIdOrderByCodeAsc(tenantId, companyId)
                 .stream()
@@ -118,12 +127,14 @@ public class GlConfigService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Business unit not found"));
+        guard.requireAccessForCompany(b.getCompanyId());
         businessUnits.delete(b);
     }
 
     // ---------- GL accounts -------------------------------------------------
 
     public GLAccountResponse createAccount(CreateGLAccountRequest r) {
+        guard.requireAccessForCompany(r.companyId());
         if (accounts.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 r.tenantId(), r.companyId(), r.code())) {
             throw new ApiException(HttpStatus.CONFLICT, "GL account code already in use");
@@ -142,6 +153,7 @@ public class GlConfigService {
 
     @Transactional(readOnly = true)
     public List<GLAccountResponse> listAccounts(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return accounts.findAllByTenantIdAndCompanyIdOrderByCodeAsc(tenantId, companyId).stream()
                 .map(GlConfigService::toResponse)
                 .toList();
@@ -154,12 +166,14 @@ public class GlConfigService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "GL account not found"));
+        guard.requireAccessForCompany(a.getCompanyId());
         accounts.delete(a);
     }
 
     // ---------- GL mappings ------------------------------------------------
 
     public GLMappingResponse createMapping(CreateGLMappingRequest r) {
+        guard.requireAccessForCompany(r.companyId());
         if (mappings.findActive(r.tenantId(), r.companyId(), r.sourceKind(), r.sourceCode())
                 .isPresent()) {
             throw new ApiException(
@@ -199,6 +213,7 @@ public class GlConfigService {
 
     @Transactional(readOnly = true)
     public List<GLMappingResponse> listMappings(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return mappings
                 .findAllByTenantIdAndCompanyIdOrderBySourceKindAscSourceCodeAsc(tenantId, companyId)
                 .stream()
@@ -213,6 +228,7 @@ public class GlConfigService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "GL mapping not found"));
+        guard.requireAccessForCompany(m.getCompanyId());
         mappings.delete(m);
     }
 

@@ -8,6 +8,7 @@ import com.ewos.payroll.api.dto.CreateArrearRequest;
 import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -26,17 +27,21 @@ public class PayrollArrearService {
     private final PayrollArrearRepository repository;
     private final EmployeeRepository employees;
     private final PayrollMapper mapper;
+    private final ClientAccessGuard guard;
 
     public PayrollArrearService(
             PayrollArrearRepository repository,
             EmployeeRepository employees,
-            PayrollMapper mapper) {
+            PayrollMapper mapper,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public ArrearResponse create(CreateArrearRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(request.employeeId(), request.tenantId())
@@ -63,6 +68,7 @@ public class PayrollArrearService {
 
     public void cancel(UUID tenantId, UUID id) {
         PayrollArrear a = require(tenantId, id);
+        guard.requireAccessForCompany(a.getCompanyId());
         if (a.isApplied()) {
             throw new ApiException(HttpStatus.CONFLICT, "Applied arrears cannot be cancelled");
         }
@@ -71,26 +77,30 @@ public class PayrollArrearService {
 
     @Transactional(readOnly = true)
     public ArrearResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        PayrollArrear a = require(tenantId, id);
+        guard.requireAccessForCompany(a.getCompanyId());
+        return mapper.toResponse(a);
     }
 
     @Transactional(readOnly = true)
     public List<ArrearResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return repository.findAllForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<PayrollArrear> found = repository.findAllForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(PayrollArrear::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<ArrearResponse> pendingForEmployee(UUID tenantId, UUID employeeId) {
-        return repository.findPendingForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<PayrollArrear> found = repository.findPendingForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(PayrollArrear::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<ArrearResponse> forRun(UUID tenantId, UUID runId) {
-        return repository.findForRun(tenantId, runId).stream().map(mapper::toResponse).toList();
+        List<PayrollArrear> found = repository.findForRun(tenantId, runId);
+        guard.requireAccessForCompanies(found.stream().map(PayrollArrear::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     public PayrollArrear require(UUID tenantId, UUID id) {

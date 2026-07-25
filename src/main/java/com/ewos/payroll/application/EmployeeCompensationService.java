@@ -14,6 +14,7 @@ import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
 import com.ewos.payroll.infrastructure.persistence.EmployeeCompensationRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -39,23 +40,28 @@ public class EmployeeCompensationService {
     private final PayGroupService payGroups;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public EmployeeCompensationService(
             EmployeeCompensationRepository repository,
             EmployeeRepository employees,
             PayComponentService components,
             PayGroupService payGroups,
             PayrollMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
         this.components = components;
         this.payGroups = payGroups;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public EmployeeCompensationResponse create(CreateEmployeeCompensationRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(request.employeeId(), request.tenantId())
@@ -121,14 +127,17 @@ public class EmployeeCompensationService {
 
     @Transactional(readOnly = true)
     public EmployeeCompensationResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        EmployeeCompensation c = require(tenantId, id);
+        guard.requireAccessForCompany(c.getCompanyId());
+        return mapper.toResponse(c);
     }
 
     @Transactional(readOnly = true)
     public List<EmployeeCompensationResponse> historyForEmployee(UUID tenantId, UUID employeeId) {
-        return repository.findHistoryForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<EmployeeCompensation> found = repository.findHistoryForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(
+                found.stream().map(EmployeeCompensation::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
