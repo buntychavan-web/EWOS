@@ -9,6 +9,7 @@ import com.ewos.goals.domain.events.GoalEvent;
 import com.ewos.goals.domain.events.GoalEventType;
 import com.ewos.goals.infrastructure.persistence.GoalLibraryRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -25,15 +26,21 @@ public class GoalLibraryService {
     private final GoalLibraryRepository library;
     private final GoalMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public GoalLibraryService(
-            GoalLibraryRepository library, GoalMapper mapper, ApplicationEventPublisher events) {
+            GoalLibraryRepository library,
+            GoalMapper mapper,
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.library = library;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public GoalLibraryItemResponse create(CreateGoalLibraryItemRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (library.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -84,17 +91,23 @@ public class GoalLibraryService {
 
     @Transactional(readOnly = true)
     public List<GoalLibraryItemResponse> listActive(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return library.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
     }
 
     GoalLibraryItem require(UUID tenantId, UUID id) {
-        return library.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND, "Goal library item not found"));
+        GoalLibraryItem g =
+                library
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Goal library item not found"));
+        guard.requireAccessForCompany(g.getCompanyId());
+        return g;
     }
 
     private void publish(GoalEventType type, GoalLibraryItem g) {

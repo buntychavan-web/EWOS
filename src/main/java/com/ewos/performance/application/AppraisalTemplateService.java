@@ -13,6 +13,7 @@ import com.ewos.performance.domain.events.PerformanceEventType;
 import com.ewos.performance.infrastructure.persistence.AppraisalTemplateRepository;
 import com.ewos.performance.infrastructure.persistence.AppraisalTemplateSectionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -29,19 +30,23 @@ public class AppraisalTemplateService {
     private final AppraisalTemplateSectionRepository sections;
     private final PerformanceMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public AppraisalTemplateService(
             AppraisalTemplateRepository templates,
             AppraisalTemplateSectionRepository sections,
             PerformanceMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.templates = templates;
         this.sections = sections;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public AppraisalTemplateResponse create(CreateAppraisalTemplateRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (req.ratingScaleMax() <= req.ratingScaleMin()) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "rating_scale_max must be greater than min");
@@ -105,6 +110,7 @@ public class AppraisalTemplateService {
 
     @Transactional(readOnly = true)
     public List<AppraisalTemplateResponse> listActive(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return templates.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -121,12 +127,16 @@ public class AppraisalTemplateService {
     }
 
     AppraisalTemplate require(UUID tenantId, UUID id) {
-        return templates
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND, "Appraisal template not found"));
+        AppraisalTemplate t =
+                templates
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Appraisal template not found"));
+        guard.requireAccessForCompany(t.getCompanyId());
+        return t;
     }
 
     private void publish(PerformanceEventType type, AppraisalTemplate t, String detail) {

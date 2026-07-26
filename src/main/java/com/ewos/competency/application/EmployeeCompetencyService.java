@@ -18,6 +18,7 @@ import com.ewos.competency.infrastructure.persistence.RoleCompetencyRepository;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,7 @@ public class EmployeeCompetencyService {
     private final EmployeeRepository employees;
     private final CompetencyMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public EmployeeCompetencyService(
             EmployeeCompetencyRepository employeeCompetencies,
@@ -46,7 +48,8 @@ public class EmployeeCompetencyService {
             CompetencyService competencies,
             EmployeeRepository employees,
             CompetencyMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.employeeCompetencies = employeeCompetencies;
         this.assessments = assessments;
         this.roleCompetencies = roleCompetencies;
@@ -54,9 +57,11 @@ public class EmployeeCompetencyService {
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public EmployeeCompetencyResponse upsert(EmployeeCompetencyRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Competency c = competencies.require(req.tenantId(), req.competencyId());
         competencies.assertLevelInScale(c, req.currentLevel());
         Employee employee =
@@ -86,6 +91,7 @@ public class EmployeeCompetencyService {
     }
 
     public AssessmentResponse recordAssessment(AssessmentRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Competency c = competencies.require(req.tenantId(), req.competencyId());
         competencies.assertLevelInScale(c, req.assessedLevel());
         Employee employee =
@@ -140,6 +146,7 @@ public class EmployeeCompetencyService {
 
     @Transactional(readOnly = true)
     public List<EmployeeCompetencyResponse> forEmployee(UUID tenantId, UUID employeeId) {
+        guard.requireAccessForCompany(requireEmployee(tenantId, employeeId).getCompanyId());
         return employeeCompetencies.findAllByTenantIdAndEmployeeId(tenantId, employeeId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -147,6 +154,7 @@ public class EmployeeCompetencyService {
 
     @Transactional(readOnly = true)
     public List<AssessmentResponse> assessmentsFor(UUID tenantId, UUID employeeId) {
+        guard.requireAccessForCompany(requireEmployee(tenantId, employeeId).getCompanyId());
         return assessments
                 .findAllByTenantIdAndEmployeeIdOrderByAssessedAtDesc(tenantId, employeeId)
                 .stream()
@@ -156,13 +164,8 @@ public class EmployeeCompetencyService {
 
     @Transactional(readOnly = true)
     public List<GapReportRow> gapForEmployee(UUID tenantId, UUID employeeId, String designation) {
-        Employee employee =
-                employees
-                        .findByIdAndTenantId(employeeId, tenantId)
-                        .orElseThrow(
-                                () ->
-                                        new ApiException(
-                                                HttpStatus.BAD_REQUEST, "Employee not found"));
+        Employee employee = requireEmployee(tenantId, employeeId);
+        guard.requireAccessForCompany(employee.getCompanyId());
         List<RoleCompetency> required =
                 roleCompetencies.findAllByTenantIdAndCompanyIdAndDesignationIgnoreCase(
                         tenantId, employee.getCompanyId(), designation);
@@ -186,6 +189,12 @@ public class EmployeeCompetencyService {
                             Math.max(0, r.getRequiredLevel() - current)));
         }
         return out;
+    }
+
+    private Employee requireEmployee(UUID tenantId, UUID employeeId) {
+        return employees
+                .findByIdAndTenantId(employeeId, tenantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Employee not found"));
     }
 
     private String displayName(Employee e) {

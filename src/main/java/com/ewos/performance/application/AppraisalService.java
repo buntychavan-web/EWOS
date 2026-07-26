@@ -28,6 +28,7 @@ import com.ewos.performance.domain.events.PerformanceEventType;
 import com.ewos.performance.infrastructure.persistence.AppraisalRatingRepository;
 import com.ewos.performance.infrastructure.persistence.AppraisalRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
 import com.ewos.workflow.application.WorkflowInstanceService;
@@ -58,6 +59,7 @@ public class AppraisalService {
     private final WorkflowInstanceService workflow;
     private final PerformanceMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public AppraisalService(
             AppraisalRepository appraisals,
@@ -68,7 +70,8 @@ public class AppraisalService {
             AppraisalLifecyclePolicy lifecycle,
             WorkflowInstanceService workflow,
             PerformanceMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.appraisals = appraisals;
         this.ratings = ratings;
         this.employees = employees;
@@ -78,9 +81,11 @@ public class AppraisalService {
         this.workflow = workflow;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public AppraisalResponse open(OpenAppraisalRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         PerformanceCycle cycle = cycles.require(req.tenantId(), req.cycleId());
         AppraisalTemplate template = templates.require(req.tenantId(), req.templateId());
         lifecycle.assertOpenable(cycle, template);
@@ -256,6 +261,7 @@ public class AppraisalService {
 
     @Transactional(readOnly = true)
     public List<AppraisalResponse> forCycle(UUID tenantId, UUID cycleId) {
+        cycles.require(tenantId, cycleId);
         return appraisals.findAllByTenantIdAndCycleId(tenantId, cycleId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -263,6 +269,7 @@ public class AppraisalService {
 
     @Transactional(readOnly = true)
     public List<AppraisalReportRowResponse> reportForCycle(UUID tenantId, UUID cycleId) {
+        cycles.require(tenantId, cycleId);
         return appraisals.findAllByTenantIdAndCycleId(tenantId, cycleId).stream()
                 .map(mapper::toReportRow)
                 .toList();
@@ -270,6 +277,7 @@ public class AppraisalService {
 
     @Transactional(readOnly = true)
     public PerformanceDashboardResponse dashboard(UUID tenantId, UUID cycleId) {
+        cycles.require(tenantId, cycleId);
         return new PerformanceDashboardResponse(
                 cycleId,
                 appraisals.countByTenantIdAndCycleIdAndStatus(
@@ -290,6 +298,7 @@ public class AppraisalService {
 
     @Transactional(readOnly = true)
     public List<BellCurveBucketResponse> bellCurve(UUID tenantId, UUID cycleId) {
+        cycles.require(tenantId, cycleId);
         List<Appraisal> all = appraisals.findAllByTenantIdAndCycleId(tenantId, cycleId);
         Map<String, Long> counts = new TreeMap<>();
         long total = 0;
@@ -314,9 +323,13 @@ public class AppraisalService {
     }
 
     private Appraisal require(UUID tenantId, UUID id) {
-        return appraisals
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Appraisal not found"));
+        Appraisal a =
+                appraisals
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Appraisal not found"));
+        guard.requireAccessForCompany(a.getCompanyId());
+        return a;
     }
 
     private Employee requireEmployee(UUID tenantId, UUID employeeId) {

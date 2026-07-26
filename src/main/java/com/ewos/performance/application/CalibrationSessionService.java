@@ -10,6 +10,7 @@ import com.ewos.performance.domain.events.PerformanceEvent;
 import com.ewos.performance.domain.events.PerformanceEventType;
 import com.ewos.performance.infrastructure.persistence.CalibrationSessionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -26,19 +27,23 @@ public class CalibrationSessionService {
     private final PerformanceCycleService cycles;
     private final PerformanceMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CalibrationSessionService(
             CalibrationSessionRepository sessions,
             PerformanceCycleService cycles,
             PerformanceMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.sessions = sessions;
         this.cycles = cycles;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CalibrationSessionResponse create(CreateCalibrationSessionRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         PerformanceCycle cycle = cycles.require(req.tenantId(), req.cycleId());
         CalibrationSession s = new CalibrationSession();
         s.setTenantId(req.tenantId());
@@ -73,17 +78,23 @@ public class CalibrationSessionService {
 
     @Transactional(readOnly = true)
     public List<CalibrationSessionResponse> listForCycle(UUID tenantId, UUID cycleId) {
+        cycles.require(tenantId, cycleId);
         return sessions.findAllByTenantIdAndCycleId(tenantId, cycleId).stream()
                 .map(mapper::toResponse)
                 .toList();
     }
 
     private CalibrationSession require(UUID tenantId, UUID id) {
-        return sessions.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND, "Calibration session not found"));
+        CalibrationSession s =
+                sessions
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Calibration session not found"));
+        guard.requireAccessForCompany(s.getCompanyId());
+        return s;
     }
 
     private void publish(PerformanceEventType type, CalibrationSession s) {

@@ -7,6 +7,7 @@ import com.ewos.competency.api.CompetencyMapper;
 import com.ewos.competency.domain.Competency;
 import com.ewos.competency.infrastructure.persistence.CompetencyRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,8 +16,9 @@ class CompetencyServiceScaleTest {
 
     private final CompetencyRepository repo = Mockito.mock(CompetencyRepository.class);
     private final ApplicationEventPublisher events = Mockito.mock(ApplicationEventPublisher.class);
+    private final ClientAccessGuard guard = Mockito.mock(ClientAccessGuard.class);
     private final CompetencyService service =
-            new CompetencyService(repo, new CompetencyMapper(), events);
+            new CompetencyService(repo, new CompetencyMapper(), events, guard);
 
     @Test
     void assertLevelInScale_acceptsBoundary() {

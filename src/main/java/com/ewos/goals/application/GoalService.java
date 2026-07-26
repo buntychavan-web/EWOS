@@ -23,6 +23,7 @@ import com.ewos.goals.domain.events.GoalEventType;
 import com.ewos.goals.infrastructure.persistence.GoalProgressUpdateRepository;
 import com.ewos.goals.infrastructure.persistence.GoalRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -43,6 +44,7 @@ public class GoalService {
     private final GoalLifecyclePolicy lifecycle;
     private final GoalMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public GoalService(
             GoalRepository goals,
@@ -51,7 +53,8 @@ public class GoalService {
             GoalLibraryService library,
             GoalLifecyclePolicy lifecycle,
             GoalMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.goals = goals;
         this.progress = progress;
         this.employees = employees;
@@ -59,9 +62,11 @@ public class GoalService {
         this.lifecycle = lifecycle;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public GoalResponse create(CreateGoalRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (goals.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(HttpStatus.CONFLICT, "Goal code already exists: " + req.code());
@@ -199,13 +204,14 @@ public class GoalService {
 
     @Transactional(readOnly = true)
     public List<GoalResponse> byEmployee(UUID tenantId, UUID employeeId) {
-        return goals.findAllByTenantIdAndEmployeeId(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Goal> found = goals.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(Goal::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<GoalResponse> byStatus(UUID tenantId, UUID companyId, GoalStatus status) {
+        guard.requireAccessForCompany(companyId);
         return goals.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -213,6 +219,7 @@ public class GoalService {
 
     @Transactional(readOnly = true)
     public List<GoalResponse> byScope(UUID tenantId, UUID companyId, GoalScope scope) {
+        guard.requireAccessForCompany(companyId);
         return goals.findAllByTenantIdAndCompanyIdAndScope(tenantId, companyId, scope).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -220,13 +227,14 @@ public class GoalService {
 
     @Transactional(readOnly = true)
     public List<GoalResponse> forCycle(UUID tenantId, UUID performanceCycleId) {
-        return goals.findAllByTenantIdAndPerformanceCycleId(tenantId, performanceCycleId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Goal> found = goals.findAllByTenantIdAndPerformanceCycleId(tenantId, performanceCycleId);
+        guard.requireAccessForCompanies(found.stream().map(Goal::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<GoalProgressResponse> progressHistory(UUID tenantId, UUID id) {
+        requireGoal(tenantId, id);
         return progress.findAllByTenantIdAndGoalIdOrderByRecordedAtDesc(tenantId, id).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -234,6 +242,7 @@ public class GoalService {
 
     @Transactional(readOnly = true)
     public GoalDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return new GoalDashboardResponse(
                 goals.countByTenantIdAndCompanyIdAndStatus(tenantId, companyId, GoalStatus.DRAFT),
                 goals.countByTenantIdAndCompanyIdAndStatus(
@@ -261,14 +270,18 @@ public class GoalService {
     @Transactional(readOnly = true)
     public List<GoalReportRowResponse> reportByStatus(
             UUID tenantId, UUID companyId, GoalStatus status) {
+        guard.requireAccessForCompany(companyId);
         return goals.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toReportRow)
                 .toList();
     }
 
     private Goal requireGoal(UUID tenantId, UUID id) {
-        return goals.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Goal not found"));
+        Goal g =
+                goals.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Goal not found"));
+        guard.requireAccessForCompany(g.getCompanyId());
+        return g;
     }
 
     private void publish(GoalEventType type, Goal g, String detail) {

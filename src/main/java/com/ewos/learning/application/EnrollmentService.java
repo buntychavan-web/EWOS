@@ -18,6 +18,7 @@ import com.ewos.learning.domain.events.LearningEvent;
 import com.ewos.learning.domain.events.LearningEventType;
 import com.ewos.learning.infrastructure.persistence.TrainingEnrollmentRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -38,6 +39,7 @@ public class EnrollmentService {
     private final EnrollmentLifecyclePolicy lifecycle;
     private final LearningMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public EnrollmentService(
             TrainingEnrollmentRepository enrollments,
@@ -47,7 +49,8 @@ public class EnrollmentService {
             EmployeeRepository employees,
             EnrollmentLifecyclePolicy lifecycle,
             LearningMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.enrollments = enrollments;
         this.courses = courses;
         this.sessions = sessions;
@@ -56,9 +59,11 @@ public class EnrollmentService {
         this.lifecycle = lifecycle;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public EnrollmentResponse nominate(NominateRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         TrainingCourse course = courses.require(req.tenantId(), req.courseId());
         lifecycle.assertNominatable(course);
         Employee employee =
@@ -179,13 +184,16 @@ public class EnrollmentService {
 
     @Transactional(readOnly = true)
     public List<EnrollmentResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return enrollments.findAllByTenantIdAndEmployeeId(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<TrainingEnrollment> found =
+                enrollments.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
+        guard.requireAccessForCompanies(
+                found.stream().map(TrainingEnrollment::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<EnrollmentResponse> forSession(UUID tenantId, UUID sessionId) {
+        sessions.require(tenantId, sessionId);
         return enrollments.findAllByTenantIdAndSessionId(tenantId, sessionId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -194,6 +202,7 @@ public class EnrollmentService {
     @Transactional(readOnly = true)
     public List<EnrollmentResponse> byStatus(
             UUID tenantId, UUID companyId, EnrollmentStatus status) {
+        guard.requireAccessForCompany(companyId);
         return enrollments
                 .findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status)
                 .stream()
@@ -201,14 +210,21 @@ public class EnrollmentService {
                 .toList();
     }
 
+    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
     long countByStatus(UUID tenantId, UUID companyId, EnrollmentStatus status) {
         return enrollments.countByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status);
     }
 
     TrainingEnrollment require(UUID tenantId, UUID id) {
-        return enrollments
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Enrollment not found"));
+        TrainingEnrollment e =
+                enrollments
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Enrollment not found"));
+        guard.requireAccessForCompany(e.getCompanyId());
+        return e;
     }
 
     private void publish(LearningEventType type, TrainingEnrollment e, String detail) {

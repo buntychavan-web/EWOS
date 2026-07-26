@@ -9,6 +9,7 @@ import com.ewos.probation.domain.events.ProbationEvent;
 import com.ewos.probation.domain.events.ProbationEventType;
 import com.ewos.probation.infrastructure.persistence.ProbationPolicyRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,17 +25,21 @@ public class ProbationPolicyService {
     private final ProbationPolicyRepository policies;
     private final ProbationMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public ProbationPolicyService(
             ProbationPolicyRepository policies,
             ProbationMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.policies = policies;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public ProbationPolicyResponse create(CreateProbationPolicyRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (policies.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -81,6 +86,7 @@ public class ProbationPolicyService {
 
     @Transactional(readOnly = true)
     public List<ProbationPolicyResponse> listActive(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return policies.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -88,9 +94,16 @@ public class ProbationPolicyService {
 
     /** Package-private accessor used by ProbationService. */
     ProbationPolicy require(UUID tenantId, UUID id) {
-        return policies.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Probation policy not found"));
+        ProbationPolicy p =
+                policies
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Probation policy not found"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return p;
     }
 
     private void publish(ProbationEventType type, ProbationPolicy p, String detail) {

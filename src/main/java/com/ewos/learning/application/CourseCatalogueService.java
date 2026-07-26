@@ -9,6 +9,7 @@ import com.ewos.learning.domain.events.LearningEvent;
 import com.ewos.learning.domain.events.LearningEventType;
 import com.ewos.learning.infrastructure.persistence.TrainingCourseRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,17 +25,21 @@ public class CourseCatalogueService {
     private final TrainingCourseRepository courses;
     private final LearningMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CourseCatalogueService(
             TrainingCourseRepository courses,
             LearningMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.courses = courses;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CourseResponse create(CreateCourseRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (courses.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -89,17 +94,25 @@ public class CourseCatalogueService {
 
     @Transactional(readOnly = true)
     public List<CourseResponse> listActive(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return courses.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
     }
 
     TrainingCourse require(UUID tenantId, UUID id) {
-        return courses.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Training course not found"));
+        TrainingCourse c =
+                courses
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Training course not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
+        return c;
     }
 
+    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
     long activeCount(UUID tenantId, UUID companyId) {
         return courses.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).size();
     }

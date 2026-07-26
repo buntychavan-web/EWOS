@@ -14,6 +14,7 @@ import com.ewos.learning.domain.events.LearningEvent;
 import com.ewos.learning.domain.events.LearningEventType;
 import com.ewos.learning.infrastructure.persistence.CertificationRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -33,6 +34,7 @@ public class CertificationService {
     private final EmployeeRepository employees;
     private final LearningMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CertificationService(
             CertificationRepository certifications,
@@ -40,16 +42,19 @@ public class CertificationService {
             EnrollmentService enrollments,
             EmployeeRepository employees,
             LearningMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.certifications = certifications;
         this.courses = courses;
         this.enrollments = enrollments;
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CertificationResponse issue(IssueCertificationRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(req.employeeId(), req.tenantId())
@@ -115,14 +120,15 @@ public class CertificationService {
 
     @Transactional(readOnly = true)
     public List<CertificationResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return certifications.findAllByTenantIdAndEmployeeId(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Certification> found = certifications.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(Certification::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<CertificationResponse> byStatus(
             UUID tenantId, UUID companyId, CertificationStatus status) {
+        guard.requireAccessForCompany(companyId);
         return certifications
                 .findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status)
                 .stream()
@@ -133,11 +139,13 @@ public class CertificationService {
     @Transactional(readOnly = true)
     public List<CertificationResponse> expiringBy(
             UUID tenantId, UUID companyId, LocalDate through) {
+        guard.requireAccessForCompany(companyId);
         return certifications.findExpiringBy(tenantId, companyId, through).stream()
                 .map(mapper::toResponse)
                 .toList();
     }
 
+    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
     long activeCount(UUID tenantId, UUID companyId) {
         return certifications
                 .findAllByTenantIdAndCompanyIdAndStatus(
@@ -152,10 +160,15 @@ public class CertificationService {
     }
 
     Certification require(UUID tenantId, UUID id) {
-        return certifications
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Certification not found"));
+        Certification c =
+                certifications
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Certification not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
+        return c;
     }
 
     private void publish(LearningEventType type, Certification c) {

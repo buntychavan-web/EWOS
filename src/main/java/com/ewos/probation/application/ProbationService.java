@@ -23,6 +23,7 @@ import com.ewos.probation.domain.events.ProbationEvent;
 import com.ewos.probation.domain.events.ProbationEventType;
 import com.ewos.probation.infrastructure.persistence.ProbationRecordRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
 import com.ewos.workflow.application.WorkflowInstanceService;
@@ -49,6 +50,7 @@ public class ProbationService {
     private final WorkflowInstanceService workflow;
     private final ProbationMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public ProbationService(
             ProbationRecordRepository records,
@@ -57,7 +59,8 @@ public class ProbationService {
             ProbationLifecyclePolicy lifecycle,
             WorkflowInstanceService workflow,
             ProbationMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.records = records;
         this.employees = employees;
         this.policies = policies;
@@ -65,9 +68,11 @@ public class ProbationService {
         this.workflow = workflow;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public ProbationRecordResponse open(OpenProbationRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (records.findByTenantIdAndEmployeeId(req.tenantId(), req.employeeId()).isPresent()) {
             throw new ApiException(
                     HttpStatus.CONFLICT, "Probation record already exists for this employee");
@@ -253,18 +258,21 @@ public class ProbationService {
 
     @Transactional(readOnly = true)
     public ProbationRecordResponse getByEmployee(UUID tenantId, UUID employeeId) {
-        return records.findByTenantIdAndEmployeeId(tenantId, employeeId)
-                .map(mapper::toResponse)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND,
-                                        "No probation record for the given employee"));
+        ProbationRecord r =
+                records.findByTenantIdAndEmployeeId(tenantId, employeeId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "No probation record for the given employee"));
+        guard.requireAccessForCompany(r.getCompanyId());
+        return mapper.toResponse(r);
     }
 
     @Transactional(readOnly = true)
     public List<ProbationRecordResponse> byStatus(
             UUID tenantId, UUID companyId, ProbationStatus status) {
+        guard.requireAccessForCompany(companyId);
         return records.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -272,6 +280,7 @@ public class ProbationService {
 
     @Transactional(readOnly = true)
     public ProbationDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         long inProb =
                 records.countByTenantIdAndCompanyIdAndStatus(
                         tenantId, companyId, ProbationStatus.IN_PROBATION);
@@ -309,6 +318,7 @@ public class ProbationService {
     @Transactional(readOnly = true)
     public List<ProbationReportRowResponse> report(
             UUID tenantId, UUID companyId, ProbationStatus status) {
+        guard.requireAccessForCompany(companyId);
         return records.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toReportRow)
                 .toList();
@@ -317,6 +327,7 @@ public class ProbationService {
     @Transactional(readOnly = true)
     public List<ProbationReportRowResponse> dueThrough(
             UUID tenantId, UUID companyId, LocalDate through) {
+        guard.requireAccessForCompany(companyId);
         return records
                 .findDueBy(
                         tenantId,
@@ -329,9 +340,16 @@ public class ProbationService {
     }
 
     ProbationRecord require(UUID tenantId, UUID id) {
-        return records.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Probation record not found"));
+        ProbationRecord r =
+                records
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Probation record not found"));
+        guard.requireAccessForCompany(r.getCompanyId());
+        return r;
     }
 
     private void publish(ProbationEventType type, ProbationRecord r, String detail) {

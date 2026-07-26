@@ -9,6 +9,7 @@ import com.ewos.competency.domain.events.CompetencyEvent;
 import com.ewos.competency.domain.events.CompetencyEventType;
 import com.ewos.competency.infrastructure.persistence.CompetencyRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,17 +25,21 @@ public class CompetencyService {
     private final CompetencyRepository competencies;
     private final CompetencyMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CompetencyService(
             CompetencyRepository competencies,
             CompetencyMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.competencies = competencies;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CompetencyResponse create(CreateCompetencyRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (req.scaleMax() <= req.scaleMin()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "scale_max must be greater than min");
         }
@@ -82,19 +87,25 @@ public class CompetencyService {
 
     @Transactional(readOnly = true)
     public List<CompetencyResponse> listActive(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return competencies.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
     }
 
+    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
     long activeCount(UUID tenantId, UUID companyId) {
         return competencies.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).size();
     }
 
     Competency require(UUID tenantId, UUID id) {
-        return competencies
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Competency not found"));
+        Competency c =
+                competencies
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Competency not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
+        return c;
     }
 
     void assertLevelInScale(Competency c, int level) {

@@ -8,6 +8,7 @@ import com.ewos.competency.domain.RoleCompetency;
 import com.ewos.competency.domain.events.CompetencyEvent;
 import com.ewos.competency.domain.events.CompetencyEventType;
 import com.ewos.competency.infrastructure.persistence.RoleCompetencyRepository;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -23,19 +24,23 @@ public class RoleCompetencyService {
     private final CompetencyService competencies;
     private final CompetencyMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public RoleCompetencyService(
             RoleCompetencyRepository roleCompetencies,
             CompetencyService competencies,
             CompetencyMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.roleCompetencies = roleCompetencies;
         this.competencies = competencies;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public RoleCompetencyResponse set(RoleCompetencyRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Competency c = competencies.require(req.tenantId(), req.competencyId());
         competencies.assertLevelInScale(c, req.requiredLevel());
         RoleCompetency r = new RoleCompetency();
@@ -55,6 +60,7 @@ public class RoleCompetencyService {
     @Transactional(readOnly = true)
     public List<RoleCompetencyResponse> forDesignation(
             UUID tenantId, UUID companyId, String designation) {
+        guard.requireAccessForCompany(companyId);
         return roleCompetencies
                 .findAllByTenantIdAndCompanyIdAndDesignationIgnoreCase(
                         tenantId, companyId, designation)
@@ -65,6 +71,7 @@ public class RoleCompetencyService {
 
     @Transactional(readOnly = true)
     public List<RoleCompetencyResponse> forOrgUnit(UUID tenantId, UUID companyId, UUID orgUnitId) {
+        guard.requireAccessForCompany(companyId);
         return roleCompetencies
                 .findAllByTenantIdAndCompanyIdAndOrgUnitId(tenantId, companyId, orgUnitId)
                 .stream()

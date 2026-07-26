@@ -37,6 +37,7 @@ import com.ewos.succession.infrastructure.persistence.SuccessorCandidateReposito
 import com.ewos.succession.infrastructure.persistence.SuccessorPlanRepository;
 import com.ewos.succession.infrastructure.persistence.TalentPoolMemberRepository;
 import com.ewos.succession.infrastructure.persistence.TalentPoolRepository;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -59,6 +60,7 @@ public class SuccessionService {
     private final EmployeeRepository employees;
     private final SuccessionMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public SuccessionService(
             CareerPathRepository careerPaths,
@@ -70,7 +72,8 @@ public class SuccessionService {
             ReadinessAssessmentRepository readiness,
             EmployeeRepository employees,
             SuccessionMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.careerPaths = careerPaths;
         this.eligibility = eligibility;
         this.pools = pools;
@@ -81,11 +84,13 @@ public class SuccessionService {
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     // Career paths -----------------------------------------------------------
 
     public CareerPathResponse createCareerPath(CreateCareerPathRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (careerPaths.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -108,6 +113,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<CareerPathResponse> listCareerPaths(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return careerPaths.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -116,6 +122,7 @@ public class SuccessionService {
     @Transactional(readOnly = true)
     public List<CareerPathResponse> listCareerPathsFrom(
             UUID tenantId, UUID companyId, String fromDesignation) {
+        guard.requireAccessForCompany(companyId);
         return careerPaths
                 .findAllByTenantIdAndCompanyIdAndFromDesignationIgnoreCaseAndActiveTrue(
                         tenantId, companyId, fromDesignation)
@@ -127,6 +134,7 @@ public class SuccessionService {
     // Promotion eligibility --------------------------------------------------
 
     public EligibilityResponse recordEligibility(EligibilityRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee employee = requireEmployee(req.tenantId(), req.employeeId());
         CareerPath cp =
                 req.careerPathId() == null
@@ -166,6 +174,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<EligibilityResponse> eligibilityHistory(UUID tenantId, UUID employeeId) {
+        guard.requireAccessForCompany(requireEmployee(tenantId, employeeId).getCompanyId());
         return eligibility
                 .findAllByTenantIdAndEmployeeIdOrderByAssessedAtDesc(tenantId, employeeId)
                 .stream()
@@ -176,6 +185,7 @@ public class SuccessionService {
     // Talent pools ----------------------------------------------------------
 
     public PoolResponse createPool(CreatePoolRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (pools.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -196,6 +206,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<PoolResponse> listPools(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return pools.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -224,6 +235,9 @@ public class SuccessionService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Pool member not found"));
+        if (m.getPool() != null) {
+            guard.requireAccessForCompany(m.getPool().getCompanyId());
+        }
         m.setRemovedAt(Instant.now());
         if (m.getPool() != null) {
             publishPool(SuccessionEventType.POOL_MEMBER_REMOVED, m.getPool());
@@ -233,6 +247,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<PoolMemberResponse> poolMembers(UUID tenantId, UUID poolId) {
+        requirePool(tenantId, poolId);
         return poolMembers.findAllByTenantIdAndPoolId(tenantId, poolId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -241,6 +256,7 @@ public class SuccessionService {
     // Successor plans -------------------------------------------------------
 
     public PlanResponse createPlan(CreatePlanRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee incumbent =
                 req.incumbentEmployeeId() == null
                         ? null
@@ -279,6 +295,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<PlanResponse> listPlans(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return plans.findAllByTenantIdAndCompanyId(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -286,6 +303,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<CandidateResponse> candidatesFor(UUID tenantId, UUID planId) {
+        requirePlan(tenantId, planId);
         return candidates.findAllByTenantIdAndPlanIdOrderByPriorityAsc(tenantId, planId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -294,6 +312,7 @@ public class SuccessionService {
     // Readiness assessments -------------------------------------------------
 
     public ReadinessResponse recordReadiness(ReadinessRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee employee = requireEmployee(req.tenantId(), req.employeeId());
         ReadinessAssessment r = new ReadinessAssessment();
         r.setTenantId(req.tenantId());
@@ -322,6 +341,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<ReadinessResponse> readinessHistory(UUID tenantId, UUID employeeId) {
+        guard.requireAccessForCompany(requireEmployee(tenantId, employeeId).getCompanyId());
         return readiness
                 .findAllByTenantIdAndEmployeeIdOrderByAssessedAtDesc(tenantId, employeeId)
                 .stream()
@@ -331,6 +351,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public List<ReadinessResponse> readinessByTier(UUID tenantId, UUID companyId, TalentTier tier) {
+        guard.requireAccessForCompany(companyId);
         return readiness.findAllByTenantIdAndCompanyIdAndTier(tenantId, companyId, tier).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -340,6 +361,7 @@ public class SuccessionService {
 
     @Transactional(readOnly = true)
     public SuccessionDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         long paths =
                 careerPaths.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).size();
         long promotionEligible =
@@ -381,14 +403,25 @@ public class SuccessionService {
     }
 
     private TalentPool requirePool(UUID tenantId, UUID id) {
-        return pools.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Talent pool not found"));
+        TalentPool p =
+                pools.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Talent pool not found"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return p;
     }
 
     private SuccessorPlan requirePlan(UUID tenantId, UUID id) {
-        return plans.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Successor plan not found"));
+        SuccessorPlan p =
+                plans.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Successor plan not found"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return p;
     }
 
     private void publish(SuccessionEventType type, CareerPath c) {

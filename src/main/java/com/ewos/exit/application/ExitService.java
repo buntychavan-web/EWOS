@@ -40,6 +40,7 @@ import com.ewos.exit.infrastructure.persistence.ExitInterviewRepository;
 import com.ewos.exit.infrastructure.persistence.KnowledgeTransferItemRepository;
 import com.ewos.exit.infrastructure.persistence.ResignationRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -63,6 +64,7 @@ public class ExitService {
     private final ResignationLifecyclePolicy lifecycle;
     private final ExitMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public ExitService(
             ResignationRepository resignations,
@@ -74,7 +76,8 @@ public class ExitService {
             EmployeeRepository employees,
             ResignationLifecyclePolicy lifecycle,
             ExitMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.resignations = resignations;
         this.clearances = clearances;
         this.ktItems = ktItems;
@@ -85,11 +88,13 @@ public class ExitService {
         this.lifecycle = lifecycle;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     // Resignation ------------------------------------------------------------
 
     public ResignationResponse submit(CreateResignationRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee employee = requireEmployee(req.tenantId(), req.employeeId());
         if (!employee.getCompanyId().equals(req.companyId())) {
             throw new ApiException(
@@ -204,9 +209,9 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public List<ResignationResponse> resignationsForEmployee(UUID tenantId, UUID employeeId) {
-        return resignations.findAllByTenantIdAndEmployeeId(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Resignation> found = resignations.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(Resignation::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     // Clearance --------------------------------------------------------------
@@ -244,6 +249,7 @@ public class ExitService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Clearance not found"));
+        guard.requireAccessForCompany(c.getResignation().getCompanyId());
         ClearanceStatus prior = c.getStatus();
         c.setStatus(req.status());
         if (req.notes() != null) {
@@ -281,6 +287,7 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public List<ClearanceResponse> listClearances(UUID tenantId, UUID resignationId) {
+        requireResignation(tenantId, resignationId);
         return clearances.findAllByTenantIdAndResignationId(tenantId, resignationId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -308,6 +315,7 @@ public class ExitService {
                 ktItems.findByIdAndTenantId(ktItemId, tenantId)
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "KT item not found"));
+        guard.requireAccessForCompany(k.getResignation().getCompanyId());
         if (k.isCompleted()) {
             return mapper.toResponse(k);
         }
@@ -326,6 +334,7 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public List<KtItemResponse> listKtItems(UUID tenantId, UUID resignationId) {
+        requireResignation(tenantId, resignationId);
         return ktItems.findAllByTenantIdAndResignationId(tenantId, resignationId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -358,6 +367,7 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public InterviewResponse getInterview(UUID tenantId, UUID resignationId) {
+        requireResignation(tenantId, resignationId);
         return interviews
                 .findByTenantIdAndResignationId(tenantId, resignationId)
                 .map(mapper::toResponse)
@@ -401,6 +411,7 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public List<DocumentResponse> listDocuments(UUID tenantId, UUID resignationId) {
+        requireResignation(tenantId, resignationId);
         return documents.findAllByTenantIdAndResignationId(tenantId, resignationId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -409,6 +420,7 @@ public class ExitService {
     // Alumni -----------------------------------------------------------------
 
     public AlumniResponse createAlumni(CreateAlumniRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee employee = requireEmployee(req.tenantId(), req.employeeId());
         if (!employee.getCompanyId().equals(req.companyId())) {
             throw new ApiException(
@@ -447,6 +459,7 @@ public class ExitService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Alumni record not found"));
+        guard.requireAccessForCompany(a.getCompanyId());
         if (req.alumniEmail() != null) {
             a.setAlumniEmail(req.alumniEmail());
         }
@@ -471,14 +484,19 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public AlumniResponse getAlumni(UUID tenantId, UUID id) {
-        return alumni.findByIdAndTenantId(id, tenantId)
-                .map(mapper::toResponse)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Alumni record not found"));
+        AlumniRecord a =
+                alumni.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Alumni record not found"));
+        guard.requireAccessForCompany(a.getCompanyId());
+        return mapper.toResponse(a);
     }
 
     @Transactional(readOnly = true)
     public List<AlumniResponse> listAlumni(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return alumni.findAllByTenantIdAndCompanyId(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -488,6 +506,7 @@ public class ExitService {
 
     @Transactional(readOnly = true)
     public ExitDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         long submitted =
                 resignations.countByTenantIdAndCompanyIdAndStatus(
                         tenantId, companyId, ResignationStatus.SUBMITTED);
@@ -534,9 +553,15 @@ public class ExitService {
     }
 
     private Resignation requireResignation(UUID tenantId, UUID id) {
-        return resignations
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Resignation not found"));
+        Resignation r =
+                resignations
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Resignation not found"));
+        guard.requireAccessForCompany(r.getCompanyId());
+        return r;
     }
 
     private void publish(

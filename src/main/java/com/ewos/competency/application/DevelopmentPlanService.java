@@ -17,6 +17,7 @@ import com.ewos.competency.infrastructure.persistence.DevelopmentPlanRepository;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -35,6 +36,7 @@ public class DevelopmentPlanService {
     private final EmployeeRepository employees;
     private final CompetencyMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public DevelopmentPlanService(
             DevelopmentPlanRepository plans,
@@ -42,16 +44,19 @@ public class DevelopmentPlanService {
             CompetencyService competencies,
             EmployeeRepository employees,
             CompetencyMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.plans = plans;
         this.actions = actions;
         this.competencies = competencies;
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public PlanResponse create(CreatePlanRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(req.employeeId(), req.tenantId())
@@ -148,6 +153,9 @@ public class DevelopmentPlanService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Development action not found"));
+        if (a.getPlan() != null) {
+            guard.requireAccessForCompany(a.getPlan().getCompanyId());
+        }
         if (a.isCompleted()) {
             throw new ApiException(HttpStatus.CONFLICT, "Action already completed");
         }
@@ -166,14 +174,15 @@ public class DevelopmentPlanService {
 
     @Transactional(readOnly = true)
     public List<PlanResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return plans.findAllByTenantIdAndEmployeeId(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<DevelopmentPlan> found = plans.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(DevelopmentPlan::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<PlanResponse> byStatus(
             UUID tenantId, UUID companyId, DevelopmentPlanStatus status) {
+        guard.requireAccessForCompany(companyId);
         return plans.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -181,6 +190,7 @@ public class DevelopmentPlanService {
 
     @Transactional(readOnly = true)
     public List<ActionResponse> actionsFor(UUID tenantId, UUID planId) {
+        require(tenantId, planId);
         return actions.findAllByTenantIdAndPlanId(tenantId, planId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -188,6 +198,7 @@ public class DevelopmentPlanService {
 
     @Transactional(readOnly = true)
     public CompetencyDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return new CompetencyDashboardResponse(
                 competencies.activeCount(tenantId, companyId),
                 plans.countByTenantIdAndCompanyIdAndStatus(
@@ -201,9 +212,14 @@ public class DevelopmentPlanService {
     }
 
     private DevelopmentPlan require(UUID tenantId, UUID id) {
-        return plans.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Development plan not found"));
+        DevelopmentPlan p =
+                plans.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Development plan not found"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return p;
     }
 
     private void publish(CompetencyEventType type, DevelopmentPlan p) {

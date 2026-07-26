@@ -10,6 +10,7 @@ import com.ewos.performance.domain.events.PerformanceEvent;
 import com.ewos.performance.domain.events.PerformanceEventType;
 import com.ewos.performance.infrastructure.persistence.PerformanceCycleRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -25,17 +26,21 @@ public class PerformanceCycleService {
     private final PerformanceCycleRepository cycles;
     private final PerformanceMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public PerformanceCycleService(
             PerformanceCycleRepository cycles,
             PerformanceMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.cycles = cycles;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public PerformanceCycleResponse create(CreatePerformanceCycleRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (!req.periodEnd().isAfter(req.periodStart())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "period_end must be strictly after period_start");
@@ -107,6 +112,7 @@ public class PerformanceCycleService {
 
     @Transactional(readOnly = true)
     public List<PerformanceCycleResponse> list(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return cycles
                 .findAllByTenantIdAndCompanyIdOrderByPeriodStartDesc(tenantId, companyId)
                 .stream()
@@ -115,11 +121,15 @@ public class PerformanceCycleService {
     }
 
     PerformanceCycle require(UUID tenantId, UUID id) {
-        return cycles.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND, "Performance cycle not found"));
+        PerformanceCycle c =
+                cycles.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Performance cycle not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
+        return c;
     }
 
     private void publish(PerformanceEventType type, PerformanceCycle c, String detail) {

@@ -11,6 +11,7 @@ import com.ewos.learning.domain.events.LearningEvent;
 import com.ewos.learning.domain.events.LearningEventType;
 import com.ewos.learning.infrastructure.persistence.TrainingSessionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,21 +29,25 @@ public class TrainingSessionService {
     private final EnrollmentLifecyclePolicy lifecycle;
     private final LearningMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public TrainingSessionService(
             TrainingSessionRepository sessions,
             CourseCatalogueService courses,
             EnrollmentLifecyclePolicy lifecycle,
             LearningMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.sessions = sessions;
         this.courses = courses;
         this.lifecycle = lifecycle;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public SessionResponse schedule(CreateSessionRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         TrainingCourse course = courses.require(req.tenantId(), req.courseId());
         TrainingSession s = new TrainingSession();
         s.setTenantId(req.tenantId());
@@ -111,6 +116,7 @@ public class TrainingSessionService {
 
     @Transactional(readOnly = true)
     public List<SessionResponse> forCourse(UUID tenantId, UUID courseId) {
+        courses.require(tenantId, courseId);
         return sessions.findAllByTenantIdAndCourseIdOrderByStartsAtDesc(tenantId, courseId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -119,6 +125,7 @@ public class TrainingSessionService {
     @Transactional(readOnly = true)
     public List<SessionResponse> byStatus(
             UUID tenantId, UUID companyId, TrainingSessionStatus status) {
+        guard.requireAccessForCompany(companyId);
         return sessions.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -126,11 +133,13 @@ public class TrainingSessionService {
 
     @Transactional(readOnly = true)
     public List<SessionResponse> calendar(UUID tenantId, UUID companyId, Instant from, Instant to) {
+        guard.requireAccessForCompany(companyId);
         return sessions.findCalendar(tenantId, companyId, from, to).stream()
                 .map(mapper::toResponse)
                 .toList();
     }
 
+    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
     long scheduledCount(UUID tenantId, UUID companyId) {
         return sessions.findAllByTenantIdAndCompanyIdAndStatus(
                         tenantId, companyId, TrainingSessionStatus.SCHEDULED)
@@ -138,9 +147,16 @@ public class TrainingSessionService {
     }
 
     TrainingSession require(UUID tenantId, UUID id) {
-        return sessions.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Training session not found"));
+        TrainingSession s =
+                sessions
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Training session not found"));
+        guard.requireAccessForCompany(s.getCompanyId());
+        return s;
     }
 
     private void publish(LearningEventType type, TrainingSession s) {

@@ -13,6 +13,7 @@ import com.ewos.learning.domain.events.LearningEventType;
 import com.ewos.learning.infrastructure.persistence.LearningPathCourseRepository;
 import com.ewos.learning.infrastructure.persistence.LearningPathRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -30,21 +31,25 @@ public class LearningPathService {
     private final CourseCatalogueService courses;
     private final LearningMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public LearningPathService(
             LearningPathRepository paths,
             LearningPathCourseRepository pathCourses,
             CourseCatalogueService courses,
             LearningMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.paths = paths;
         this.pathCourses = pathCourses;
         this.courses = courses;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public LearningPathResponse create(CreateLearningPathRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (paths.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -83,6 +88,7 @@ public class LearningPathService {
 
     @Transactional(readOnly = true)
     public List<LearningPathResponse> listActive(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return paths.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -99,9 +105,14 @@ public class LearningPathService {
     }
 
     LearningPath require(UUID tenantId, UUID id) {
-        return paths.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Learning path not found"));
+        LearningPath p =
+                paths.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Learning path not found"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return p;
     }
 
     private void publish(LearningEventType type, LearningPath p) {
