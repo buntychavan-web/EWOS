@@ -28,5 +28,10 @@ public interface EmployeeRepository
 
     boolean existsByCompanyIdAndUserId(UUID companyId, UUID userId);
 
-    List<Employee> findAllByUserIdIn(Collection<UUID> userIds);
+    /**
+     * {@code left join fetch primaryOrgUnit} avoids the N+1 that would otherwise come from accessing
+     * each returned employee's lazily-fetched org unit once per row (Sprint 1.4 audit, Finding 3).
+     */
+    @Query("select e from Employee e left join fetch e.primaryOrgUnit where e.userId in :userIds")
+    List<Employee> findAllByUserIdIn(@Param("userIds") Collection<UUID> userIds);
 }

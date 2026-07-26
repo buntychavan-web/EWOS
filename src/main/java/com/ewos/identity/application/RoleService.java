@@ -3,13 +3,10 @@ package com.ewos.identity.application;
 import com.ewos.identity.api.RoleMapper;
 import com.ewos.identity.api.dto.CreateRoleRequest;
 import com.ewos.identity.api.dto.PermissionResponse;
-import com.ewos.identity.api.dto.RoleAssignedUserResponse;
-import com.ewos.identity.api.dto.RoleImpactResponse;
 import com.ewos.identity.api.dto.RoleResponse;
 import com.ewos.identity.api.dto.UpdateRoleRequest;
 import com.ewos.identity.domain.Permission;
 import com.ewos.identity.domain.Role;
-import com.ewos.identity.domain.User;
 import com.ewos.identity.infrastructure.persistence.PermissionRepository;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
@@ -26,43 +23,40 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Sprint 1.4 — tenant-scoped custom role CRUD, plus the Product Owner's Role Usage Impact Analysis
- * addition. System roles ({@code tenant_id IS NULL}, e.g. {@code SYSTEM_ADMIN}) are visible everywhere but
- * never writable through this service.
+ * Sprint 1.4 — tenant-scoped custom role CRUD. System roles ({@code tenant_id IS NULL}, e.g. {@code
+ * SYSTEM_ADMIN}) are visible everywhere (via {@link RoleLookupService}) but never writable through this
+ * service. Role Usage Impact Analysis (assigned users / company-department usage / workflow usage) lives in
+ * {@link RoleImpactService} — split out post-audit (Sprint 1.4 audit, Finding 7) so this class stays
+ * focused on CRUD.
  */
 @Service
 @Transactional
-@SuppressWarnings("PMD.ExcessiveImports")
 public class RoleService {
 
     private final RoleRepository roles;
     private final PermissionRepository permissions;
     private final UserRepository users;
     private final RoleMapper mapper;
-    private final RequestTenantContext requestTenantContext;
-    private final RoleCompanyUsageResolver companyUsageResolver;
+    private final RoleLookupService lookup;
     private final RoleWorkflowUsageResolver workflowUsageResolver;
 
-    @SuppressWarnings("PMD.ExcessiveParameterList")
     public RoleService(
             RoleRepository roles,
             PermissionRepository permissions,
             UserRepository users,
             RoleMapper mapper,
-            RequestTenantContext requestTenantContext,
-            RoleCompanyUsageResolver companyUsageResolver,
+            RoleLookupService lookup,
             RoleWorkflowUsageResolver workflowUsageResolver) {
         this.roles = roles;
         this.permissions = permissions;
         this.users = users;
         this.mapper = mapper;
-        this.requestTenantContext = requestTenantContext;
-        this.companyUsageResolver = companyUsageResolver;
+        this.lookup = lookup;
         this.workflowUsageResolver = workflowUsageResolver;
     }
 
     public RoleResponse create(CreateRoleRequest request) {
-        UUID tenantId = requireTenantId();
+        UUID tenantId = lookup.requireTenantId();
         if (roles.existsByTenantIdAndNameIgnoreCase(tenantId, request.name())) {
             throw new ApiException(HttpStatus.CONFLICT, "A role with this name already exists for your tenant");
         }
@@ -76,11 +70,13 @@ public class RoleService {
     }
 
     public RoleResponse update(UUID id, UpdateRoleRequest request) {
-        Role role = requireVisible(id);
+        Role role = lookup.requireVisible(id);
         assertNotSystemRole(role);
 
-        if (request.name() != null && !request.name().equalsIgnoreCase(role.getName())) {
-            if (roles.existsByTenantIdAndNameIgnoreCase(role.getTenantId(), request.name())) {
+        if (request.name() != null && !request.name().equals(role.getName())) {
+            boolean caseOnlyChange = request.name().equalsIgnoreCase(role.getName());
+            if (!caseOnlyChange
+                    && roles.existsByTenantIdAndNameIgnoreCase(role.getTenantId(), request.name())) {
                 throw new ApiException(
                         HttpStatus.CONFLICT, "A role with this name already exists for your tenant");
             }
@@ -97,8 +93,16 @@ public class RoleService {
         return mapper.toResponse(role);
     }
 
+    /**
+     * TOCTOU note (Sprint 1.4 audit, Finding 5): the assigned-user and pending-workflow-task checks below
+     * run in this method's transaction with no row lock, so a concurrent role assignment landing between
+     * the check and the delete is possible in principle. Not fixed here — see the Master Baseline backlog;
+     * closing it properly needs {@code SERIALIZABLE} isolation (and a retry/409 translation for the
+     * resulting serialization failures) for this one method, which is a larger, riskier change than the
+     * rest of this remediation pass and was deliberately deferred rather than half-fixed.
+     */
     public void delete(UUID id) {
-        Role role = requireVisible(id);
+        Role role = lookup.requireVisible(id);
         assertNotSystemRole(role);
 
         long assignedUserCount = users.findAllByRolesId(id).size();
@@ -107,7 +111,7 @@ public class RoleService {
                     HttpStatus.CONFLICT,
                     assignedUserCount + " user(s) currently hold this role; reassign them first");
         }
-        int pendingTasks = workflowUsageResolver.countPendingTasksForRole(requireTenantId(), role.getName());
+        int pendingTasks = workflowUsageResolver.countPendingTasksForRole(lookup.requireTenantId(), role.getName());
         if (pendingTasks > 0) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
@@ -118,42 +122,17 @@ public class RoleService {
 
     @Transactional(readOnly = true)
     public RoleResponse getById(UUID id) {
-        return mapper.toResponse(requireVisible(id));
+        return mapper.toResponse(lookup.requireVisible(id));
     }
 
     @Transactional(readOnly = true)
     public List<RoleResponse> list() {
-        return roles.findAllVisible(requireTenantId()).stream().map(mapper::toResponse).toList();
+        return lookup.listVisible().stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<PermissionResponse> catalog() {
         return permissions.findAll().stream().map(mapper::toResponse).toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<RoleAssignedUserResponse> assignedUsers(UUID id) {
-        requireVisible(id);
-        return users.findAllByRolesId(id).stream().map(mapper::toAssignedUserResponse).toList();
-    }
-
-    @Transactional(readOnly = true)
-    public RoleImpactResponse impact(UUID id) {
-        Role role = requireVisible(id);
-        List<User> assigned = users.findAllByRolesId(id);
-        Set<UUID> userIds = assigned.stream().map(User::getId).collect(Collectors.toSet());
-
-        RoleCompanyUsage usage = companyUsageResolver.resolveUsage(userIds);
-        int pendingTasks = workflowUsageResolver.countPendingTasksForRole(requireTenantId(), role.getName());
-        boolean canDelete = !role.isSystemRole() && assigned.isEmpty() && pendingTasks == 0;
-
-        return mapper.toImpactResponse(role, assigned.size(), usage, pendingTasks, canDelete);
-    }
-
-    private Role requireVisible(UUID id) {
-        return roles
-                .findVisible(id, requireTenantId())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Role not found"));
     }
 
     private static void assertNotSystemRole(Role role) {
@@ -196,16 +175,5 @@ public class RoleService {
         }
         return authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(
                 Collectors.toSet());
-    }
-
-    private UUID requireTenantId() {
-        return requestTenantContext
-                .currentTenantId()
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.FORBIDDEN,
-                                        "No tenant is resolved for the current session — contact an"
-                                                + " administrator to complete account setup"));
     }
 }

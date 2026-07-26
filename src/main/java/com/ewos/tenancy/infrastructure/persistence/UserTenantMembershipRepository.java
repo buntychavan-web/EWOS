@@ -1,6 +1,8 @@
 package com.ewos.tenancy.infrastructure.persistence;
 
 import com.ewos.tenancy.domain.UserTenantMembership;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,4 +14,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface UserTenantMembershipRepository extends JpaRepository<UserTenantMembership, UUID> {
 
     Optional<UserTenantMembership> findByUserId(UUID userId);
+
+    List<UserTenantMembership> findAllByUserIdInAndTenantId(Collection<UUID> userIds, UUID tenantId);
 }

@@ -1,11 +1,11 @@
 package com.ewos.identity.api;
 
 import com.ewos.identity.api.dto.CreateRoleRequest;
-import com.ewos.identity.api.dto.PermissionResponse;
 import com.ewos.identity.api.dto.RoleAssignedUserResponse;
 import com.ewos.identity.api.dto.RoleImpactResponse;
 import com.ewos.identity.api.dto.RoleResponse;
 import com.ewos.identity.api.dto.UpdateRoleRequest;
+import com.ewos.identity.application.RoleImpactService;
 import com.ewos.identity.application.RoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,38 +25,33 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping("/api/v1/roles")
 @Tag(name = "Roles", description = "Tenant-scoped role & permission management (Sprint 1.4)")
 public class RoleController {
 
     private final RoleService service;
+    private final RoleImpactService impactService;
 
-    public RoleController(RoleService service) {
+    public RoleController(RoleService service, RoleImpactService impactService) {
         this.service = service;
+        this.impactService = impactService;
     }
 
-    @GetMapping("/permissions")
-    @PreAuthorize("hasAuthority('ROLE_READ')")
-    @Operation(summary = "Full permission catalog")
-    public List<PermissionResponse> permissions() {
-        return service.catalog();
-    }
-
-    @GetMapping("/roles")
+    @GetMapping
     @PreAuthorize("hasAuthority('ROLE_READ')")
     @Operation(summary = "System roles plus the caller's own tenant's custom roles")
     public List<RoleResponse> list() {
         return service.list();
     }
 
-    @GetMapping("/roles/{id}")
+    @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_READ')")
     @Operation(summary = "Fetch a single role, including its permission set")
     public RoleResponse getById(@PathVariable UUID id) {
         return service.getById(id);
     }
 
-    @PostMapping("/roles")
+    @PostMapping
     @PreAuthorize("hasAuthority('ROLE_WRITE')")
     @Operation(summary = "Create a tenant-scoped custom role")
     public ResponseEntity<RoleResponse> create(@Valid @RequestBody CreateRoleRequest request) {
@@ -64,14 +59,14 @@ public class RoleController {
         return ResponseEntity.created(URI.create("/api/v1/roles/" + created.id())).body(created);
     }
 
-    @PatchMapping("/roles/{id}")
+    @PatchMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_WRITE')")
     @Operation(summary = "Update name / description / permission set; rejects system roles")
     public RoleResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
         return service.update(id, request);
     }
 
-    @DeleteMapping("/roles/{id}")
+    @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_WRITE')")
     @Operation(
             summary = "Delete a role",
@@ -83,21 +78,26 @@ public class RoleController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/roles/{id}/users")
+    @GetMapping("/{id}/users")
     @PreAuthorize("hasAuthority('ROLE_READ')")
-    @Operation(summary = "Every user currently assigned this role (Role Usage Impact Analysis)")
+    @Operation(
+            summary = "Every user currently assigned this role, within the caller's own tenant",
+            description =
+                    "Role Usage Impact Analysis. For a system role visible across tenants, only users"
+                            + " belonging to the caller's own tenant are returned.")
     public List<RoleAssignedUserResponse> assignedUsers(@PathVariable UUID id) {
-        return service.assignedUsers(id);
+        return impactService.assignedUsers(id);
     }
 
-    @GetMapping("/roles/{id}/impact")
+    @GetMapping("/{id}/impact")
     @PreAuthorize("hasAuthority('ROLE_READ')")
     @Operation(
             summary = "Role Usage Impact Analysis",
             description =
                     "Assigned users, companies/departments in use, pending workflow-task usage, and"
-                            + " whether deletion is currently permitted.")
+                            + " whether deletion is currently permitted — all scoped to the caller's own"
+                            + " tenant, even for a system role held across multiple tenants.")
     public RoleImpactResponse impact(@PathVariable UUID id) {
-        return service.impact(id);
+        return impactService.impact(id);
     }
 }

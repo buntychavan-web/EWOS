@@ -14,12 +14,28 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
 
     boolean existsByTenantIdAndNameIgnoreCase(UUID tenantId, String name);
 
-    /** System roles (visible everywhere) plus the caller's own tenant's custom roles. */
-    @Query("select r from Role r where r.tenantId is null or r.tenantId = :tenantId")
+    /**
+     * System roles (visible everywhere) plus the caller's own tenant's custom roles. {@code left
+     * join fetch permissions} avoids the N+1 that would otherwise come from {@code Role.permissions}'
+     * {@code FetchType.EAGER} mapping being populated with one extra query per returned row when a
+     * collection of roles (rather than a single one) is loaded; {@code distinct} collapses the
+     * duplicate root rows the join produces per permission.
+     */
+    @Query(
+            "select distinct r from Role r left join fetch r.permissions where r.tenantId is null"
+                    + " or r.tenantId = :tenantId")
     List<Role> findAllVisible(@Param("tenantId") UUID tenantId);
+
+    /** System roles only — used when no tenant is resolved for the caller (see {@code
+     * RoleLookupService}); system roles must stay visible even then. */
+    @Query("select distinct r from Role r left join fetch r.permissions where r.tenantId is null")
+    List<Role> findAllSystemRoles();
 
     @Query(
             "select r from Role r where r.id = :id and (r.tenantId is null or r.tenantId ="
                     + " :tenantId)")
     Optional<Role> findVisible(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
+
+    @Query("select r from Role r where r.id = :id and r.tenantId is null")
+    Optional<Role> findSystemRoleById(@Param("id") UUID id);
 }

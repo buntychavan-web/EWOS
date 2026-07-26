@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.ewos.identity.api.RoleMapper;
 import com.ewos.identity.api.dto.CreateRoleRequest;
-import com.ewos.identity.api.dto.RoleImpactResponse;
 import com.ewos.identity.api.dto.RoleResponse;
 import com.ewos.identity.api.dto.UpdateRoleRequest;
 import com.ewos.identity.domain.Permission;
@@ -20,7 +19,6 @@ import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.shared.exception.ApiException;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -34,14 +32,17 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+/**
+ * Role CRUD only — Role Usage Impact Analysis (assignedUsers/impact) moved to {@link
+ * RoleImpactServiceTest} when {@link RoleImpactService} was split out (Sprint 1.4 audit, Finding 7).
+ */
 @ExtendWith(MockitoExtension.class)
 class RoleServiceTest {
 
     @Mock RoleRepository roles;
     @Mock PermissionRepository permissions;
     @Mock UserRepository users;
-    @Mock RequestTenantContext requestTenantContext;
-    @Mock RoleCompanyUsageResolver companyUsageResolver;
+    @Mock RoleLookupService lookup;
     @Mock RoleWorkflowUsageResolver workflowUsageResolver;
 
     private RoleService service;
@@ -50,15 +51,8 @@ class RoleServiceTest {
     @BeforeEach
     void setUp() {
         service =
-                new RoleService(
-                        roles,
-                        permissions,
-                        users,
-                        new RoleMapper(),
-                        requestTenantContext,
-                        companyUsageResolver,
-                        workflowUsageResolver);
-        lenient().when(requestTenantContext.currentTenantId()).thenReturn(Optional.of(tenantId));
+                new RoleService(roles, permissions, users, new RoleMapper(), lookup, workflowUsageResolver);
+        lenient().when(lookup.requireTenantId()).thenReturn(tenantId);
         lenient()
                 .when(roles.save(any(Role.class)))
                 .thenAnswer(
@@ -171,7 +165,7 @@ class RoleServiceTest {
     @Test
     void updateRejectsSystemRole() {
         Role systemRole = role("SYSTEM_ADMIN", null);
-        when(roles.findVisible(systemRole.getId(), tenantId)).thenReturn(Optional.of(systemRole));
+        when(lookup.requireVisible(systemRole.getId())).thenReturn(systemRole);
 
         assertThatThrownBy(
                         () -> service.update(systemRole.getId(), new UpdateRoleRequest("X", null, null)))
@@ -184,7 +178,7 @@ class RoleServiceTest {
     void updateRejectsPermissionCallerDoesNotHold() {
         Role custom = role("Custom", tenantId);
         Permission notHeld = permission("PAYROLL_ADMIN");
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
         when(permissions.findAllById(Set.of(notHeld.getId()))).thenReturn(List.of(notHeld));
         grantCurrentAuthorities("EMP_READ");
 
@@ -202,7 +196,7 @@ class RoleServiceTest {
     void updatePartialLeavesUntouchedFieldsAlone() {
         Role custom = role("Custom", tenantId);
         custom.setDescription("original");
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
 
         RoleResponse response = service.update(custom.getId(), new UpdateRoleRequest(null, null, null));
 
@@ -213,7 +207,7 @@ class RoleServiceTest {
     @Test
     void updateRejectsRenameToExistingNameInSameTenant() {
         Role custom = role("Custom", tenantId);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
         when(roles.existsByTenantIdAndNameIgnoreCase(tenantId, "Taken")).thenReturn(true);
 
         assertThatThrownBy(
@@ -223,12 +217,34 @@ class RoleServiceTest {
                 .isEqualTo(HttpStatus.CONFLICT);
     }
 
+    @Test
+    void updateAppliesCaseOnlyRename() {
+        // Sprint 1.4 audit, Finding 6: a rename that only changes casing must still apply.
+        Role custom = role("payroll reviewer", tenantId);
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
+
+        RoleResponse response =
+                service.update(custom.getId(), new UpdateRoleRequest("Payroll Reviewer", null, null));
+
+        assertThat(response.name()).isEqualTo("Payroll Reviewer");
+    }
+
+    @Test
+    void updateCaseOnlyRenameDoesNotTriggerDuplicateNameCheck() {
+        Role custom = role("payroll reviewer", tenantId);
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
+
+        service.update(custom.getId(), new UpdateRoleRequest("Payroll Reviewer", null, null));
+
+        verify(roles, org.mockito.Mockito.never()).existsByTenantIdAndNameIgnoreCase(any(), any());
+    }
+
     // --- delete -------------------------------------------------------------
 
     @Test
     void deleteRejectsSystemRole() {
         Role systemRole = role("SYSTEM_ADMIN", null);
-        when(roles.findVisible(systemRole.getId(), tenantId)).thenReturn(Optional.of(systemRole));
+        when(lookup.requireVisible(systemRole.getId())).thenReturn(systemRole);
 
         assertThatThrownBy(() -> service.delete(systemRole.getId()))
                 .isInstanceOf(ApiException.class)
@@ -239,7 +255,7 @@ class RoleServiceTest {
     @Test
     void deleteRejectsWhenUsersAssigned() {
         Role custom = role("Custom", tenantId);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
         when(users.findAllByRolesId(custom.getId())).thenReturn(List.of(new User()));
 
         assertThatThrownBy(() -> service.delete(custom.getId()))
@@ -251,7 +267,7 @@ class RoleServiceTest {
     @Test
     void deleteRejectsWhenPendingWorkflowTasksExist() {
         Role custom = role("Custom", tenantId);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
         when(users.findAllByRolesId(custom.getId())).thenReturn(List.of());
         when(workflowUsageResolver.countPendingTasksForRole(tenantId, "Custom")).thenReturn(2);
 
@@ -264,7 +280,7 @@ class RoleServiceTest {
     @Test
     void deleteSucceedsWhenUnused() {
         Role custom = role("Custom", tenantId);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
+        when(lookup.requireVisible(custom.getId())).thenReturn(custom);
         when(users.findAllByRolesId(custom.getId())).thenReturn(List.of());
         when(workflowUsageResolver.countPendingTasksForRole(tenantId, "Custom")).thenReturn(0);
 
@@ -278,7 +294,8 @@ class RoleServiceTest {
     @Test
     void getByIdThrows404WhenRoleNotVisible() {
         UUID id = UUID.randomUUID();
-        when(roles.findVisible(id, tenantId)).thenReturn(Optional.empty());
+        when(lookup.requireVisible(id))
+                .thenThrow(new ApiException(HttpStatus.NOT_FOUND, "Role not found"));
 
         assertThatThrownBy(() -> service.getById(id))
                 .isInstanceOf(ApiException.class)
@@ -286,84 +303,12 @@ class RoleServiceTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
-    // --- impact analysis (Product Owner addition) ----------------------------
-
     @Test
-    void impactCanDeleteTrueWhenUnused() {
-        Role custom = role("Custom", tenantId);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
-        when(users.findAllByRolesId(custom.getId())).thenReturn(List.of());
-        when(companyUsageResolver.resolveUsage(Set.of())).thenReturn(new RoleCompanyUsage(List.of(), List.of()));
-        when(workflowUsageResolver.countPendingTasksForRole(tenantId, "Custom")).thenReturn(0);
-
-        RoleImpactResponse impact = service.impact(custom.getId());
-
-        assertThat(impact.canDelete()).isTrue();
-        assertThat(impact.assignedUserCount()).isZero();
-    }
-
-    @Test
-    void impactCanDeleteFalseWhenSystemRole() {
+    void listDelegatesToLookup() {
         Role systemRole = role("SYSTEM_ADMIN", null);
-        when(roles.findVisible(systemRole.getId(), tenantId)).thenReturn(Optional.of(systemRole));
-        when(users.findAllByRolesId(systemRole.getId())).thenReturn(List.of());
-        when(companyUsageResolver.resolveUsage(Set.of())).thenReturn(new RoleCompanyUsage(List.of(), List.of()));
-        when(workflowUsageResolver.countPendingTasksForRole(tenantId, "SYSTEM_ADMIN")).thenReturn(0);
+        when(lookup.listVisible()).thenReturn(List.of(systemRole));
 
-        RoleImpactResponse impact = service.impact(systemRole.getId());
-
-        assertThat(impact.canDelete()).isFalse();
-        assertThat(impact.systemRole()).isTrue();
-    }
-
-    @Test
-    void impactCanDeleteFalseWhenUsersAssigned() {
-        Role custom = role("Custom", tenantId);
-        User assignedUser = new User();
-        assignedUser.setId(UUID.randomUUID());
-        assignedUser.setUsername("alice");
-        assignedUser.setEmail("alice@ex.com");
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
-        when(users.findAllByRolesId(custom.getId())).thenReturn(List.of(assignedUser));
-        when(companyUsageResolver.resolveUsage(Set.of(assignedUser.getId())))
-                .thenReturn(new RoleCompanyUsage(List.of(), List.of()));
-        when(workflowUsageResolver.countPendingTasksForRole(tenantId, "Custom")).thenReturn(0);
-
-        RoleImpactResponse impact = service.impact(custom.getId());
-
-        assertThat(impact.canDelete()).isFalse();
-        assertThat(impact.assignedUserCount()).isEqualTo(1);
-    }
-
-    @Test
-    void impactCanDeleteFalseWhenPendingWorkflowTasksExist() {
-        Role custom = role("Custom", tenantId);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
-        when(users.findAllByRolesId(custom.getId())).thenReturn(List.of());
-        when(companyUsageResolver.resolveUsage(Set.of())).thenReturn(new RoleCompanyUsage(List.of(), List.of()));
-        when(workflowUsageResolver.countPendingTasksForRole(tenantId, "Custom")).thenReturn(3);
-
-        RoleImpactResponse impact = service.impact(custom.getId());
-
-        assertThat(impact.canDelete()).isFalse();
-        assertThat(impact.pendingWorkflowTaskCount()).isEqualTo(3);
-    }
-
-    @Test
-    void assignedUsersReturnsUsersHoldingRole() {
-        Role custom = role("Custom", tenantId);
-        User u = new User();
-        u.setId(UUID.randomUUID());
-        u.setUsername("bob");
-        u.setEmail("bob@ex.com");
-        u.setEnabled(true);
-        when(roles.findVisible(custom.getId(), tenantId)).thenReturn(Optional.of(custom));
-        when(users.findAllByRolesId(custom.getId())).thenReturn(List.of(u));
-
-        var response = service.assignedUsers(custom.getId());
-
-        assertThat(response).hasSize(1);
-        assertThat(response.get(0).username()).isEqualTo("bob");
+        assertThat(service.list()).hasSize(1);
     }
 
     @Test
