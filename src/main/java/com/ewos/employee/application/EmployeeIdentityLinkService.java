@@ -1,18 +1,22 @@
 package com.ewos.employee.application;
 
 import com.ewos.employee.api.EmployeeMapper;
+import com.ewos.employee.api.dto.EmployeeIdentityHistoryResponse;
 import com.ewos.employee.api.dto.EmployeeResponse;
 import com.ewos.employee.api.dto.LinkUserRequest;
 import com.ewos.employee.api.dto.ProvisionUserRequest;
 import com.ewos.employee.api.dto.UnlinkUserRequest;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.domain.EmployeeIdentityLinkAction;
+import com.ewos.employee.domain.EmployeeIdentityLinkHistory;
+import com.ewos.employee.infrastructure.persistence.EmployeeIdentityLinkHistoryRepository;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.identity.api.dto.CreateUserRequest;
 import com.ewos.identity.api.dto.UserResponse;
 import com.ewos.identity.application.UserService;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,6 +35,7 @@ public class EmployeeIdentityLinkService {
     private final ClientAccessGuard guard;
     private final EmployeeMapper mapper;
     private final EmployeeIdentityLinkHistoryRecorder historyRecorder;
+    private final EmployeeIdentityLinkHistoryRepository historyRepository;
     private final UserService userService;
 
     public EmployeeIdentityLinkService(
@@ -38,11 +43,13 @@ public class EmployeeIdentityLinkService {
             ClientAccessGuard guard,
             EmployeeMapper mapper,
             EmployeeIdentityLinkHistoryRecorder historyRecorder,
+            EmployeeIdentityLinkHistoryRepository historyRepository,
             UserService userService) {
         this.employees = employees;
         this.guard = guard;
         this.mapper = mapper;
         this.historyRecorder = historyRecorder;
+        this.historyRepository = historyRepository;
         this.userService = userService;
     }
 
@@ -93,6 +100,25 @@ public class EmployeeIdentityLinkService {
         historyRecorder.record(
                 e, EmployeeIdentityLinkAction.PROVISION, null, created.id(), request.reason());
         return mapper.toResponse(e);
+    }
+
+    public List<EmployeeIdentityHistoryResponse> historyOf(UUID tenantId, UUID employeeId) {
+        Employee e = require(tenantId, employeeId);
+        guard.requireAccessForCompany(e.getCompanyId());
+        return historyRepository.findAllByEmployeeIdOrderByCreatedAtDesc(employeeId).stream()
+                .map(this::toHistoryResponse)
+                .toList();
+    }
+
+    private EmployeeIdentityHistoryResponse toHistoryResponse(EmployeeIdentityLinkHistory h) {
+        return new EmployeeIdentityHistoryResponse(
+                h.getId(),
+                h.getAction(),
+                h.getPreviousUserId(),
+                h.getNewUserId(),
+                h.getReason(),
+                h.getCreatedBy(),
+                h.getCreatedAt());
     }
 
     private Employee require(UUID tenantId, UUID id) {

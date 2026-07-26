@@ -14,13 +14,16 @@ import com.ewos.employee.api.dto.ProvisionUserRequest;
 import com.ewos.employee.api.dto.UnlinkUserRequest;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.domain.EmployeeIdentityLinkAction;
+import com.ewos.employee.domain.EmployeeIdentityLinkHistory;
 import com.ewos.employee.domain.EmployeeStatus;
+import com.ewos.employee.infrastructure.persistence.EmployeeIdentityLinkHistoryRepository;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.identity.api.dto.UserResponse;
 import com.ewos.identity.application.UserService;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -37,6 +40,7 @@ class EmployeeIdentityLinkServiceTest {
     @Mock EmployeeRepository employees;
     @Mock ClientAccessGuard guard;
     @Mock EmployeeIdentityLinkHistoryRecorder historyRecorder;
+    @Mock EmployeeIdentityLinkHistoryRepository historyRepository;
     @Mock UserService userService;
 
     private EmployeeIdentityLinkService service;
@@ -45,7 +49,12 @@ class EmployeeIdentityLinkServiceTest {
     void setUp() {
         service =
                 new EmployeeIdentityLinkService(
-                        employees, guard, new EmployeeMapper(), historyRecorder, userService);
+                        employees,
+                        guard,
+                        new EmployeeMapper(),
+                        historyRecorder,
+                        historyRepository,
+                        userService);
     }
 
     @Test
@@ -183,6 +192,41 @@ class EmployeeIdentityLinkServiceTest {
                         () ->
                                 service.linkUser(
                                         tenantId, employeeId, new LinkUserRequest(UUID.randomUUID(), null)))
+                .isInstanceOf(ApiException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void historyOfReturnsRepositoryRowsMappedToResponses() {
+        UUID tenantId = UUID.randomUUID();
+        Employee e = employee(tenantId);
+        when(employees.findByIdAndTenantId(e.getId(), tenantId)).thenReturn(Optional.of(e));
+        UUID newUserId = UUID.randomUUID();
+        EmployeeIdentityLinkHistory row = new EmployeeIdentityLinkHistory();
+        row.setEmployee(e);
+        row.setAction(EmployeeIdentityLinkAction.LINK);
+        row.setNewUserId(newUserId);
+        row.setReason("onboarding");
+        when(historyRepository.findAllByEmployeeIdOrderByCreatedAtDesc(e.getId()))
+                .thenReturn(List.of(row));
+
+        var result = service.historyOf(tenantId, e.getId());
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).action()).isEqualTo(EmployeeIdentityLinkAction.LINK);
+        assertThat(result.get(0).newUserId()).isEqualTo(newUserId);
+        assertThat(result.get(0).reason()).isEqualTo("onboarding");
+        verify(guard).requireAccessForCompany(e.getCompanyId());
+    }
+
+    @Test
+    void historyOfRejectsUnknownEmployee() {
+        UUID tenantId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        when(employees.findByIdAndTenantId(employeeId, tenantId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.historyOf(tenantId, employeeId))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.NOT_FOUND);

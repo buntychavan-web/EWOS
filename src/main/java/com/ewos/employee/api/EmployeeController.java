@@ -1,5 +1,6 @@
 package com.ewos.employee.api;
 
+import com.ewos.employee.api.dto.EmployeeIdentityHistoryResponse;
 import com.ewos.employee.api.dto.EmployeeResponse;
 import com.ewos.employee.api.dto.EmployeeSearchCriteria;
 import com.ewos.employee.api.dto.HireEmployeeRequest;
@@ -18,6 +19,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -165,5 +167,13 @@ public class EmployeeController {
             @PathVariable UUID id,
             @Valid @RequestBody ProvisionUserRequest request) {
         return identityLinkService.provisionUser(tenantId, id, request);
+    }
+
+    @GetMapping("/{id}/identity-history")
+    @PreAuthorize("hasAuthority('EMP_ADMIN')")
+    @Operation(summary = "Audit trail of link/unlink/provision actions on this employee's login")
+    public List<EmployeeIdentityHistoryResponse> identityHistory(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return identityLinkService.historyOf(tenantId, id);
     }
 }
