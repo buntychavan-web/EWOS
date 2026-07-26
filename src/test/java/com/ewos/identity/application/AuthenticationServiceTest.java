@@ -58,6 +58,8 @@ class AuthenticationServiceTest {
 
     @Mock LoginHistoryRecorder loginHistoryRecorder;
 
+    @Mock TenantClaimResolver tenantClaimResolver;
+
     private final JwtProperties jwtProperties =
             new JwtProperties(
                     "unit-test-secret-key-that-is-definitely-long-enough-for-hs256-signing",
@@ -80,8 +82,10 @@ class AuthenticationServiceTest {
                         jwtService,
                         jwtProperties,
                         loginHistoryRecorder,
-                        lockout);
+                        lockout,
+                        tenantClaimResolver);
         lenient().when(jwtService.generateAccessToken(any(), any())).thenReturn("stub-jwt");
+        lenient().when(tenantClaimResolver.resolveTenantId(any())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -129,6 +133,36 @@ class AuthenticationServiceTest {
         verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
         Object authorities = claimsCaptor.getValue().get("authorities");
         assertThat(authorities).asList().contains("ROLE_SYSTEM_ADMIN", "USER_READ");
+    }
+
+    @Test
+    void loginProjectsResolvedTenantIntoTenantIdClaim() {
+        User user = adminUser();
+        UUID tenantId = UUID.randomUUID();
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
+        when(tenantClaimResolver.resolveTenantId(user.getId())).thenReturn(Optional.of(tenantId));
+
+        service.login("admin", "pw", IP, UA);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
+        assertThat(claimsCaptor.getValue().get("tenantId")).isEqualTo(tenantId.toString());
+    }
+
+    @Test
+    void loginOmitsTenantIdClaimWhenNoMembershipExists() {
+        User user = adminUser();
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
+
+        service.login("admin", "pw", IP, UA);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
+        assertThat(claimsCaptor.getValue()).doesNotContainKey("tenantId");
     }
 
     @Test

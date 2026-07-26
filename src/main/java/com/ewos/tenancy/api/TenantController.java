@@ -4,6 +4,7 @@ import com.ewos.shared.exception.ApiError;
 import com.ewos.tenancy.api.dto.CreateTenantRequest;
 import com.ewos.tenancy.api.dto.TenantResponse;
 import com.ewos.tenancy.api.dto.UpdateTenantRequest;
+import com.ewos.tenancy.application.TenantContext;
 import com.ewos.tenancy.application.TenantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -33,9 +34,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantController {
 
     private final TenantService service;
+    private final TenantContext tenantContext;
 
-    public TenantController(TenantService service) {
+    public TenantController(TenantService service, TenantContext tenantContext) {
         this.service = service;
+        this.tenantContext = tenantContext;
+    }
+
+    @GetMapping("/me")
+    @Operation(summary = "Resolve the caller's own tenant")
+    public TenantResponse getMine() {
+        return service.getById(tenantContext.homeTenantId());
     }
 
     @PostMapping

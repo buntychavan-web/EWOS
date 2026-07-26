@@ -17,6 +17,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class AuthenticationService {
     private final JwtProperties jwtProperties;
     private final LoginHistoryRecorder loginHistoryRecorder;
     private final AccountLockoutService accountLockoutService;
+    private final TenantClaimResolver tenantClaimResolver;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
@@ -53,7 +55,8 @@ public class AuthenticationService {
             JwtService jwtService,
             JwtProperties jwtProperties,
             LoginHistoryRecorder loginHistoryRecorder,
-            AccountLockoutService accountLockoutService) {
+            AccountLockoutService accountLockoutService,
+            TenantClaimResolver tenantClaimResolver) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
@@ -61,6 +64,7 @@ public class AuthenticationService {
         this.jwtProperties = jwtProperties;
         this.loginHistoryRecorder = loginHistoryRecorder;
         this.accountLockoutService = accountLockoutService;
+        this.tenantClaimResolver = tenantClaimResolver;
     }
 
     public TokenResponse login(
@@ -197,10 +201,16 @@ public class AuthenticationService {
     private TokenResponse issueTokens(User user, UUID inheritedFamilyId, String deviceLabel) {
         List<String> authorities = collectAuthorities(user);
 
-        String accessToken =
-                jwtService.generateAccessToken(
-                        user.getId().toString(),
-                        Map.of("authorities", authorities, "username", user.getUsername()));
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("authorities", authorities);
+        claims.put("username", user.getUsername());
+        // Absent when the account has no UserTenantMembership yet (e.g. mid-provisioning) —
+        // TenantContext.homeTenantId() surfaces that as a clear 403 rather than a silent gap.
+        tenantClaimResolver
+                .resolveTenantId(user.getId())
+                .ifPresent(tenantId -> claims.put("tenantId", tenantId.toString()));
+
+        String accessToken = jwtService.generateAccessToken(user.getId().toString(), claims);
 
         String refreshValue = generateOpaqueToken();
         RefreshToken rt = new RefreshToken();

@@ -2,6 +2,7 @@ package com.ewos.identity.infrastructure.security;
 
 import com.ewos.identity.infrastructure.security.jwt.JwtAuthenticationFilter;
 import com.ewos.shared.exception.ApiError;
+import com.ewos.tenancy.infrastructure.security.TenantHeaderValidationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -41,6 +42,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            TenantHeaderValidationFilter tenantHeaderValidationFilter,
             AuthenticationEntryPoint authenticationEntryPoint,
             CorsConfigurationSource corsConfigurationSource)
             throws Exception {
@@ -58,6 +60,7 @@ public class SecurityConfig {
                                         .authenticated())
                 .addFilterBefore(
                         jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(tenantHeaderValidationFilter, JwtAuthenticationFilter.class)
                 .build();
     }
 

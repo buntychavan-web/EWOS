@@ -10,6 +10,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +30,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String AUTHORITIES_CLAIM = "authorities";
+    private static final String TENANT_ID_CLAIM = "tenantId";
+
+    /**
+     * Request-attribute name the resolved tenant is published under, read by {@code
+     * com.ewos.tenancy.application.TenantContext}. Kept as an independently-duplicated literal
+     * rather than a shared constant — see that class's Javadoc for why.
+     */
+    private static final String TENANT_ID_REQUEST_ATTRIBUTE = "com.ewos.tenancy.currentTenantId";
 
     private final JwtService jwtService;
 
@@ -55,6 +65,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authentication.setDetails(
                         new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+                extractTenantId(claims)
+                        .ifPresent(
+                                tenantId ->
+                                        request.setAttribute(TENANT_ID_REQUEST_ATTRIBUTE, tenantId));
             } catch (JwtException ex) {
                 log.debug("Rejected JWT: {}", ex.getMessage());
                 SecurityContextHolder.clearContext();
@@ -74,5 +88,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 .map(SimpleGrantedAuthority::new)
                 .map(GrantedAuthority.class::cast)
                 .toList();
+    }
+
+    private static Optional<UUID> extractTenantId(Claims claims) {
+        Object raw = claims.get(TENANT_ID_CLAIM);
+        if (!(raw instanceof String value) || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException ex) {
+            log.debug("JWT tenantId claim is not a valid UUID: {}", value);
+            return Optional.empty();
+        }
     }
 }

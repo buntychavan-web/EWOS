@@ -6,6 +6,7 @@ import com.ewos.tenancy.api.dto.CompanyResponse;
 import com.ewos.tenancy.api.dto.PayrollCollaborationResponse;
 import com.ewos.tenancy.api.dto.PayrollServiceProviderResponse;
 import com.ewos.tenancy.api.dto.ServiceOfferingResponse;
+import com.ewos.tenancy.api.dto.TenantAccessGrantResponse;
 import com.ewos.tenancy.api.dto.TenantResponse;
 import com.ewos.tenancy.domain.Client;
 import com.ewos.tenancy.domain.ClientAssignment;
@@ -14,6 +15,7 @@ import com.ewos.tenancy.domain.PayrollCollaboration;
 import com.ewos.tenancy.domain.PayrollServiceProvider;
 import com.ewos.tenancy.domain.ServiceOffering;
 import com.ewos.tenancy.domain.Tenant;
+import com.ewos.tenancy.domain.TenantAccessGrant;
 import org.springframework.stereotype.Component;
 
 /**
@@ -133,5 +135,21 @@ public final class TenancyMapper {
                 collaboration.getCreatedBy(),
                 collaboration.getUpdatedBy(),
                 collaboration.getVersionNo());
+    }
+
+    public TenantAccessGrantResponse toResponse(TenantAccessGrant grant) {
+        return new TenantAccessGrantResponse(
+                grant.getId(),
+                grant.getUserId(),
+                grant.getTenantId(),
+                grant.getGrantedBy(),
+                grant.getReason(),
+                grant.getExpiresAt(),
+                grant.getRevokedAt(),
+                grant.getRevokedBy(),
+                grant.isActive(),
+                grant.getCreatedAt(),
+                grant.getUpdatedAt(),
+                grant.getVersionNo());
     }
 }
