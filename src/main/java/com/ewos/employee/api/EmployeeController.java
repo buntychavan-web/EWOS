@@ -176,4 +176,22 @@ public class EmployeeController {
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return identityLinkService.historyOf(tenantId, id);
     }
+
+    @GetMapping("/me/reports")
+    @Operation(
+            summary = "Direct reports of the caller's own linked employee record (manager self-service)",
+            description =
+                    "Requires only authentication, not EMP_READ — reuses the existing "
+                            + "managerEmployeeId search filter, scoped to the caller's own employee ID. "
+                            + "Empty for a caller with no linked employee or no direct reports.")
+    public List<EmployeeResponse> myReports() {
+        UUID tenantId = tenantContext.homeTenantId();
+        UUID employeeId = employeeContext.currentEmployeeId().orElse(null);
+        if (employeeId == null) {
+            return List.of();
+        }
+        EmployeeSearchCriteria criteria =
+                new EmployeeSearchCriteria(tenantId, null, null, employeeId, null, null, null, null, null, null);
+        return service.search(criteria, Pageable.unpaged()).getContent();
+    }
 }
