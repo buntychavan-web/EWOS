@@ -1,6 +1,7 @@
 package com.ewos.workflow.application;
 
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.WorkflowMapper;
 import com.ewos.workflow.api.dto.AssignTaskRequest;
 import com.ewos.workflow.api.dto.CompleteTaskRequest;
@@ -27,16 +28,19 @@ public class WorkflowTaskService {
     private final WorkflowInstanceService instanceService;
     private final WorkflowTransitionPolicy policy;
     private final WorkflowMapper mapper;
+    private final ClientAccessGuard guard;
 
     public WorkflowTaskService(
             WorkflowTaskRepository tasks,
             WorkflowInstanceService instanceService,
             WorkflowTransitionPolicy policy,
-            WorkflowMapper mapper) {
+            WorkflowMapper mapper,
+            ClientAccessGuard guard) {
         this.tasks = tasks;
         this.instanceService = instanceService;
         this.policy = policy;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     /** Assigns a new human task against the current state of an instance. */
@@ -120,26 +124,26 @@ public class WorkflowTaskService {
 
     @Transactional(readOnly = true)
     public List<WorkflowTaskResponse> myOpenTasks(UUID tenantId, UUID actorId) {
-        return tasks
-                .findAllByTenantIdAndAssigneeActorIdAndStatusIn(
+        List<WorkflowTask> found =
+                tasks.findAllByTenantIdAndAssigneeActorIdAndStatusIn(
                         tenantId,
                         actorId,
-                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED))
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED));
+        guard.requireAccessForCompanies(
+                found.stream().map(t -> t.getInstance().getCompanyId()).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<WorkflowTaskResponse> openTasksForRole(UUID tenantId, String roleCode) {
-        return tasks
-                .findAllByTenantIdAndAssigneeRoleCodeAndStatusIn(
+        List<WorkflowTask> found =
+                tasks.findAllByTenantIdAndAssigneeRoleCodeAndStatusIn(
                         tenantId,
                         roleCode,
-                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED))
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED));
+        guard.requireAccessForCompanies(
+                found.stream().map(t -> t.getInstance().getCompanyId()).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -157,9 +161,14 @@ public class WorkflowTaskService {
     }
 
     private WorkflowTask require(UUID tenantId, UUID id) {
-        return tasks.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Workflow task not found"));
+        WorkflowTask task =
+                tasks.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Workflow task not found"));
+        guard.requireAccessForCompany(task.getInstance().getCompanyId());
+        return task;
     }
 
     private static UUID currentActor() {

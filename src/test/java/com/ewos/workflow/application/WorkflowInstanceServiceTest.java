@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.WorkflowMapper;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.domain.WorkflowDefinition;
@@ -38,6 +39,7 @@ class WorkflowInstanceServiceTest {
     @Mock WorkflowHistoryRepository history;
     @Mock WorkflowDefinitionService definitions;
     @Mock ApplicationEventPublisher events;
+    @Mock ClientAccessGuard guard;
 
     private final WorkflowTransitionPolicy policy = new WorkflowTransitionPolicy();
     private WorkflowInstanceService service;
@@ -46,7 +48,7 @@ class WorkflowInstanceServiceTest {
     void setUp() {
         service =
                 new WorkflowInstanceService(
-                        instances, history, definitions, policy, new WorkflowMapper(), events);
+                        instances, history, definitions, policy, new WorkflowMapper(), events, guard);
         lenient()
                 .when(instances.save(any(WorkflowInstance.class)))
                 .thenAnswer(

@@ -1,6 +1,7 @@
 package com.ewos.workflow.application;
 
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.WorkflowMapper;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowHistoryResponse;
@@ -41,6 +42,7 @@ public class WorkflowInstanceService {
     private final WorkflowTransitionPolicy policy;
     private final WorkflowMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public WorkflowInstanceService(
             WorkflowInstanceRepository instances,
@@ -48,16 +50,19 @@ public class WorkflowInstanceService {
             WorkflowDefinitionService definitions,
             WorkflowTransitionPolicy policy,
             WorkflowMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.instances = instances;
         this.history = history;
         this.definitions = definitions;
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public WorkflowInstanceResponse start(StartInstanceRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         WorkflowDefinition def = definitions.require(request.tenantId(), request.definitionId());
         if (!def.isActive()) {
             throw new ApiException(HttpStatus.CONFLICT, "Workflow definition is inactive");
@@ -165,11 +170,12 @@ public class WorkflowInstanceService {
     @Transactional(readOnly = true)
     public List<WorkflowInstanceResponse> findBySubject(
             UUID tenantId, String subjectType, UUID subjectId) {
-        return instances
-                .findAllByTenantIdAndSubjectTypeAndSubjectId(tenantId, subjectType, subjectId)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<WorkflowInstance> found =
+                instances.findAllByTenantIdAndSubjectTypeAndSubjectId(
+                        tenantId, subjectType, subjectId);
+        guard.requireAccessForCompanies(
+                found.stream().map(WorkflowInstance::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -182,12 +188,16 @@ public class WorkflowInstanceService {
 
     /** Package-private lookup used by {@link WorkflowTaskService}. */
     WorkflowInstance require(UUID tenantId, UUID id) {
-        return instances
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND, "Workflow instance not found"));
+        WorkflowInstance instance =
+                instances
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Workflow instance not found"));
+        guard.requireAccessForCompany(instance.getCompanyId());
+        return instance;
     }
 
     private void maybeAutoAdvance(WorkflowInstance instance) {
