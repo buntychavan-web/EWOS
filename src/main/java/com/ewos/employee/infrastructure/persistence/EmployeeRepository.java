@@ -1,6 +1,7 @@
 package com.ewos.employee.infrastructure.persistence;
 
 import com.ewos.employee.domain.Employee;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,4 +27,6 @@ public interface EmployeeRepository
     List<Employee> findAllByUserIdAndTenantId(UUID userId, UUID tenantId);
 
     boolean existsByCompanyIdAndUserId(UUID companyId, UUID userId);
+
+    List<Employee> findAllByUserIdIn(Collection<UUID> userIds);
 }

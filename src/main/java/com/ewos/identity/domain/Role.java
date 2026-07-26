@@ -12,6 +12,7 @@ import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -20,6 +21,15 @@ import org.hibernate.annotations.SQLRestriction;
 @SQLDelete(sql = "UPDATE roles SET deleted_at = NOW(), version = version + 1 WHERE id = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class Role extends AuditableEntity {
+
+    /**
+     * Sprint 1.4 — {@code null} for a system role (e.g. {@code SYSTEM_ADMIN}), visible platform-wide and
+     * immutable via the tenant-facing role API. Non-null scopes a tenant's own custom role, visible and
+     * usable only inside that tenant. Plain {@code UUID}, no hard FK — same cross-module convention as
+     * {@code employees.tenant_id}/{@code company_id}/{@code user_id}.
+     */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
 
     @Column(name = "name", nullable = false, length = 100)
     private String name;
@@ -46,6 +56,18 @@ public class Role extends AuditableEntity {
     public Role(String name, String description) {
         this.name = name;
         this.description = description;
+    }
+
+    public UUID getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(UUID tenantId) {
+        this.tenantId = tenantId;
+    }
+
+    public boolean isSystemRole() {
+        return tenantId == null;
     }
 
     public String getName() {

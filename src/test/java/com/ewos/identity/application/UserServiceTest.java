@@ -42,6 +42,7 @@ class UserServiceTest {
     @Mock PasswordEncoder passwordEncoder;
     @Mock PasswordPolicyValidator passwordPolicy;
     @Mock PasswordHistoryService passwordHistory;
+    @Mock RequestTenantContext requestTenantContext;
 
     private UserService service;
 
@@ -54,7 +55,8 @@ class UserServiceTest {
                         passwordEncoder,
                         passwordPolicy,
                         passwordHistory,
-                        new com.ewos.identity.api.UserMapper());
+                        new com.ewos.identity.api.UserMapper(),
+                        requestTenantContext);
         lenient()
                 .when(userRepository.save(any(User.class)))
                 .thenAnswer(
@@ -198,6 +200,66 @@ class UserServiceTest {
         assertThat(user.getEmail()).isEqualTo("new@ewos.local");
         assertThat(user.getRoles()).extracting(Role::getName).containsExactly("MANAGER");
         assertThat(response.email()).isEqualTo("new@ewos.local");
+    }
+
+    @Test
+    void createRejectsRoleScopedToAnotherTenant() {
+        UUID callerTenant = UUID.randomUUID();
+        UUID otherTenant = UUID.randomUUID();
+        Role foreignRole = role("PAYROLL_REVIEWER");
+        foreignRole.setTenantId(otherTenant);
+        when(roleRepository.findAllById(Set.of(foreignRole.getId()))).thenReturn(List.of(foreignRole));
+        when(requestTenantContext.currentTenantId()).thenReturn(Optional.of(callerTenant));
+
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        new CreateUserRequest(
+                                                "jane",
+                                                "jane@ewos.local",
+                                                "Str0ng!Pass",
+                                                Set.of(foreignRole.getId()),
+                                                null)))
+                .isInstanceOf(ApiException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void createAllowsRoleScopedToCallersOwnTenant() {
+        UUID callerTenant = UUID.randomUUID();
+        Role ownRole = role("PAYROLL_REVIEWER");
+        ownRole.setTenantId(callerTenant);
+        when(roleRepository.findAllById(Set.of(ownRole.getId()))).thenReturn(List.of(ownRole));
+        when(requestTenantContext.currentTenantId()).thenReturn(Optional.of(callerTenant));
+
+        UserResponse response =
+                service.create(
+                        new CreateUserRequest(
+                                "jane",
+                                "jane@ewos.local",
+                                "Str0ng!Pass",
+                                Set.of(ownRole.getId()),
+                                null));
+
+        assertThat(response.roles()).hasSize(1);
+    }
+
+    @Test
+    void createAllowsSystemRoleRegardlessOfCallerTenant() {
+        Role systemRole = role("SYSTEM_ADMIN");
+        when(roleRepository.findAllById(Set.of(systemRole.getId()))).thenReturn(List.of(systemRole));
+
+        UserResponse response =
+                service.create(
+                        new CreateUserRequest(
+                                "jane",
+                                "jane@ewos.local",
+                                "Str0ng!Pass",
+                                Set.of(systemRole.getId()),
+                                null));
+
+        assertThat(response.roles()).hasSize(1);
     }
 
     @Test

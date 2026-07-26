@@ -32,20 +32,24 @@ public class UserService {
     private final PasswordPolicyValidator passwordPolicy;
     private final PasswordHistoryService passwordHistory;
     private final UserMapper userMapper;
+    private final RequestTenantContext requestTenantContext;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public UserService(
             UserRepository userRepository,
             RoleRepository roleRepository,
             PasswordEncoder passwordEncoder,
             PasswordPolicyValidator passwordPolicy,
             PasswordHistoryService passwordHistory,
-            UserMapper userMapper) {
+            UserMapper userMapper,
+            RequestTenantContext requestTenantContext) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
         this.passwordHistory = passwordHistory;
         this.userMapper = userMapper;
+        this.requestTenantContext = requestTenantContext;
     }
 
     public UserResponse create(CreateUserRequest request) {
@@ -143,6 +147,17 @@ public class UserService {
         Set<Role> roles = new HashSet<>(roleRepository.findAllById(roleIds));
         if (roles.size() != roleIds.size()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "One or more role IDs are unknown");
+        }
+        // Sprint 1.4: a role scoped to another tenant may never be assigned, even by an admin who can
+        // otherwise see and manage users platform-wide. System roles (tenantId == null) are always
+        // assignable.
+        UUID callerTenantId = requestTenantContext.currentTenantId().orElse(null);
+        for (Role role : roles) {
+            if (role.getTenantId() != null && !role.getTenantId().equals(callerTenantId)) {
+                throw new ApiException(
+                        HttpStatus.FORBIDDEN,
+                        "Role '" + role.getName() + "' does not belong to your tenant");
+            }
         }
         return roles;
     }
