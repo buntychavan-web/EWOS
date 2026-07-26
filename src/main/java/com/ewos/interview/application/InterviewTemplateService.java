@@ -9,6 +9,7 @@ import com.ewos.interview.domain.events.InterviewEvent;
 import com.ewos.interview.domain.events.InterviewEventType;
 import com.ewos.interview.infrastructure.persistence.InterviewTemplateRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -24,17 +25,21 @@ public class InterviewTemplateService {
     private final InterviewTemplateRepository templates;
     private final InterviewMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public InterviewTemplateService(
             InterviewTemplateRepository templates,
             InterviewMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.templates = templates;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public InterviewTemplateResponse create(CreateInterviewTemplateRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (templates.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -89,6 +94,7 @@ public class InterviewTemplateService {
 
     @Transactional(readOnly = true)
     public List<InterviewTemplateResponse> listForCompany(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return templates.findAllByTenantIdAndCompanyIdOrderByCodeAsc(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -99,12 +105,16 @@ public class InterviewTemplateService {
     }
 
     InterviewTemplate require(UUID tenantId, UUID id) {
-        return templates
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND, "Interview template not found"));
+        InterviewTemplate t =
+                templates
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Interview template not found"));
+        guard.requireAccessForCompany(t.getCompanyId());
+        return t;
     }
 
     private void publish(InterviewEventType type, InterviewTemplate t) {

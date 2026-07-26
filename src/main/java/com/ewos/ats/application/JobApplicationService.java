@@ -22,6 +22,7 @@ import com.ewos.recruitment.domain.JobRequisition;
 import com.ewos.recruitment.domain.RequisitionStatus;
 import com.ewos.recruitment.infrastructure.persistence.JobRequisitionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -48,6 +49,7 @@ public class JobApplicationService {
     private final CandidateTimelineService timeline;
     private final AtsMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public JobApplicationService(
             JobApplicationRepository applications,
@@ -58,7 +60,8 @@ public class JobApplicationService {
             ApplicationPolicy policy,
             CandidateTimelineService timeline,
             AtsMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.applications = applications;
         this.candidates = candidates;
         this.requisitions = requisitions;
@@ -68,9 +71,11 @@ public class JobApplicationService {
         this.timeline = timeline;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public JobApplicationResponse create(CreateApplicationRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (applications.existsByTenantIdAndCompanyIdAndApplicationNumberIgnoreCase(
                 req.tenantId(), req.companyId(), req.applicationNumber())) {
             throw new ApiException(
@@ -242,34 +247,45 @@ public class JobApplicationService {
 
     @Transactional(readOnly = true)
     public List<JobApplicationResponse> forCandidate(UUID tenantId, UUID candidateId) {
-        return applications
-                .findAllByTenantIdAndCandidateIdOrderByAppliedAtDesc(tenantId, candidateId)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<JobApplication> found =
+                applications.findAllByTenantIdAndCandidateIdOrderByAppliedAtDesc(
+                        tenantId, candidateId);
+        guard.requireAccessForCompanies(found.stream().map(JobApplication::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<JobApplicationResponse> forRequisition(UUID tenantId, UUID requisitionId) {
-        return applications
-                .findAllByTenantIdAndJobRequisitionIdOrderByAppliedAtDesc(tenantId, requisitionId)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<JobApplication> found =
+                applications.findAllByTenantIdAndJobRequisitionIdOrderByAppliedAtDesc(
+                        tenantId, requisitionId);
+        guard.requireAccessForCompanies(found.stream().map(JobApplication::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public Page<JobApplicationResponse> byStatus(
             UUID tenantId, UUID companyId, ApplicationStatus status, Pageable page) {
+        guard.requireAccessForCompany(companyId);
         return applications
                 .findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status, page)
                 .map(mapper::toResponse);
     }
 
+    /**
+     * Resolves an application and enforces the Chinese Wall — the choke point advance/reject/
+     * withdraw/hold/resume/getById all call through, so guarding here covers all of them at once.
+     */
     private JobApplication require(UUID tenantId, UUID id) {
-        return applications
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Application not found"));
+        JobApplication a =
+                applications
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Application not found"));
+        guard.requireAccessForCompany(a.getCompanyId());
+        return a;
     }
 
     private Employee resolveEmployee(UUID tenantId, UUID employeeId) {

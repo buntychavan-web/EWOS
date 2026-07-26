@@ -7,6 +7,7 @@ import com.ewos.offer.domain.preboarding.PreboardingTaskOwner;
 import com.ewos.offer.domain.preboarding.PreboardingTaskTemplate;
 import com.ewos.offer.infrastructure.persistence.PreboardingTaskTemplateRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -19,14 +20,19 @@ public class PreboardingTaskTemplateService {
 
     private final PreboardingTaskTemplateRepository templates;
     private final OfferMapper mapper;
+    private final ClientAccessGuard guard;
 
     public PreboardingTaskTemplateService(
-            PreboardingTaskTemplateRepository templates, OfferMapper mapper) {
+            PreboardingTaskTemplateRepository templates,
+            OfferMapper mapper,
+            ClientAccessGuard guard) {
         this.templates = templates;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public PreboardingTaskTemplateResponse create(CreatePreboardingTaskTemplateRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (templates.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -54,6 +60,7 @@ public class PreboardingTaskTemplateService {
 
     @Transactional(readOnly = true)
     public List<PreboardingTaskTemplateResponse> listForCompany(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return templates
                 .findAllByTenantIdAndCompanyIdOrderBySortOrderAsc(tenantId, companyId)
                 .stream()
@@ -70,6 +77,7 @@ public class PreboardingTaskTemplateService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Preboarding task template not found"));
+        guard.requireAccessForCompany(t.getCompanyId());
         templates.delete(t);
     }
 

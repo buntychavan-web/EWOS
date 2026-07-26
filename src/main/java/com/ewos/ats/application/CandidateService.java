@@ -20,6 +20,7 @@ import com.ewos.ats.infrastructure.persistence.CandidateRepository;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +43,7 @@ public class CandidateService {
     private final CandidateTimelineService timeline;
     private final AtsMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CandidateService(
             CandidateRepository candidates,
@@ -50,7 +52,8 @@ public class CandidateService {
             DuplicateCandidateDetector duplicates,
             CandidateTimelineService timeline,
             AtsMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.candidates = candidates;
         this.employees = employees;
         this.numbers = numbers;
@@ -58,9 +61,11 @@ public class CandidateService {
         this.timeline = timeline;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CreateCandidateResult create(CreateCandidateRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         String number =
                 req.candidateNumber() == null || req.candidateNumber().isBlank()
                         ? numbers.generate(req.tenantId(), req.companyId())
@@ -189,6 +194,7 @@ public class CandidateService {
     @Transactional(readOnly = true)
     public Page<CandidateResponse> list(
             UUID tenantId, UUID companyId, CandidateStatus status, Pageable page) {
+        guard.requireAccessForCompany(companyId);
         Page<Candidate> results =
                 status == null
                         ? candidates.findAllByTenantIdAndCompanyId(tenantId, companyId, page)
@@ -205,10 +211,19 @@ public class CandidateService {
                 .toList();
     }
 
+    /**
+     * Resolves a candidate and enforces the Chinese Wall — the single choke point every other ATS
+     * service (notes, tags, documents, résumés, communications, job applications) also calls
+     * through, so guarding here closes the gap for all of them at once.
+     */
     public Candidate require(UUID tenantId, UUID id) {
-        return candidates
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Candidate not found"));
+        Candidate c =
+                candidates
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Candidate not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
+        return c;
     }
 
     private void assertMutable(Candidate c) {

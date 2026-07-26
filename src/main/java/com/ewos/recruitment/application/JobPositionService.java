@@ -11,6 +11,7 @@ import com.ewos.recruitment.domain.events.RecruitmentEvent;
 import com.ewos.recruitment.domain.events.RecruitmentEventType;
 import com.ewos.recruitment.infrastructure.persistence.JobPositionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,19 +29,23 @@ public class JobPositionService {
     private final OrganizationUnitRepository orgUnits;
     private final RecruitmentMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public JobPositionService(
             JobPositionRepository positions,
             OrganizationUnitRepository orgUnits,
             RecruitmentMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.positions = positions;
         this.orgUnits = orgUnits;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public JobPositionResponse create(CreateJobPositionRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (positions.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -71,6 +76,7 @@ public class JobPositionService {
 
     public JobPositionResponse update(UUID tenantId, UUID id, UpdateJobPositionRequest req) {
         JobPosition p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
         assertSalaryBand(req.salaryMin(), req.salaryMax());
 
         boolean wasActive = p.isActive();
@@ -100,11 +106,14 @@ public class JobPositionService {
 
     @Transactional(readOnly = true)
     public JobPositionResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        JobPosition p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
+        return mapper.toResponse(p);
     }
 
     @Transactional(readOnly = true)
     public List<JobPositionResponse> listForCompany(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return positions.findAllByTenantIdAndCompanyIdOrderByCodeAsc(tenantId, companyId).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -112,6 +121,7 @@ public class JobPositionService {
 
     public void delete(UUID tenantId, UUID id) {
         JobPosition p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
         positions.delete(p);
     }
 

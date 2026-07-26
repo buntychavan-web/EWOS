@@ -29,6 +29,7 @@ import com.ewos.organization.domain.OrganizationUnit;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.recruitment.domain.JobRequisition;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
 import com.ewos.workflow.application.WorkflowInstanceService;
@@ -57,6 +58,7 @@ public class OfferService {
     private final OfferNotifier notifier;
     private final OfferMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public OfferService(
             OfferRepository offers,
@@ -68,7 +70,8 @@ public class OfferService {
             OfferPolicy policy,
             OfferNotifier notifier,
             OfferMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.offers = offers;
         this.negotiations = negotiations;
         this.templates = templates;
@@ -79,9 +82,11 @@ public class OfferService {
         this.notifier = notifier;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public OfferResponse create(CreateOfferRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (offers.existsByTenantIdAndCompanyIdAndOfferNumberIgnoreCase(
                 req.tenantId(), req.companyId(), req.offerNumber())) {
             throw new ApiException(
@@ -381,15 +386,15 @@ public class OfferService {
 
     @Transactional(readOnly = true)
     public List<OfferResponse> forApplication(UUID tenantId, UUID applicationId) {
-        return offers
-                .findAllByTenantIdAndApplicationIdOrderByVersionAsc(tenantId, applicationId)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Offer> found =
+                offers.findAllByTenantIdAndApplicationIdOrderByVersionAsc(tenantId, applicationId);
+        guard.requireAccessForCompanies(found.stream().map(Offer::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<OfferResponse> byStatus(UUID tenantId, UUID companyId, OfferStatus status) {
+        guard.requireAccessForCompany(companyId);
         return offers.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -405,10 +410,16 @@ public class OfferService {
                 .toList();
     }
 
-    /** Package-visible: preboarding service resolves offers through here. */
+    /**
+     * Package-visible: the preboarding service resolves offers through here too, so guarding here
+     * covers both.
+     */
     Offer require(UUID tenantId, UUID id) {
-        return offers.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Offer not found"));
+        Offer o =
+                offers.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Offer not found"));
+        guard.requireAccessForCompany(o.getCompanyId());
+        return o;
     }
 
     private OrganizationUnit resolveOrgUnit(UUID tenantId, UUID orgUnitId) {

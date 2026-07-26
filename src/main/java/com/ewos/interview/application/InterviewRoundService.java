@@ -22,6 +22,7 @@ import com.ewos.interview.domain.events.InterviewEventType;
 import com.ewos.interview.infrastructure.persistence.InterviewParticipantRepository;
 import com.ewos.interview.infrastructure.persistence.InterviewRoundRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,7 @@ public class InterviewRoundService {
     private final InterviewNotifier notifier;
     private final InterviewMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public InterviewRoundService(
             InterviewRoundRepository rounds,
@@ -56,7 +58,8 @@ public class InterviewRoundService {
             CalendarIntegration calendar,
             InterviewNotifier notifier,
             InterviewMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.rounds = rounds;
         this.participants = participants;
         this.applications = applications;
@@ -67,6 +70,7 @@ public class InterviewRoundService {
         this.notifier = notifier;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public InterviewRoundResponse create(UUID tenantId, CreateInterviewRoundRequest req) {
@@ -77,6 +81,7 @@ public class InterviewRoundService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.BAD_REQUEST, "Application not found"));
+        guard.requireAccessForCompany(app.getCompanyId());
 
         InterviewTemplate template =
                 req.templateId() == null ? null : templates.require(tenantId, req.templateId());
@@ -205,16 +210,17 @@ public class InterviewRoundService {
 
     @Transactional(readOnly = true)
     public List<InterviewRoundResponse> forApplication(UUID tenantId, UUID applicationId) {
-        return rounds
-                .findAllByTenantIdAndApplicationIdOrderByRoundNumberAsc(tenantId, applicationId)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<InterviewRound> found =
+                rounds.findAllByTenantIdAndApplicationIdOrderByRoundNumberAsc(
+                        tenantId, applicationId);
+        guard.requireAccessForCompanies(found.stream().map(InterviewRound::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<InterviewRoundResponse> byStatus(
             UUID tenantId, UUID companyId, InterviewStatus status) {
+        guard.requireAccessForCompany(companyId);
         return rounds.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -223,6 +229,7 @@ public class InterviewRoundService {
     @Transactional(readOnly = true)
     public List<InterviewRoundResponse> scheduledBetween(
             UUID tenantId, UUID companyId, Instant from, Instant to) {
+        guard.requireAccessForCompany(companyId);
         return rounds
                 .findAllByTenantIdAndCompanyIdAndScheduledStartBetweenOrderByScheduledStartAsc(
                         tenantId, companyId, from, to)
@@ -231,11 +238,19 @@ public class InterviewRoundService {
                 .toList();
     }
 
-    /** Package-private: sibling services look up rounds through here. */
+    /**
+     * Package-private: sibling services look up rounds through here, so guarding here covers all
+     * of them at once (same pattern as {@code JobApplicationService.require}).
+     */
     InterviewRound require(UUID tenantId, UUID id) {
-        return rounds.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Interview round not found"));
+        InterviewRound r =
+                rounds.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Interview round not found"));
+        guard.requireAccessForCompany(r.getCompanyId());
+        return r;
     }
 
     private int nextRoundNumber(UUID tenantId, UUID applicationId) {

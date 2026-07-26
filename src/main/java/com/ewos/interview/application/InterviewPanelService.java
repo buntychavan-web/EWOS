@@ -13,6 +13,7 @@ import com.ewos.interview.domain.events.InterviewEvent;
 import com.ewos.interview.domain.events.InterviewEventType;
 import com.ewos.interview.infrastructure.persistence.InterviewParticipantRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -30,18 +31,21 @@ public class InterviewPanelService {
     private final EmployeeRepository employees;
     private final InterviewMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public InterviewPanelService(
             InterviewParticipantRepository participants,
             InterviewRoundService rounds,
             EmployeeRepository employees,
             InterviewMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.participants = participants;
         this.rounds = rounds;
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public InterviewParticipantResponse addParticipant(
@@ -82,6 +86,7 @@ public class InterviewPanelService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Interview participant not found"));
+        guard.requireAccessForCompany(p.getRound().getCompanyId());
         p.setAttendance(req.attendance());
         publish(InterviewEventType.PANEL_ATTENDANCE_UPDATED, p.getRound(), req.attendance().name());
         return mapper.toResponse(p);
@@ -96,6 +101,7 @@ public class InterviewPanelService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Interview participant not found"));
+        guard.requireAccessForCompany(p.getRound().getCompanyId());
         InterviewRound round = p.getRound();
         UUID employeeId = p.getEmployee().getId();
         participants.delete(p);

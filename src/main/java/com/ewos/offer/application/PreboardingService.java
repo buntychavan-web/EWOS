@@ -26,6 +26,7 @@ import com.ewos.offer.infrastructure.persistence.OfferRepository;
 import com.ewos.offer.infrastructure.persistence.PreboardingChecklistRepository;
 import com.ewos.offer.infrastructure.persistence.PreboardingTaskInstanceRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -60,6 +61,7 @@ public class PreboardingService {
     private final OfferNotifier notifier;
     private final OfferMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public PreboardingService(
             PreboardingChecklistRepository checklists,
@@ -73,7 +75,8 @@ public class PreboardingService {
             EmployeeIdGenerator employeeIdGenerator,
             OfferNotifier notifier,
             OfferMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.checklists = checklists;
         this.tasks = tasks;
         this.templates = templates;
@@ -86,6 +89,7 @@ public class PreboardingService {
         this.notifier = notifier;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     /**
@@ -97,6 +101,7 @@ public class PreboardingService {
                 offers.findByIdAndTenantId(offerId, tenantId)
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "Offer not found"));
+        guard.requireAccessForCompany(offer.getCompanyId());
         if (offer.getStatus() != OfferStatus.ACCEPTED) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
@@ -141,6 +146,7 @@ public class PreboardingService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Preboarding task not found"));
+        guard.requireAccessForCompany(t.getChecklist().getCompanyId());
         PreboardingTaskStatus previous = t.getStatus();
         if (t.isTerminal()) {
             throw new ApiException(
@@ -231,6 +237,7 @@ public class PreboardingService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Preboarding task not found"));
+        guard.requireAccessForCompany(t.getChecklist().getCompanyId());
         if (t.isTerminal()) {
             throw new ApiException(
                     HttpStatus.CONFLICT, "Task is already terminal — no reminder needed");
@@ -258,6 +265,7 @@ public class PreboardingService {
     @Transactional(readOnly = true)
     public List<PreboardingChecklistResponse> byStatus(
             UUID tenantId, UUID companyId, PreboardingChecklistStatus status) {
+        guard.requireAccessForCompany(companyId);
         return checklists
                 .findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status)
                 .stream()
@@ -391,9 +399,13 @@ public class PreboardingService {
     }
 
     private PreboardingChecklist require(UUID tenantId, UUID id) {
-        return checklists
-                .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Checklist not found"));
+        PreboardingChecklist c =
+                checklists
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Checklist not found"));
+        guard.requireAccessForCompany(c.getCompanyId());
+        return c;
     }
 
     @SuppressWarnings("unused")

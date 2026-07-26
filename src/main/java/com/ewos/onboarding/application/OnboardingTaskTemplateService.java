@@ -7,6 +7,7 @@ import com.ewos.onboarding.domain.OnboardingTaskOwner;
 import com.ewos.onboarding.domain.OnboardingTaskTemplate;
 import com.ewos.onboarding.infrastructure.persistence.OnboardingTaskTemplateRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -19,14 +20,19 @@ public class OnboardingTaskTemplateService {
 
     private final OnboardingTaskTemplateRepository templates;
     private final OnboardingMapper mapper;
+    private final ClientAccessGuard guard;
 
     public OnboardingTaskTemplateService(
-            OnboardingTaskTemplateRepository templates, OnboardingMapper mapper) {
+            OnboardingTaskTemplateRepository templates,
+            OnboardingMapper mapper,
+            ClientAccessGuard guard) {
         this.templates = templates;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
     public OnboardingTaskTemplateResponse create(CreateOnboardingTaskTemplateRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (templates.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 req.tenantId(), req.companyId(), req.code())) {
             throw new ApiException(
@@ -53,6 +59,7 @@ public class OnboardingTaskTemplateService {
 
     @Transactional(readOnly = true)
     public List<OnboardingTaskTemplateResponse> listForCompany(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         return templates
                 .findAllByTenantIdAndCompanyIdOrderBySortOrderAsc(tenantId, companyId)
                 .stream()
@@ -69,6 +76,7 @@ public class OnboardingTaskTemplateService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND,
                                                 "Onboarding task template not found"));
+        guard.requireAccessForCompany(t.getCompanyId());
         templates.delete(t);
     }
 

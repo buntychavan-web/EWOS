@@ -22,6 +22,7 @@ import com.ewos.recruitment.domain.events.RecruitmentEventType;
 import com.ewos.recruitment.infrastructure.persistence.JobPositionRepository;
 import com.ewos.recruitment.infrastructure.persistence.JobRequisitionRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
 import com.ewos.workflow.application.WorkflowInstanceService;
@@ -49,6 +50,7 @@ public class JobRequisitionService {
     private final WorkflowInstanceService workflow;
     private final RecruitmentMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public JobRequisitionService(
             JobRequisitionRepository requisitions,
@@ -58,7 +60,8 @@ public class JobRequisitionService {
             RequisitionPolicy policy,
             WorkflowInstanceService workflow,
             RecruitmentMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.requisitions = requisitions;
         this.positions = positions;
         this.employees = employees;
@@ -67,9 +70,11 @@ public class JobRequisitionService {
         this.workflow = workflow;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public JobRequisitionResponse create(CreateJobRequisitionRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         if (requisitions.existsByTenantIdAndCompanyIdAndRequisitionNumberIgnoreCase(
                 req.tenantId(), req.companyId(), req.requisitionNumber())) {
             throw new ApiException(
@@ -115,6 +120,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse update(UUID tenantId, UUID id, UpdateJobRequisitionRequest req) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertEditable(r);
 
         r.setTitle(req.title());
@@ -141,6 +147,7 @@ public class JobRequisitionService {
     public JobRequisitionResponse submit(
             UUID tenantId, UUID id, SubmitJobRequisitionRequest request) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertSubmittable(r);
 
         WorkflowInstanceResponse instance =
@@ -164,6 +171,7 @@ public class JobRequisitionService {
     public JobRequisitionResponse approve(
             UUID tenantId, UUID id, DecideJobRequisitionRequest request) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertDecidable(r);
         UUID actor = requireActor();
 
@@ -179,6 +187,7 @@ public class JobRequisitionService {
     public JobRequisitionResponse reject(
             UUID tenantId, UUID id, DecideJobRequisitionRequest request) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertDecidable(r);
         UUID actor = requireActor();
 
@@ -193,6 +202,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse open(UUID tenantId, UUID id) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertOpenable(r);
         r.setStatus(RequisitionStatus.OPEN);
         r.setOpenedAt(Instant.now());
@@ -202,6 +212,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse hold(UUID tenantId, UUID id) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertHoldable(r);
         r.setStatus(RequisitionStatus.ON_HOLD);
         publish(RecruitmentEventType.REQUISITION_HELD, r);
@@ -210,6 +221,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse resume(UUID tenantId, UUID id) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertResumable(r);
         r.setStatus(RequisitionStatus.OPEN);
         publish(RecruitmentEventType.REQUISITION_RESUMED, r);
@@ -218,6 +230,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse recordFill(UUID tenantId, UUID id, RecordFillRequest request) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertFillable(r);
         int fills = request == null ? 1 : request.fills();
         if (fills < 1) {
@@ -240,6 +253,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse close(UUID tenantId, UUID id, CloseJobRequisitionRequest req) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertCloseable(r);
         r.setStatus(RequisitionStatus.CLOSED);
         r.setClosedAt(Instant.now());
@@ -250,6 +264,7 @@ public class JobRequisitionService {
 
     public JobRequisitionResponse cancel(UUID tenantId, UUID id, CloseJobRequisitionRequest req) {
         JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertCancellable(r);
         if (r.getWorkflowInstanceId() != null
                 && r.getStatus() == RequisitionStatus.PENDING_APPROVAL) {
@@ -264,12 +279,15 @@ public class JobRequisitionService {
 
     @Transactional(readOnly = true)
     public JobRequisitionResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        JobRequisition r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
+        return mapper.toResponse(r);
     }
 
     @Transactional(readOnly = true)
     public List<JobRequisitionResponse> byStatus(
             UUID tenantId, UUID companyId, RequisitionStatus status) {
+        guard.requireAccessForCompany(companyId);
         return requisitions
                 .findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status)
                 .stream()

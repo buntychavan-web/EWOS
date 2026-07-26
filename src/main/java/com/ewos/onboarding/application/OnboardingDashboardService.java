@@ -7,6 +7,7 @@ import com.ewos.onboarding.domain.OnboardingPlanStatus;
 import com.ewos.onboarding.domain.OnboardingTaskInstance;
 import com.ewos.onboarding.infrastructure.persistence.OnboardingPlanRepository;
 import com.ewos.onboarding.infrastructure.persistence.OnboardingTaskInstanceRepository;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -19,14 +20,19 @@ public class OnboardingDashboardService {
 
     private final OnboardingPlanRepository plans;
     private final OnboardingTaskInstanceRepository tasks;
+    private final ClientAccessGuard guard;
 
     public OnboardingDashboardService(
-            OnboardingPlanRepository plans, OnboardingTaskInstanceRepository tasks) {
+            OnboardingPlanRepository plans,
+            OnboardingTaskInstanceRepository tasks,
+            ClientAccessGuard guard) {
         this.plans = plans;
         this.tasks = tasks;
+        this.guard = guard;
     }
 
     public OnboardingDashboardResponse dashboard(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         long planned =
                 plans.findAllByTenantIdAndCompanyIdAndStatus(
                                 tenantId, companyId, OnboardingPlanStatus.PLANNED)
@@ -57,6 +63,7 @@ public class OnboardingDashboardService {
 
     public List<OnboardingReportRowResponse> reportByStatus(
             UUID tenantId, UUID companyId, OnboardingPlanStatus status) {
+        guard.requireAccessForCompany(companyId);
         return plans.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(p -> summarise(tenantId, p))
                 .toList();

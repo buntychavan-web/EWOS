@@ -21,6 +21,7 @@ import com.ewos.onboarding.domain.events.OnboardingEventType;
 import com.ewos.onboarding.infrastructure.persistence.OnboardingPlanRepository;
 import com.ewos.onboarding.infrastructure.persistence.OnboardingTaskInstanceRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -47,6 +48,7 @@ public class OnboardingPlanService {
     private final OnboardingPolicy policy;
     private final OnboardingMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public OnboardingPlanService(
             OnboardingPlanRepository plans,
@@ -55,7 +57,8 @@ public class OnboardingPlanService {
             EmployeeRepository employees,
             OnboardingPolicy policy,
             OnboardingMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.plans = plans;
         this.tasks = tasks;
         this.templates = templates;
@@ -63,9 +66,11 @@ public class OnboardingPlanService {
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public OnboardingPlanResponse create(CreateOnboardingPlanRequest req) {
+        guard.requireAccessForCompany(req.companyId());
         return mapper.toResponse(createInternal(req));
     }
 
@@ -214,6 +219,7 @@ public class OnboardingPlanService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Onboarding task not found"));
+        guard.requireAccessForCompany(t.getPlan().getCompanyId());
         policy.assertTaskEditable(t);
         applyTaskStatus(t, req);
         OnboardingPlan p = t.getPlan();
@@ -240,6 +246,7 @@ public class OnboardingPlanService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Onboarding task not found"));
+        guard.requireAccessForCompany(t.getPlan().getCompanyId());
         if (t.isTerminal()) {
             throw new ApiException(HttpStatus.CONFLICT, "Task is already terminal");
         }
@@ -254,18 +261,21 @@ public class OnboardingPlanService {
 
     @Transactional(readOnly = true)
     public OnboardingPlanResponse forEmployee(UUID tenantId, UUID employeeId) {
-        return plans.findByTenantIdAndEmployeeId(tenantId, employeeId)
-                .map(mapper::toResponse)
-                .orElseThrow(
-                        () ->
-                                new ApiException(
-                                        HttpStatus.NOT_FOUND,
-                                        "No onboarding plan for this employee"));
+        OnboardingPlan p =
+                plans.findByTenantIdAndEmployeeId(tenantId, employeeId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "No onboarding plan for this employee"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return mapper.toResponse(p);
     }
 
     @Transactional(readOnly = true)
     public List<OnboardingPlanResponse> byStatus(
             UUID tenantId, UUID companyId, OnboardingPlanStatus status) {
+        guard.requireAccessForCompany(companyId);
         return plans.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -279,10 +289,20 @@ public class OnboardingPlanService {
                 .toList();
     }
 
+    /**
+     * Package-visible: guarded here so start/complete/cancel/assignRoles/addTask/getById/tasksFor
+     * all inherit the check. Deliberately NOT called by {@link #createInternal}, which the
+     * preboarding-to-onboarding handoff listener also uses outside of any HTTP caller's request.
+     */
     OnboardingPlan require(UUID tenantId, UUID id) {
-        return plans.findByIdAndTenantId(id, tenantId)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Onboarding plan not found"));
+        OnboardingPlan p =
+                plans.findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Onboarding plan not found"));
+        guard.requireAccessForCompany(p.getCompanyId());
+        return p;
     }
 
     private void materialiseTemplateTasks(OnboardingPlan p) {

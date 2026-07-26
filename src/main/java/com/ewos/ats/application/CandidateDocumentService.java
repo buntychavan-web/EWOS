@@ -10,6 +10,7 @@ import com.ewos.ats.domain.events.AtsEvent;
 import com.ewos.ats.domain.events.AtsEventType;
 import com.ewos.ats.infrastructure.persistence.CandidateDocumentRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -27,18 +28,21 @@ public class CandidateDocumentService {
     private final CandidateTimelineService timeline;
     private final AtsMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CandidateDocumentService(
             CandidateDocumentRepository documents,
             CandidateService candidates,
             CandidateTimelineService timeline,
             AtsMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.documents = documents;
         this.candidates = candidates;
         this.timeline = timeline;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CandidateDocumentResponse upload(
@@ -72,6 +76,7 @@ public class CandidateDocumentService {
                         .findByIdAndTenantId(documentId, tenantId)
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "Document not found"));
+        guard.requireAccessForCompany(d.getCandidate().getCompanyId());
         documents.delete(d);
         publish(AtsEventType.DOCUMENT_DELETED, d.getCandidate(), d);
     }

@@ -15,6 +15,7 @@ import com.ewos.onboarding.domain.EmployeeProvisioningService;
 import com.ewos.onboarding.domain.OnboardingPlan;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,7 @@ public class CandidateConversionService {
     private final EmployeeIdGenerator employeeIdGenerator;
     private final EmployeeProvisioningService provisioning;
     private final OnboardingPlanService plans;
+    private final ClientAccessGuard guard;
 
     public CandidateConversionService(
             OfferRepository offers,
@@ -44,13 +46,15 @@ public class CandidateConversionService {
             OrganizationUnitRepository orgUnits,
             EmployeeIdGenerator employeeIdGenerator,
             EmployeeProvisioningService provisioning,
-            OnboardingPlanService plans) {
+            OnboardingPlanService plans,
+            ClientAccessGuard guard) {
         this.offers = offers;
         this.employees = employees;
         this.orgUnits = orgUnits;
         this.employeeIdGenerator = employeeIdGenerator;
         this.provisioning = provisioning;
         this.plans = plans;
+        this.guard = guard;
     }
 
     public CandidateConversionResponse convert(UUID tenantId, ConvertCandidateRequest req) {
@@ -58,6 +62,7 @@ public class CandidateConversionService {
                 offers.findByIdAndTenantId(req.offerId(), tenantId)
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "Offer not found"));
+        guard.requireAccessForCompany(offer.getCompanyId());
         if (offer.getStatus() != OfferStatus.ACCEPTED) {
             throw new ApiException(
                     HttpStatus.CONFLICT,

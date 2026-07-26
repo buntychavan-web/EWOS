@@ -12,6 +12,7 @@ import com.ewos.ats.domain.events.AtsEvent;
 import com.ewos.ats.domain.events.AtsEventType;
 import com.ewos.ats.infrastructure.persistence.CandidateResumeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -31,6 +32,7 @@ public class CandidateResumeService {
     private final ResumeParser parser;
     private final AtsMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public CandidateResumeService(
             CandidateResumeRepository resumes,
@@ -38,13 +40,15 @@ public class CandidateResumeService {
             CandidateTimelineService timeline,
             ResumeParser parser,
             AtsMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.resumes = resumes;
         this.candidates = candidates;
         this.timeline = timeline;
         this.parser = parser;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public CandidateResumeResponse upload(
@@ -101,6 +105,7 @@ public class CandidateResumeService {
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "Resume not found"));
         Candidate c = r.getCandidate();
+        guard.requireAccessForCompany(c.getCompanyId());
         resumes.findByTenantIdAndCandidateIdAndPrimaryTrue(tenantId, c.getId())
                 .ifPresent(prev -> prev.setPrimary(false));
         r.setPrimary(true);
@@ -119,6 +124,7 @@ public class CandidateResumeService {
                 resumes.findByIdAndTenantId(resumeId, tenantId)
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "Resume not found"));
+        guard.requireAccessForCompany(r.getCandidate().getCompanyId());
         resumes.delete(r);
     }
 
