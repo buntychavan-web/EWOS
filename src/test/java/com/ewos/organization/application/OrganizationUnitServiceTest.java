@@ -19,6 +19,7 @@ import com.ewos.organization.domain.events.OrganizationUnitEventType;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitTypeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +37,7 @@ class OrganizationUnitServiceTest {
     @Mock OrganizationUnitRepository unitRepo;
     @Mock OrganizationUnitTypeRepository typeRepo;
     @Mock ApplicationEventPublisher events;
+    @Mock ClientAccessGuard guard;
 
     private OrganizationUnitService service;
     private final OrganizationHierarchyPolicy policy = new OrganizationHierarchyPolicy();
@@ -44,7 +46,7 @@ class OrganizationUnitServiceTest {
     void setUp() {
         service =
                 new OrganizationUnitService(
-                        unitRepo, typeRepo, policy, new OrganizationMapper(), events);
+                        unitRepo, typeRepo, policy, new OrganizationMapper(), events, guard);
         org.mockito.Mockito.lenient()
                 .when(unitRepo.save(any(OrganizationUnit.class)))
                 .thenAnswer(
@@ -90,6 +92,41 @@ class OrganizationUnitServiceTest {
         verify(events).publishEvent(ev.capture());
         assertThat(ev.getValue().eventType()).isEqualTo(OrganizationUnitEventType.CREATED);
         assertThat(ev.getValue().unitId()).isEqualTo(r.id());
+
+        verify(guard).requireAccessForCompany(company);
+    }
+
+    @Test
+    void createIsBlockedWhenCallerLacksClientAccess() {
+        UUID tenant = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        org.mockito.Mockito.doThrow(
+                        new ApiException(
+                                org.springframework.http.HttpStatus.FORBIDDEN,
+                                "Not authorized for this company"))
+                .when(guard)
+                .requireAccessForCompany(company);
+
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        new CreateOrganizationUnitRequest(
+                                                tenant,
+                                                company,
+                                                UUID.randomUUID(),
+                                                null,
+                                                "EMEA",
+                                                "EMEA Div",
+                                                "desc",
+                                                "de",
+                                                "CC-1",
+                                                UUID.randomUUID(),
+                                                LocalDate.of(2024, 1, 1),
+                                                null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Not authorized");
+
+        verify(unitRepo, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

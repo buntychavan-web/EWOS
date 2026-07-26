@@ -23,6 +23,7 @@ import com.ewos.employee.infrastructure.persistence.EmploymentTypeRepository;
 import com.ewos.organization.domain.OrganizationUnit;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,7 @@ class EmployeeServiceTest {
     @Mock EmploymentTypeRepository employmentTypes;
     @Mock OrganizationUnitRepository orgUnits;
     @Mock ApplicationEventPublisher events;
+    @Mock ClientAccessGuard guard;
 
     private EmployeeService service;
     private final EmployeeLifecyclePolicy policy = new EmployeeLifecyclePolicy();
@@ -49,7 +51,13 @@ class EmployeeServiceTest {
     void setUp() {
         service =
                 new EmployeeService(
-                        employees, employmentTypes, orgUnits, policy, new EmployeeMapper(), events);
+                        employees,
+                        employmentTypes,
+                        orgUnits,
+                        policy,
+                        new EmployeeMapper(),
+                        events,
+                        guard);
         lenient()
                 .when(employees.save(any(Employee.class)))
                 .thenAnswer(
@@ -108,6 +116,46 @@ class EmployeeServiceTest {
         ArgumentCaptor<EmployeeEvent> ev = ArgumentCaptor.forClass(EmployeeEvent.class);
         verify(events).publishEvent(ev.capture());
         assertThat(ev.getValue().eventType()).isEqualTo(EmployeeEventType.HIRED);
+
+        verify(guard).requireAccessForCompany(company);
+    }
+
+    @Test
+    void hireIsBlockedWhenCallerLacksClientAccess() {
+        UUID tenant = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        org.mockito.Mockito.doThrow(
+                        new ApiException(
+                                org.springframework.http.HttpStatus.FORBIDDEN,
+                                "Not authorized for this company"))
+                .when(guard)
+                .requireAccessForCompany(company);
+
+        assertThatThrownBy(
+                        () ->
+                                service.hire(
+                                        new HireEmployeeRequest(
+                                                tenant,
+                                                company,
+                                                null,
+                                                "EMP-1",
+                                                "Alice",
+                                                null,
+                                                "Smith",
+                                                null,
+                                                "alice@ex.com",
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                null,
+                                                LocalDate.of(2024, 6, 1))))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Not authorized");
+
+        verify(employees, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

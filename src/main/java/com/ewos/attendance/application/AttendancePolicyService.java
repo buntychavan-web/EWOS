@@ -7,10 +7,10 @@ import com.ewos.attendance.api.dto.UpdateAttendancePolicyRequest;
 import com.ewos.attendance.domain.AttendancePolicy;
 import com.ewos.attendance.infrastructure.persistence.AttendancePolicyRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,18 +19,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class AttendancePolicyService {
 
-    private static final String POLICY_CACHE = "attendance.policy";
-
     private final AttendancePolicyRepository repository;
     private final AttendanceMapper mapper;
+    private final ClientAccessGuard guard;
 
-    public AttendancePolicyService(AttendancePolicyRepository repository, AttendanceMapper mapper) {
+    public AttendancePolicyService(
+            AttendancePolicyRepository repository, AttendanceMapper mapper, ClientAccessGuard guard) {
         this.repository = repository;
         this.mapper = mapper;
+        this.guard = guard;
     }
 
-    @CacheEvict(value = POLICY_CACHE, allEntries = true)
     public AttendancePolicyResponse create(CreateAttendancePolicyRequest request) {
+        if (request.companyId() != null) {
+            guard.requireAccessForCompany(request.companyId());
+        }
         if (repository.existsByTenantIdAndCodeIgnoreCase(request.tenantId(), request.code())) {
             throw new ApiException(
                     HttpStatus.CONFLICT, "Attendance policy code already in use for this tenant");
@@ -65,10 +68,12 @@ public class AttendancePolicyService {
         return mapper.toResponse(repository.save(p));
     }
 
-    @CacheEvict(value = POLICY_CACHE, allEntries = true)
     public AttendancePolicyResponse update(
             UUID tenantId, UUID id, UpdateAttendancePolicyRequest request) {
         AttendancePolicy p = require(tenantId, id);
+        if (p.getCompanyId() != null) {
+            guard.requireAccessForCompany(p.getCompanyId());
+        }
         if (request.name() != null) {
             p.setName(request.name());
         }
@@ -99,22 +104,29 @@ public class AttendancePolicyService {
         return mapper.toResponse(p);
     }
 
-    @Cacheable(value = POLICY_CACHE, key = "#tenantId + ':' + #id")
     @Transactional(readOnly = true)
     public AttendancePolicyResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        AttendancePolicy p = require(tenantId, id);
+        if (p.getCompanyId() != null) {
+            guard.requireAccessForCompany(p.getCompanyId());
+        }
+        return mapper.toResponse(p);
     }
 
     @Transactional(readOnly = true)
     public List<AttendancePolicyResponse> list(UUID tenantId) {
-        return repository.findAllByTenantIdOrderByNameAsc(tenantId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<AttendancePolicy> found = repository.findAllByTenantIdOrderByNameAsc(tenantId);
+        guard.requireAccessForCompanies(
+                found.stream().map(AttendancePolicy::getCompanyId).filter(Objects::nonNull).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
-    @CacheEvict(value = POLICY_CACHE, allEntries = true)
     public void delete(UUID tenantId, UUID id) {
-        repository.delete(require(tenantId, id));
+        AttendancePolicy p = require(tenantId, id);
+        if (p.getCompanyId() != null) {
+            guard.requireAccessForCompany(p.getCompanyId());
+        }
+        repository.delete(p);
     }
 
     /** Package-private lookup used by TimesheetService when opening a period. */
@@ -133,6 +145,7 @@ public class AttendancePolicyService {
      */
     @Transactional(readOnly = true)
     public AttendancePolicy effectivePolicyFor(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         List<AttendancePolicy> candidates = repository.findEffectiveForCompany(tenantId, companyId);
         if (candidates.isEmpty()) {
             throw new ApiException(

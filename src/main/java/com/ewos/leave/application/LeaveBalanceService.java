@@ -15,6 +15,7 @@ import com.ewos.leave.domain.events.LeaveEventType;
 import com.ewos.leave.infrastructure.persistence.LeaveAllocationRepository;
 import com.ewos.leave.infrastructure.persistence.LeaveBalanceRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -35,6 +36,7 @@ public class LeaveBalanceService {
     private final EmployeeRepository employees;
     private final LeaveMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public LeaveBalanceService(
             LeaveAllocationRepository allocations,
@@ -42,17 +44,20 @@ public class LeaveBalanceService {
             LeaveTypeService leaveTypes,
             EmployeeRepository employees,
             LeaveMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.allocations = allocations;
         this.balances = balances;
         this.leaveTypes = leaveTypes;
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     /** Creates or updates the yearly allocation and mirrors it into the running balance. */
     public AllocationResponse upsertAllocation(UpsertAllocationRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee = requireEmployee(request.tenantId(), request.employeeId());
         if (!employee.getCompanyId().equals(request.companyId())) {
             throw new ApiException(
@@ -99,6 +104,7 @@ public class LeaveBalanceService {
     }
 
     public BalanceResponse adjust(AdjustBalanceRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee = requireEmployee(request.tenantId(), request.employeeId());
         if (!employee.getCompanyId().equals(request.companyId())) {
             throw new ApiException(
@@ -122,17 +128,19 @@ public class LeaveBalanceService {
 
     @Transactional(readOnly = true)
     public List<BalanceResponse> balancesForEmployee(UUID tenantId, UUID employeeId, int year) {
-        return balances.findAllForEmployeeAndYear(tenantId, employeeId, year).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<LeaveBalance> found = balances.findAllForEmployeeAndYear(tenantId, employeeId, year);
+        guard.requireAccessForCompanies(found.stream().map(LeaveBalance::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<AllocationResponse> allocationsForEmployee(
             UUID tenantId, UUID employeeId, int year) {
-        return allocations.findAllForEmployeeAndYear(tenantId, employeeId, year).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<LeaveAllocation> found =
+                allocations.findAllForEmployeeAndYear(tenantId, employeeId, year);
+        guard.requireAccessForCompanies(
+                found.stream().map(LeaveAllocation::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     /**

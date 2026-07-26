@@ -18,10 +18,9 @@ import com.ewos.employee.infrastructure.persistence.EmploymentTypeRepository;
 import com.ewos.organization.domain.OrganizationUnit;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.UUID;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,14 +33,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class EmployeeService {
 
-    private static final String EMPLOYEE_CACHE = "employee.byId";
-
     private final EmployeeRepository employees;
     private final EmploymentTypeRepository employmentTypes;
     private final OrganizationUnitRepository orgUnits;
     private final EmployeeLifecyclePolicy policy;
     private final EmployeeMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public EmployeeService(
             EmployeeRepository employees,
@@ -49,16 +47,19 @@ public class EmployeeService {
             OrganizationUnitRepository orgUnits,
             EmployeeLifecyclePolicy policy,
             EmployeeMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.employees = employees;
         this.employmentTypes = employmentTypes;
         this.orgUnits = orgUnits;
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public EmployeeResponse hire(HireEmployeeRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         if (employees.existsByTenantIdAndCompanyIdAndEmployeeNumberIgnoreCase(
                 request.tenantId(), request.companyId(), request.employeeNumber())) {
             throw new ApiException(
@@ -108,9 +109,9 @@ public class EmployeeService {
         return mapper.toResponse(saved);
     }
 
-    @CacheEvict(value = EMPLOYEE_CACHE, key = "#tenantId + ':' + #id")
     public EmployeeResponse update(UUID tenantId, UUID id, UpdateEmployeeRequest request) {
         Employee e = require(tenantId, id);
+        guard.requireAccessForCompany(e.getCompanyId());
         policy.assertMutable(e);
 
         boolean reassignedOrgUnit = false;
@@ -180,9 +181,9 @@ public class EmployeeService {
         return mapper.toResponse(e);
     }
 
-    @CacheEvict(value = EMPLOYEE_CACHE, key = "#tenantId + ':' + #id")
     public EmployeeResponse changeStatus(UUID tenantId, UUID id, EmployeeStatus target) {
         Employee e = require(tenantId, id);
+        guard.requireAccessForCompany(e.getCompanyId());
         if (e.getStatus() == target) {
             return mapper.toResponse(e);
         }
@@ -197,9 +198,9 @@ public class EmployeeService {
         return mapper.toResponse(e);
     }
 
-    @CacheEvict(value = EMPLOYEE_CACHE, key = "#tenantId + ':' + #id")
     public EmployeeResponse terminate(UUID tenantId, UUID id, TerminateEmployeeRequest request) {
         Employee e = require(tenantId, id);
+        guard.requireAccessForCompany(e.getCompanyId());
         policy.assertTerminationAllowed(e, request.terminationDate());
         e.setStatus(EmployeeStatus.TERMINATED);
         e.setTerminationDate(request.terminationDate());
@@ -207,9 +208,9 @@ public class EmployeeService {
         return mapper.toResponse(e);
     }
 
-    @CacheEvict(value = EMPLOYEE_CACHE, key = "#tenantId + ':' + #id")
     public void delete(UUID tenantId, UUID id) {
         Employee e = require(tenantId, id);
+        guard.requireAccessForCompany(e.getCompanyId());
         long reports = employees.countDirectReports(id);
         if (reports > 0) {
             throw new ApiException(
@@ -220,17 +221,27 @@ public class EmployeeService {
         publish(EmployeeEventType.DELETED, e, null);
     }
 
-    @Cacheable(value = EMPLOYEE_CACHE, key = "#tenantId + ':' + #id")
     @Transactional(readOnly = true)
     public EmployeeResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        Employee e = require(tenantId, id);
+        guard.requireAccessForCompany(e.getCompanyId());
+        return mapper.toResponse(e);
     }
 
     @Transactional(readOnly = true)
     public Page<EmployeeResponse> search(EmployeeSearchCriteria criteria, Pageable pageable) {
-        return employees
-                .findAll(EmployeeSpecifications.matching(criteria), pageable)
-                .map(mapper::toResponse);
+        if (criteria.companyId() != null) {
+            guard.requireAccessForCompany(criteria.companyId());
+        }
+        Page<EmployeeResponse> page =
+                employees
+                        .findAll(EmployeeSpecifications.matching(criteria), pageable)
+                        .map(mapper::toResponse);
+        if (criteria.companyId() == null) {
+            guard.requireAccessForCompanies(
+                    page.getContent().stream().map(EmployeeResponse::companyId).toList());
+        }
+        return page;
     }
 
     private Employee require(UUID tenantId, UUID id) {

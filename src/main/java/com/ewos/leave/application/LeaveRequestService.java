@@ -17,6 +17,7 @@ import com.ewos.leave.domain.events.LeaveEvent;
 import com.ewos.leave.domain.events.LeaveEventType;
 import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
 import com.ewos.workflow.application.WorkflowInstanceService;
@@ -48,6 +49,7 @@ public class LeaveRequestService {
     private final LeaveMapper mapper;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final ClientAccessGuard guard;
 
     public LeaveRequestService(
             LeaveRequestRepository requests,
@@ -58,7 +60,8 @@ public class LeaveRequestService {
             LeavePolicy policy,
             WorkflowInstanceService workflow,
             LeaveMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this(
                 requests,
                 employees,
@@ -69,7 +72,8 @@ public class LeaveRequestService {
                 workflow,
                 mapper,
                 events,
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                guard);
     }
 
     /** Test-friendly overload; production callers use the {@code Clock.systemUTC()} default. */
@@ -83,7 +87,8 @@ public class LeaveRequestService {
             WorkflowInstanceService workflow,
             LeaveMapper mapper,
             ApplicationEventPublisher events,
-            Clock clock) {
+            Clock clock,
+            ClientAccessGuard guard) {
         this.requests = requests;
         this.employees = employees;
         this.leaveTypes = leaveTypes;
@@ -94,9 +99,11 @@ public class LeaveRequestService {
         this.mapper = mapper;
         this.events = events;
         this.clock = clock;
+        this.guard = guard;
     }
 
     public LeaveRequestResponse create(CreateLeaveRequestRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee = requireEmployee(request.tenantId(), request.employeeId());
         if (!employee.getCompanyId().equals(request.companyId())) {
             throw new ApiException(
@@ -128,6 +135,7 @@ public class LeaveRequestService {
 
     public LeaveRequestResponse submit(UUID tenantId, UUID id, SubmitLeaveRequestRequest request) {
         LeaveRequest r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertSubmittable(r);
         policy.assertRequestable(r, LocalDate.now(clock));
 
@@ -164,6 +172,7 @@ public class LeaveRequestService {
 
     public LeaveRequestResponse approve(UUID tenantId, UUID id, DecideLeaveRequestRequest request) {
         LeaveRequest r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertDecidable(r);
         UUID actor = requireActor();
 
@@ -189,6 +198,7 @@ public class LeaveRequestService {
 
     public LeaveRequestResponse reject(UUID tenantId, UUID id, DecideLeaveRequestRequest request) {
         LeaveRequest r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertDecidable(r);
         if (request.reason() == null || request.reason().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Rejection reason is required");
@@ -217,6 +227,7 @@ public class LeaveRequestService {
 
     public LeaveRequestResponse cancel(UUID tenantId, UUID id, boolean actorIsAdmin) {
         LeaveRequest r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
         policy.assertCancelable(r, actorIsAdmin);
         UUID actor = requireActor();
 
@@ -253,21 +264,24 @@ public class LeaveRequestService {
 
     @Transactional(readOnly = true)
     public LeaveRequestResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        LeaveRequest r = require(tenantId, id);
+        guard.requireAccessForCompany(r.getCompanyId());
+        return mapper.toResponse(r);
     }
 
     @Transactional(readOnly = true)
     public List<LeaveRequestResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return requests.findAllForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<LeaveRequest> found = requests.findAllForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(LeaveRequest::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<LeaveRequestResponse> byStatus(UUID tenantId, LeaveRequestStatus status) {
-        return requests.findAllByTenantIdAndStatusOrderByStartDateDesc(tenantId, status).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<LeaveRequest> found =
+                requests.findAllByTenantIdAndStatusOrderByStartDateDesc(tenantId, status);
+        guard.requireAccessForCompanies(found.stream().map(LeaveRequest::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     private LeaveRequest require(UUID tenantId, UUID id) {

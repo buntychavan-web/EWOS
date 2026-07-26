@@ -11,6 +11,7 @@ import com.ewos.attendance.infrastructure.persistence.TimeEntryRepository;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,19 +29,23 @@ public class TimeEntryService {
     private final EmployeeRepository employees;
     private final AttendanceMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public TimeEntryService(
             TimeEntryRepository entries,
             EmployeeRepository employees,
             AttendanceMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.entries = entries;
         this.employees = employees;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     public TimeEntryResponse record(CreateTimeEntryRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
                         .findByIdAndTenantId(request.employeeId(), request.tenantId())
@@ -85,22 +90,24 @@ public class TimeEntryService {
 
     @Transactional(readOnly = true)
     public TimeEntryResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        TimeEntry entry = require(tenantId, id);
+        guard.requireAccessForCompany(entry.getCompanyId());
+        return mapper.toResponse(entry);
     }
 
     @Transactional(readOnly = true)
     public List<TimeEntryResponse> forEmployeeInRange(
             UUID tenantId, UUID employeeId, Instant from, Instant to) {
-        return entries.findForEmployeeInRange(tenantId, employeeId, from, to).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<TimeEntry> found = entries.findForEmployeeInRange(tenantId, employeeId, from, to);
+        guard.requireAccessForCompanies(found.stream().map(TimeEntry::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<TimeEntryResponse> recentForEmployee(UUID tenantId, UUID employeeId) {
-        return entries.findRecentForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<TimeEntry> found = entries.findRecentForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(TimeEntry::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     private TimeEntry require(UUID tenantId, UUID id) {

@@ -18,6 +18,7 @@ import com.ewos.attendance.infrastructure.persistence.TimesheetRepository;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
 import com.ewos.workflow.application.WorkflowInstanceService;
@@ -45,6 +46,7 @@ public class TimesheetService {
     private final WorkflowInstanceService workflow;
     private final AttendanceMapper mapper;
     private final org.springframework.context.ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public TimesheetService(
             TimesheetRepository timesheets,
@@ -54,7 +56,8 @@ public class TimesheetService {
             TimesheetCalculator calculator,
             WorkflowInstanceService workflow,
             AttendanceMapper mapper,
-            org.springframework.context.ApplicationEventPublisher events) {
+            org.springframework.context.ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.timesheets = timesheets;
         this.entries = entries;
         this.employees = employees;
@@ -63,10 +66,12 @@ public class TimesheetService {
         this.workflow = workflow;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
     /** Opens (or returns the existing) DRAFT timesheet for the given employee-period. */
     public TimesheetResponse open(OpenTimesheetRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         if (request.periodEnd().isBefore(request.periodStart())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "periodEnd must be on or after periodStart");
@@ -84,6 +89,7 @@ public class TimesheetService {
     /** Recomputes rollups from raw entries; safe to call while DRAFT. */
     public TimesheetResponse recompute(UUID tenantId, UUID id) {
         Timesheet ts = require(tenantId, id);
+        guard.requireAccessForCompany(ts.getCompanyId());
         if (ts.getStatus() != TimesheetStatus.DRAFT) {
             throw new ApiException(HttpStatus.CONFLICT, "Only DRAFT timesheets can be recomputed");
         }
@@ -104,6 +110,7 @@ public class TimesheetService {
 
     public TimesheetResponse submit(UUID tenantId, UUID id, SubmitTimesheetRequest request) {
         Timesheet ts = require(tenantId, id);
+        guard.requireAccessForCompany(ts.getCompanyId());
         if (ts.getStatus() != TimesheetStatus.DRAFT) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
@@ -134,6 +141,7 @@ public class TimesheetService {
 
     public TimesheetResponse approve(UUID tenantId, UUID id, DecideTimesheetRequest request) {
         Timesheet ts = require(tenantId, id);
+        guard.requireAccessForCompany(ts.getCompanyId());
         if (ts.getStatus() != TimesheetStatus.SUBMITTED) {
             throw new ApiException(
                     HttpStatus.CONFLICT, "Only SUBMITTED timesheets can be approved");
@@ -148,6 +156,7 @@ public class TimesheetService {
 
     public TimesheetResponse reject(UUID tenantId, UUID id, DecideTimesheetRequest request) {
         Timesheet ts = require(tenantId, id);
+        guard.requireAccessForCompany(ts.getCompanyId());
         if (ts.getStatus() != TimesheetStatus.SUBMITTED) {
             throw new ApiException(
                     HttpStatus.CONFLICT, "Only SUBMITTED timesheets can be rejected");
@@ -166,6 +175,7 @@ public class TimesheetService {
 
     public TimesheetResponse cancel(UUID tenantId, UUID id) {
         Timesheet ts = require(tenantId, id);
+        guard.requireAccessForCompany(ts.getCompanyId());
         if (ts.getStatus() == TimesheetStatus.APPROVED
                 || ts.getStatus() == TimesheetStatus.CANCELLED) {
             throw new ApiException(
@@ -178,23 +188,24 @@ public class TimesheetService {
 
     @Transactional(readOnly = true)
     public TimesheetResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(require(tenantId, id));
+        Timesheet ts = require(tenantId, id);
+        guard.requireAccessForCompany(ts.getCompanyId());
+        return mapper.toResponse(ts);
     }
 
     @Transactional(readOnly = true)
     public List<TimesheetResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        return timesheets.findAllForEmployee(tenantId, employeeId).stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Timesheet> found = timesheets.findAllForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(found.stream().map(Timesheet::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<TimesheetResponse> byStatus(UUID tenantId, TimesheetStatus status) {
-        return timesheets
-                .findAllByTenantIdAndStatusOrderByPeriodStartDesc(tenantId, status)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
+        List<Timesheet> found =
+                timesheets.findAllByTenantIdAndStatusOrderByPeriodStartDesc(tenantId, status);
+        guard.requireAccessForCompanies(found.stream().map(Timesheet::getCompanyId).toList());
+        return found.stream().map(mapper::toResponse).toList();
     }
 
     private TimesheetResponse createDraft(OpenTimesheetRequest request) {

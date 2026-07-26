@@ -16,13 +16,12 @@ import com.ewos.organization.infrastructure.persistence.OrganizationUnitReposito
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitSpecifications;
 import com.ewos.organization.infrastructure.persistence.OrganizationUnitTypeRepository;
 import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,29 +34,30 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class OrganizationUnitService {
 
-    private static final String TREE_CACHE = "organization.unit.tree";
-
     private final OrganizationUnitRepository unitRepository;
     private final OrganizationUnitTypeRepository unitTypeRepository;
     private final OrganizationHierarchyPolicy hierarchyPolicy;
     private final OrganizationMapper mapper;
     private final ApplicationEventPublisher events;
+    private final ClientAccessGuard guard;
 
     public OrganizationUnitService(
             OrganizationUnitRepository unitRepository,
             OrganizationUnitTypeRepository unitTypeRepository,
             OrganizationHierarchyPolicy hierarchyPolicy,
             OrganizationMapper mapper,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            ClientAccessGuard guard) {
         this.unitRepository = unitRepository;
         this.unitTypeRepository = unitTypeRepository;
         this.hierarchyPolicy = hierarchyPolicy;
         this.mapper = mapper;
         this.events = events;
+        this.guard = guard;
     }
 
-    @CacheEvict(value = TREE_CACHE, key = "#request.tenantId() + ':' + #request.companyId()")
     public OrganizationUnitResponse create(CreateOrganizationUnitRequest request) {
+        guard.requireAccessForCompany(request.companyId());
         if (unitRepository.existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
                 request.tenantId(), request.companyId(), request.code())) {
             throw new ApiException(
@@ -89,13 +89,10 @@ public class OrganizationUnitService {
         return mapper.toResponse(saved);
     }
 
-    @CacheEvict(
-            value = TREE_CACHE,
-            key = "#tenantId + ':' + #result.companyId()",
-            condition = "#result != null")
     public OrganizationUnitResponse update(
             UUID tenantId, UUID id, UpdateOrganizationUnitRequest request) {
         OrganizationUnit existing = requireUnit(tenantId, id);
+        guard.requireAccessForCompany(existing.getCompanyId());
         boolean reparented = false;
 
         if (request.unitTypeId() != null
@@ -142,10 +139,10 @@ public class OrganizationUnitService {
         return mapper.toResponse(existing);
     }
 
-    @CacheEvict(value = TREE_CACHE, allEntries = true)
     public OrganizationUnitResponse changeStatus(
             UUID tenantId, UUID id, OrganizationUnitStatus target) {
         OrganizationUnit unit = requireUnit(tenantId, id);
+        guard.requireAccessForCompany(unit.getCompanyId());
         Objects.requireNonNull(target, "target status");
         if (unit.getStatus() == target) {
             return mapper.toResponse(unit);
@@ -164,9 +161,9 @@ public class OrganizationUnitService {
         return mapper.toResponse(unit);
     }
 
-    @CacheEvict(value = TREE_CACHE, allEntries = true)
     public void delete(UUID tenantId, UUID id) {
         OrganizationUnit unit = requireUnit(tenantId, id);
+        guard.requireAccessForCompany(unit.getCompanyId());
         long activeKids = unitRepository.countChildren(id);
         if (activeKids > 0) {
             throw new ApiException(
@@ -179,20 +176,31 @@ public class OrganizationUnitService {
 
     @Transactional(readOnly = true)
     public OrganizationUnitResponse getById(UUID tenantId, UUID id) {
-        return mapper.toResponse(requireUnit(tenantId, id));
+        OrganizationUnit unit = requireUnit(tenantId, id);
+        guard.requireAccessForCompany(unit.getCompanyId());
+        return mapper.toResponse(unit);
     }
 
     @Transactional(readOnly = true)
     public Page<OrganizationUnitResponse> search(
             OrganizationUnitSearchCriteria criteria, Pageable pageable) {
-        return unitRepository
-                .findAll(OrganizationUnitSpecifications.matching(criteria), pageable)
-                .map(mapper::toResponse);
+        if (criteria.companyId() != null) {
+            guard.requireAccessForCompany(criteria.companyId());
+        }
+        Page<OrganizationUnitResponse> page =
+                unitRepository
+                        .findAll(OrganizationUnitSpecifications.matching(criteria), pageable)
+                        .map(mapper::toResponse);
+        if (criteria.companyId() == null) {
+            guard.requireAccessForCompanies(
+                    page.getContent().stream().map(OrganizationUnitResponse::companyId).toList());
+        }
+        return page;
     }
 
-    @Cacheable(value = TREE_CACHE, key = "#tenantId + ':' + #companyId")
     @Transactional(readOnly = true)
     public List<OrganizationUnitTreeNode> getTree(UUID tenantId, UUID companyId) {
+        guard.requireAccessForCompany(companyId);
         List<OrganizationUnit> all =
                 unitRepository.findAll(
                         OrganizationUnitSpecifications.matching(
