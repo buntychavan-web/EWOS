@@ -35,6 +35,7 @@ public final class EmployeeMapper {
                 employee.getTenantId(),
                 employee.getCompanyId(),
                 employee.getPersonId(),
+                employee.getUserId(),
                 employee.getEmployeeNumber(),
                 employee.getFirstName(),
                 employee.getMiddleName(),

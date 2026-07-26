@@ -36,6 +36,7 @@ class EmployeeMapperTest {
         e.setTenantId(tenantId);
         e.setCompanyId(companyId);
         e.setPersonId(UUID.randomUUID());
+        e.setUserId(UUID.randomUUID());
         e.setEmployeeNumber("EMP-000042");
         e.setFirstName("Alice");
         e.setLastName("Smith");
@@ -51,6 +52,7 @@ class EmployeeMapperTest {
 
         assertThat(r.tenantId()).isEqualTo(tenantId);
         assertThat(r.companyId()).isEqualTo(companyId);
+        assertThat(r.userId()).isEqualTo(e.getUserId());
         assertThat(r.employeeNumber()).isEqualTo("EMP-000042");
         assertThat(r.workEmail()).isEqualTo("alice@ex.com");
         assertThat(r.primaryOrgUnitId()).isEqualTo(unit.getId());

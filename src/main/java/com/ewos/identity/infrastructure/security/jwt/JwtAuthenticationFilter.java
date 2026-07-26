@@ -31,6 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String AUTHORITIES_CLAIM = "authorities";
     private static final String TENANT_ID_CLAIM = "tenantId";
+    private static final String EMPLOYEE_ID_CLAIM = "employeeId";
 
     /**
      * Request-attribute name the resolved tenant is published under, read by {@code
@@ -38,6 +39,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * rather than a shared constant — see that class's Javadoc for why.
      */
     private static final String TENANT_ID_REQUEST_ATTRIBUTE = "com.ewos.tenancy.currentTenantId";
+
+    /**
+     * Request-attribute name the resolved employee is published under, read by {@code
+     * com.ewos.employee.application.EmployeeContext}. Same independently-duplicated-literal idiom as
+     * {@link #TENANT_ID_REQUEST_ATTRIBUTE}.
+     */
+    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE = "com.ewos.employee.currentEmployeeId";
 
     private final JwtService jwtService;
 
@@ -69,6 +77,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         .ifPresent(
                                 tenantId ->
                                         request.setAttribute(TENANT_ID_REQUEST_ATTRIBUTE, tenantId));
+                extractUuidClaim(claims, EMPLOYEE_ID_CLAIM)
+                        .ifPresent(
+                                employeeId ->
+                                        request.setAttribute(EMPLOYEE_ID_REQUEST_ATTRIBUTE, employeeId));
             } catch (JwtException ex) {
                 log.debug("Rejected JWT: {}", ex.getMessage());
                 SecurityContextHolder.clearContext();
@@ -91,14 +103,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private static Optional<UUID> extractTenantId(Claims claims) {
-        Object raw = claims.get(TENANT_ID_CLAIM);
+        return extractUuidClaim(claims, TENANT_ID_CLAIM);
+    }
+
+    private static Optional<UUID> extractUuidClaim(Claims claims, String claimName) {
+        Object raw = claims.get(claimName);
         if (!(raw instanceof String value) || value.isBlank()) {
             return Optional.empty();
         }
         try {
             return Optional.of(UUID.fromString(value));
         } catch (IllegalArgumentException ex) {
-            log.debug("JWT tenantId claim is not a valid UUID: {}", value);
+            log.debug("JWT {} claim is not a valid UUID: {}", claimName, value);
             return Optional.empty();
         }
     }

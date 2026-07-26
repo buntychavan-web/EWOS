@@ -1,6 +1,7 @@
 package com.ewos.employee.infrastructure.persistence;
 
 import com.ewos.employee.domain.Employee;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,4 +22,8 @@ public interface EmployeeRepository
 
     @Query("select count(e) from Employee e where e.manager.id = :managerId")
     long countDirectReports(@Param("managerId") UUID managerId);
+
+    List<Employee> findAllByUserIdAndTenantId(UUID userId, UUID tenantId);
+
+    boolean existsByCompanyIdAndUserId(UUID companyId, UUID userId);
 }

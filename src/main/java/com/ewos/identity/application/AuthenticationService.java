@@ -45,6 +45,7 @@ public class AuthenticationService {
     private final LoginHistoryRecorder loginHistoryRecorder;
     private final AccountLockoutService accountLockoutService;
     private final TenantClaimResolver tenantClaimResolver;
+    private final EmployeeClaimResolver employeeClaimResolver;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
@@ -56,7 +57,8 @@ public class AuthenticationService {
             JwtProperties jwtProperties,
             LoginHistoryRecorder loginHistoryRecorder,
             AccountLockoutService accountLockoutService,
-            TenantClaimResolver tenantClaimResolver) {
+            TenantClaimResolver tenantClaimResolver,
+            EmployeeClaimResolver employeeClaimResolver) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
@@ -65,6 +67,7 @@ public class AuthenticationService {
         this.loginHistoryRecorder = loginHistoryRecorder;
         this.accountLockoutService = accountLockoutService;
         this.tenantClaimResolver = tenantClaimResolver;
+        this.employeeClaimResolver = employeeClaimResolver;
     }
 
     public TokenResponse login(
@@ -206,9 +209,16 @@ public class AuthenticationService {
         claims.put("username", user.getUsername());
         // Absent when the account has no UserTenantMembership yet (e.g. mid-provisioning) —
         // TenantContext.homeTenantId() surfaces that as a clear 403 rather than a silent gap.
-        tenantClaimResolver
-                .resolveTenantId(user.getId())
-                .ifPresent(tenantId -> claims.put("tenantId", tenantId.toString()));
+        Optional<UUID> resolvedTenantId = tenantClaimResolver.resolveTenantId(user.getId());
+        resolvedTenantId.ifPresent(tenantId -> claims.put("tenantId", tenantId.toString()));
+        // Absent when the user has no linked Employee in the resolved tenant, or has more than one
+        // (multi-company edge case) — EmployeeContext / GET /employees/me surface that explicitly
+        // rather than guessing which employee record the caller means.
+        resolvedTenantId.ifPresent(
+                tenantId ->
+                        employeeClaimResolver
+                                .resolveEmployeeId(user.getId(), tenantId)
+                                .ifPresent(employeeId -> claims.put("employeeId", employeeId.toString())));
 
         String accessToken = jwtService.generateAccessToken(user.getId().toString(), claims);
 

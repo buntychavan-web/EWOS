@@ -255,6 +255,60 @@ class EmployeeServiceTest {
                 .hasMessageContaining("terminate");
     }
 
+    @Test
+    void getMeReturnsEmployeeResolvedFromClaimWhenUnambiguous() {
+        UUID tenant = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Employee e = fixture(tenant, company);
+        e.setUserId(userId);
+        when(employees.findByIdAndTenantId(e.getId(), tenant)).thenReturn(Optional.of(e));
+
+        EmployeeResponse response = service.getMe(tenant, userId, e.getId(), null);
+
+        assertThat(response.id()).isEqualTo(e.getId());
+        verify(guard).requireAccessForCompany(company);
+    }
+
+    @Test
+    void getMeDisambiguatesWithExplicitCompanyIdWhenClaimAbsent() {
+        UUID tenant = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Employee e = fixture(tenant, company);
+        e.setUserId(userId);
+        when(employees.findAllByUserIdAndTenantId(userId, tenant)).thenReturn(java.util.List.of(e));
+
+        EmployeeResponse response = service.getMe(tenant, userId, null, company);
+
+        assertThat(response.id()).isEqualTo(e.getId());
+    }
+
+    @Test
+    void getMeRejectsWhenNoLinkExists() {
+        UUID tenant = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(employees.findAllByUserIdAndTenantId(userId, tenant)).thenReturn(java.util.List.of());
+
+        assertThatThrownBy(() -> service.getMe(tenant, userId, null, null))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("No employee record is linked");
+    }
+
+    @Test
+    void getMeReturnsConflictWhenMultipleCompaniesLinkedAndNoDisambiguation() {
+        UUID tenant = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        Employee first = fixture(tenant, UUID.randomUUID());
+        Employee second = fixture(tenant, UUID.randomUUID());
+        when(employees.findAllByUserIdAndTenantId(userId, tenant))
+                .thenReturn(java.util.List.of(first, second));
+
+        assertThatThrownBy(() -> service.getMe(tenant, userId, null, null))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("multiple companies");
+    }
+
     private Employee fixture(UUID tenant, UUID company) {
         Employee e = new Employee();
         e.setId(UUID.randomUUID());

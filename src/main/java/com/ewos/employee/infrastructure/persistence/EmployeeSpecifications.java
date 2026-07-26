@@ -51,6 +51,12 @@ public final class EmployeeSpecifications {
             if (c.workEmail() != null && !c.workEmail().isBlank()) {
                 predicates.add(cb.like(cb.lower(root.get("workEmail")), like(c.workEmail())));
             }
+            if (c.hasLogin() != null) {
+                predicates.add(
+                        c.hasLogin()
+                                ? cb.isNotNull(root.get("userId"))
+                                : cb.isNull(root.get("userId")));
+            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }

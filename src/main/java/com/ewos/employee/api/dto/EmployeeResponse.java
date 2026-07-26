@@ -12,6 +12,7 @@ public record EmployeeResponse(
         UUID tenantId,
         UUID companyId,
         UUID personId,
+        UUID userId,
         String employeeNumber,
         String firstName,
         String middleName,

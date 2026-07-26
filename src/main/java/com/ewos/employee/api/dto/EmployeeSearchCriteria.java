@@ -13,4 +13,5 @@ public record EmployeeSearchCriteria(
         EmployeeStatus status,
         String employeeNumber,
         String namePart,
-        String workEmail) {}
+        String workEmail,
+        Boolean hasLogin) {}

@@ -20,7 +20,9 @@ import com.ewos.organization.infrastructure.persistence.OrganizationUnitReposito
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -226,6 +228,49 @@ public class EmployeeService {
         Employee e = require(tenantId, id);
         guard.requireAccessForCompany(e.getCompanyId());
         return mapper.toResponse(e);
+    }
+
+    /**
+     * Self-service lookup of the caller's own {@code Employee} record. {@code employeeIdFromClaim} is
+     * the (possibly absent) {@code employeeId} JWT claim resolved at login — trusted for the token's
+     * lifetime, same staleness window {@code tenantId} already accepts, so this does not re-query on
+     * the common path. Falls back to a live lookup only to shape the error when the claim is absent: a
+     * caller with zero linked employees gets 404, one with more than one (multi-company) gets 409 with
+     * the candidate company ids so they can retry with {@code companyId}.
+     */
+    @Transactional(readOnly = true)
+    public EmployeeResponse getMe(UUID tenantId, UUID userId, UUID employeeIdFromClaim, UUID companyId) {
+        if (companyId != null) {
+            Employee e =
+                    employees.findAllByUserIdAndTenantId(userId, tenantId).stream()
+                            .filter(candidate -> candidate.getCompanyId().equals(companyId))
+                            .findFirst()
+                            .orElseThrow(
+                                    () ->
+                                            new ApiException(
+                                                    HttpStatus.NOT_FOUND,
+                                                    "No employee record linked to your account for this company"));
+            guard.requireAccessForCompany(e.getCompanyId());
+            return mapper.toResponse(e);
+        }
+        if (employeeIdFromClaim != null) {
+            return getById(tenantId, employeeIdFromClaim);
+        }
+        List<Employee> matches = employees.findAllByUserIdAndTenantId(userId, tenantId);
+        if (matches.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND, "No employee record is linked to your account");
+        }
+        String candidates =
+                matches.stream()
+                        .map(candidate -> candidate.getCompanyId().toString())
+                        .distinct()
+                        .collect(Collectors.joining(", "));
+        throw new ApiException(
+                HttpStatus.CONFLICT,
+                "Your account is linked to employee records in multiple companies; retry with"
+                        + " ?companyId= one of: "
+                        + candidates);
     }
 
     @Transactional(readOnly = true)

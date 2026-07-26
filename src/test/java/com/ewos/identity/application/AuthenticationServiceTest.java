@@ -60,6 +60,8 @@ class AuthenticationServiceTest {
 
     @Mock TenantClaimResolver tenantClaimResolver;
 
+    @Mock EmployeeClaimResolver employeeClaimResolver;
+
     private final JwtProperties jwtProperties =
             new JwtProperties(
                     "unit-test-secret-key-that-is-definitely-long-enough-for-hs256-signing",
@@ -83,9 +85,13 @@ class AuthenticationServiceTest {
                         jwtProperties,
                         loginHistoryRecorder,
                         lockout,
-                        tenantClaimResolver);
+                        tenantClaimResolver,
+                        employeeClaimResolver);
         lenient().when(jwtService.generateAccessToken(any(), any())).thenReturn("stub-jwt");
         lenient().when(tenantClaimResolver.resolveTenantId(any())).thenReturn(Optional.empty());
+        lenient()
+                .when(employeeClaimResolver.resolveEmployeeId(any(), any()))
+                .thenReturn(Optional.empty());
     }
 
     @Test
@@ -163,6 +169,56 @@ class AuthenticationServiceTest {
         ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
         assertThat(claimsCaptor.getValue()).doesNotContainKey("tenantId");
+    }
+
+    @Test
+    void loginProjectsResolvedEmployeeIntoEmployeeIdClaim() {
+        User user = adminUser();
+        UUID tenantId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
+        when(tenantClaimResolver.resolveTenantId(user.getId())).thenReturn(Optional.of(tenantId));
+        when(employeeClaimResolver.resolveEmployeeId(user.getId(), tenantId))
+                .thenReturn(Optional.of(employeeId));
+
+        service.login("admin", "pw", IP, UA);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
+        assertThat(claimsCaptor.getValue().get("employeeId")).isEqualTo(employeeId.toString());
+    }
+
+    @Test
+    void loginOmitsEmployeeIdClaimWhenNoLinkExists() {
+        User user = adminUser();
+        UUID tenantId = UUID.randomUUID();
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
+        when(tenantClaimResolver.resolveTenantId(user.getId())).thenReturn(Optional.of(tenantId));
+
+        service.login("admin", "pw", IP, UA);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
+        assertThat(claimsCaptor.getValue()).doesNotContainKey("employeeId");
+    }
+
+    @Test
+    void loginOmitsEmployeeIdClaimWhenNoTenantResolved() {
+        User user = adminUser();
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pw", user.getPasswordHash())).thenReturn(true);
+
+        service.login("admin", "pw", IP, UA);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> claimsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(jwtService).generateAccessToken(any(), claimsCaptor.capture());
+        assertThat(claimsCaptor.getValue()).doesNotContainKey("employeeId");
+        verify(employeeClaimResolver, never()).resolveEmployeeId(any(), any());
     }
 
     @Test
