@@ -24,10 +24,10 @@ import org.springframework.stereotype.Service;
 /**
  * Sprint 3 — Employee Self-Service over the existing Leave module. Every method here resolves the
  * caller's own tenant/employee from {@link TenantContext}/{@link EmployeeContext} (mirroring {@code
- * EmployeeController.me()}, Sprint 1.3) and delegates entirely to {@link LeaveRequestService}, {@link
- * LeaveBalanceService}, and {@link LeaveTypeService} — no new business logic beyond the ownership
- * check on cancel/submit, which the existing services have no reason to perform themselves since they
- * are also called by admin-tier callers acting on arbitrary employees.
+ * EmployeeController.me()}, Sprint 1.3) and delegates entirely to {@link LeaveRequestService},
+ * {@link LeaveBalanceService}, and {@link LeaveTypeService} — no new business logic beyond the
+ * ownership check on cancel/submit, which the existing services have no reason to perform
+ * themselves since they are also called by admin-tier callers acting on arbitrary employees.
  */
 @Service
 public class LeaveSelfService {

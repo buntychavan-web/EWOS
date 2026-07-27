@@ -59,13 +59,16 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public long unreadCount(UUID tenantId) {
-        return repository.countByTenantIdAndRecipientActorIdAndReadAtIsNull(tenantId, requireActor());
+        return repository.countByTenantIdAndRecipientActorIdAndReadAtIsNull(
+                tenantId, requireActor());
     }
 
     public void markRead(UUID tenantId, UUID id) {
         int updated = repository.markRead(id, tenantId, requireActor());
         if (updated == 0
-                && repository.findByIdAndTenantIdAndRecipientActorId(id, tenantId, requireActor()).isEmpty()) {
+                && repository
+                        .findByIdAndTenantIdAndRecipientActorId(id, tenantId, requireActor())
+                        .isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Notification not found");
         }
     }

@@ -53,7 +53,8 @@ class TenantContextTest {
         UUID userId = UUID.randomUUID();
         SecurityContextHolder.getContext()
                 .setAuthentication(
-                        new UsernamePasswordAuthenticationToken(userId.toString(), "n/a", java.util.List.of()));
+                        new UsernamePasswordAuthenticationToken(
+                                userId.toString(), "n/a", java.util.List.of()));
 
         assertThat(tenantContext.currentUserId()).contains(userId);
     }
@@ -67,7 +68,8 @@ class TenantContextTest {
     void currentUserIdEmptyWhenAuthenticationNameIsNotAUuid() {
         SecurityContextHolder.getContext()
                 .setAuthentication(
-                        new UsernamePasswordAuthenticationToken("not-a-uuid", "n/a", java.util.List.of()));
+                        new UsernamePasswordAuthenticationToken(
+                                "not-a-uuid", "n/a", java.util.List.of()));
 
         assertThat(tenantContext.currentUserId()).isEmpty();
     }

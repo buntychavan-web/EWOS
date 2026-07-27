@@ -239,8 +239,8 @@ public class InterviewRoundService {
     }
 
     /**
-     * Package-private: sibling services look up rounds through here, so guarding here covers all
-     * of them at once (same pattern as {@code JobApplicationService.require}).
+     * Package-private: sibling services look up rounds through here, so guarding here covers all of
+     * them at once (same pattern as {@code JobApplicationService.require}).
      */
     InterviewRound require(UUID tenantId, UUID id) {
         InterviewRound r =

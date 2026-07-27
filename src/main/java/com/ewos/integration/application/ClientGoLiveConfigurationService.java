@@ -15,9 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Sprint 14.4 — Client Go-Live Configuration. Tracks readiness of the outsourced payroll
- * engagement (Company) to go live: one configuration per Company, a target date, and a coarse
- * status (PLANNING/READY/LIVE/SUSPENDED).
+ * Sprint 14.4 — Client Go-Live Configuration. Tracks readiness of the outsourced payroll engagement
+ * (Company) to go live: one configuration per Company, a target date, and a coarse status
+ * (PLANNING/READY/LIVE/SUSPENDED).
  */
 @Service
 @Transactional
@@ -28,13 +28,16 @@ public class ClientGoLiveConfigurationService {
     private final IntegrationMapper mapper;
 
     public ClientGoLiveConfigurationService(
-            ClientGoLiveConfigurationRepository repository, ClientAccessGuard guard, IntegrationMapper mapper) {
+            ClientGoLiveConfigurationRepository repository,
+            ClientAccessGuard guard,
+            IntegrationMapper mapper) {
         this.repository = repository;
         this.guard = guard;
         this.mapper = mapper;
     }
 
-    public ClientGoLiveConfigurationResponse create(CreateClientGoLiveConfigurationRequest request) {
+    public ClientGoLiveConfigurationResponse create(
+            CreateClientGoLiveConfigurationRequest request) {
         guard.requireAccessForCompany(request.companyId());
         if (repository.existsByCompanyId(request.companyId())) {
             throw new ApiException(
@@ -79,13 +82,18 @@ public class ClientGoLiveConfigurationService {
                 .findByTenantIdAndCompanyId(tenantId, companyId)
                 .map(mapper::toResponse)
                 .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "No go-live configuration for this company"));
+                        () ->
+                                new ApiException(
+                                        HttpStatus.NOT_FOUND,
+                                        "No go-live configuration for this company"));
     }
 
     @Transactional(readOnly = true)
     public List<ClientGoLiveConfigurationResponse> forClient(UUID tenantId, UUID clientId) {
         guard.requireAccess(clientId);
-        return repository.findAllByTenantIdAndClientIdOrderByCreatedAtDesc(tenantId, clientId).stream()
+        return repository
+                .findAllByTenantIdAndClientIdOrderByCreatedAtDesc(tenantId, clientId)
+                .stream()
                 .map(mapper::toResponse)
                 .toList();
     }
@@ -93,6 +101,9 @@ public class ClientGoLiveConfigurationService {
     private ClientGoLiveConfiguration require(UUID tenantId, UUID id) {
         return repository
                 .findByIdAndTenantId(id, tenantId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Go-live configuration not found"));
+                .orElseThrow(
+                        () ->
+                                new ApiException(
+                                        HttpStatus.NOT_FOUND, "Go-live configuration not found"));
     }
 }

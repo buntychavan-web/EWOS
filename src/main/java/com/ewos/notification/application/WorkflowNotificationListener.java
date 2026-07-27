@@ -90,15 +90,24 @@ public class WorkflowNotificationListener {
                 .ifPresent(
                         (WorkflowTask t) ->
                                 notifications.send(
-                                        event.tenantId(), t.getAssigneeActorId(), type, title, body, null));
+                                        event.tenantId(),
+                                        t.getAssigneeActorId(),
+                                        type,
+                                        title,
+                                        body,
+                                        null));
     }
 
-    private void notifyRequester(WorkflowEvent event, NotificationType type, String title, String body) {
+    private void notifyRequester(
+            WorkflowEvent event, NotificationType type, String title, String body) {
         if (event.instanceId() == null) {
             return;
         }
         UUID recipient =
-                instances.findById(event.instanceId()).map(WorkflowInstance::getCreatedBy).orElse(null);
+                instances
+                        .findById(event.instanceId())
+                        .map(WorkflowInstance::getCreatedBy)
+                        .orElse(null);
         notifications.send(event.tenantId(), recipient, type, title, body, null);
     }
 

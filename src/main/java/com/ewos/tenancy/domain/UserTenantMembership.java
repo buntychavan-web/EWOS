@@ -15,8 +15,8 @@ import org.hibernate.annotations.SQLRestriction;
  * identity.users} — the same soft-reference convention already used by {@link
  * ClientAssignment#getUserId()}.
  *
- * <p>Constrained to at most one active membership per user today via a partial unique index
- * (see V38), not a schema ceiling: the row shape already supports a future move to genuine
+ * <p>Constrained to at most one active membership per user today via a partial unique index (see
+ * V38), not a schema ceiling: the row shape already supports a future move to genuine
  * multi-membership by lifting that index, with no change to this entity, {@link
  * com.ewos.tenancy.application.TenantContext}, or the JWT's {@code tenantId} claim shape.
  */

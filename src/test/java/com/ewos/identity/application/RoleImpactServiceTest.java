@@ -29,8 +29,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * Split out of {@code RoleServiceTest} when {@link RoleImpactService} was split out of {@link
  * RoleService} (Sprint 1.4 audit, Finding 7). The tests under "cross-tenant scoping" are the
  * Finding-1/Finding-9 regression coverage the audit explicitly called for: they construct the exact
- * adversarial scenario (a system role held by users in more than one tenant) and assert the caller only
- * ever sees their own tenant's data. Every one of them fails against the pre-remediation code.
+ * adversarial scenario (a system role held by users in more than one tenant) and assert the caller
+ * only ever sees their own tenant's data. Every one of them fails against the pre-remediation code.
  */
 @ExtendWith(MockitoExtension.class)
 class RoleImpactServiceTest {
@@ -77,7 +77,9 @@ class RoleImpactServiceTest {
 
         List<RoleAssignedUserResponse> response = service.assignedUsers(systemRole.getId());
 
-        assertThat(response).extracting(RoleAssignedUserResponse::username).containsExactly("alice");
+        assertThat(response)
+                .extracting(RoleAssignedUserResponse::username)
+                .containsExactly("alice");
     }
 
     @Test
@@ -116,7 +118,8 @@ class RoleImpactServiceTest {
 
     @Test
     void assignedUsersForTenantScopedRoleReturnsAllHoldersWithoutFiltering() {
-        // Tenant-scoped roles are already same-tenant-only by construction (UserService.resolveRoles());
+        // Tenant-scoped roles are already same-tenant-only by construction
+        // (UserService.resolveRoles());
         // no TenantMembershipFilter call is needed or made.
         Role customRole = role("Payroll Reviewer", tenantId);
         User holder = user("carol");
@@ -125,7 +128,9 @@ class RoleImpactServiceTest {
 
         List<RoleAssignedUserResponse> response = service.assignedUsers(customRole.getId());
 
-        assertThat(response).extracting(RoleAssignedUserResponse::username).containsExactly("carol");
+        assertThat(response)
+                .extracting(RoleAssignedUserResponse::username)
+                .containsExactly("carol");
         verify(tenantMembershipFilter, never()).filterToTenant(any(), any());
     }
 
@@ -149,8 +154,10 @@ class RoleImpactServiceTest {
         Role systemRole = role("SYSTEM_ADMIN", null);
         when(lookup.requireVisible(systemRole.getId())).thenReturn(systemRole);
         when(users.findAllByRolesId(systemRole.getId())).thenReturn(List.of());
-        when(tenantMembershipFilter.filterToTenant(eq(Set.of()), eq(tenantId))).thenReturn(Set.of());
-        when(workflowUsageResolver.countPendingTasksForRole(tenantId, "SYSTEM_ADMIN")).thenReturn(0);
+        when(tenantMembershipFilter.filterToTenant(eq(Set.of()), eq(tenantId)))
+                .thenReturn(Set.of());
+        when(workflowUsageResolver.countPendingTasksForRole(tenantId, "SYSTEM_ADMIN"))
+                .thenReturn(0);
 
         RoleImpactResponse impact = service.impact(systemRole.getId());
 

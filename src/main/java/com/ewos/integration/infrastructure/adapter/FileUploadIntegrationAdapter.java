@@ -14,9 +14,9 @@ import java.nio.file.Path;
 import org.springframework.stereotype.Component;
 
 /**
- * Writes the raw payload JSON verbatim into the configuration's {@code outputDirectory} — the
- * "drop a file for manual pickup" transport, distinct from CSV/EXCEL which reshape the payload
- * into tabular form. {@code config_json}: {@code {"outputDirectory": "..."}}.
+ * Writes the raw payload JSON verbatim into the configuration's {@code outputDirectory} — the "drop
+ * a file for manual pickup" transport, distinct from CSV/EXCEL which reshape the payload into
+ * tabular form. {@code config_json}: {@code {"outputDirectory": "..."}}.
  */
 @Component
 public class FileUploadIntegrationAdapter implements IntegrationAdapter {
@@ -40,18 +40,19 @@ public class FileUploadIntegrationAdapter implements IntegrationAdapter {
             Path dir = OutputDirectories.resolve(JSON, context.configJson());
             Path file = dir.resolve(safeFileName(context.correlationId()) + ".json");
             Files.writeString(
-                    file, context.payloadJson() == null ? "{}" : context.payloadJson(), StandardCharsets.UTF_8);
+                    file,
+                    context.payloadJson() == null ? "{}" : context.payloadJson(),
+                    StandardCharsets.UTF_8);
             return IntegrationAdapterResult.success("Wrote " + file);
         } catch (IllegalArgumentException e) {
-            return IntegrationAdapterResult.failure(ErrorClassification.CONFIGURATION, e.getMessage());
+            return IntegrationAdapterResult.failure(
+                    ErrorClassification.CONFIGURATION, e.getMessage());
         } catch (IOException e) {
             return IntegrationAdapterResult.failure(classifier.classify(e), e.getMessage());
         }
     }
 
     private static String safeFileName(String correlationId) {
-        return correlationId == null
-                ? "record"
-                : correlationId.replaceAll("[^A-Za-z0-9_.-]", "_");
+        return correlationId == null ? "record" : correlationId.replaceAll("[^A-Za-z0-9_.-]", "_");
     }
 }

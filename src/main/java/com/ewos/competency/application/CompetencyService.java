@@ -93,7 +93,10 @@ public class CompetencyService {
                 .toList();
     }
 
-    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
+    /**
+     * Package-private: called only after the caller's own guarded lookup already validated
+     * companyId.
+     */
     long activeCount(UUID tenantId, UUID companyId) {
         return competencies.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).size();
     }
@@ -103,7 +106,9 @@ public class CompetencyService {
                 competencies
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.NOT_FOUND, "Competency not found"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Competency not found"));
         guard.requireAccessForCompany(c.getCompanyId());
         return c;
     }

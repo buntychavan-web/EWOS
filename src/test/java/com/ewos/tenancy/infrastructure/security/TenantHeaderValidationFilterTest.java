@@ -45,7 +45,8 @@ class TenantHeaderValidationFilterTest {
     private static void authenticate() {
         SecurityContextHolder.getContext()
                 .setAuthentication(
-                        new UsernamePasswordAuthenticationToken(UUID.randomUUID().toString(), "n/a", java.util.List.of()));
+                        new UsernamePasswordAuthenticationToken(
+                                UUID.randomUUID().toString(), "n/a", java.util.List.of()));
     }
 
     @Test

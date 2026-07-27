@@ -42,7 +42,8 @@ public class SftpIntegrationAdapter implements IntegrationAdapter {
         try {
             target = readTarget(context.configJson());
         } catch (IllegalArgumentException e) {
-            return IntegrationAdapterResult.failure(ErrorClassification.CONFIGURATION, e.getMessage());
+            return IntegrationAdapterResult.failure(
+                    ErrorClassification.CONFIGURATION, e.getMessage());
         }
 
         String fileName = safeFileName(context.correlationId()) + ".json";
@@ -67,12 +68,14 @@ public class SftpIntegrationAdapter implements IntegrationAdapter {
         try {
             node = JSON.readTree(configJson);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalArgumentException("Integration configuration config_json is not valid JSON", e);
+            throw new IllegalArgumentException(
+                    "Integration configuration config_json is not valid JSON", e);
         }
         String host = requireText(node, "host");
         String remotePath = requireText(node, "remotePath");
         String username = node.hasNonNull("username") ? node.get("username").asText() : null;
-        String credentialRef = node.hasNonNull("credentialRef") ? node.get("credentialRef").asText() : null;
+        String credentialRef =
+                node.hasNonNull("credentialRef") ? node.get("credentialRef").asText() : null;
         int port = node.hasNonNull("port") ? node.get("port").asInt() : 22;
         return new SftpTransport.SftpTarget(host, port, username, credentialRef, remotePath);
     }
@@ -80,14 +83,13 @@ public class SftpIntegrationAdapter implements IntegrationAdapter {
     private static String requireText(JsonNode config, String field) {
         JsonNode node = config.get(field);
         if (node == null || node.asText().isBlank()) {
-            throw new IllegalArgumentException("Integration configuration is missing '" + field + "'");
+            throw new IllegalArgumentException(
+                    "Integration configuration is missing '" + field + "'");
         }
         return node.asText();
     }
 
     private static String safeFileName(String correlationId) {
-        return correlationId == null
-                ? "record"
-                : correlationId.replaceAll("[^A-Za-z0-9_.-]", "_");
+        return correlationId == null ? "record" : correlationId.replaceAll("[^A-Za-z0-9_.-]", "_");
     }
 }

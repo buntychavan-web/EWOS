@@ -1,6 +1,5 @@
 package com.ewos.leave.application;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -10,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.ewos.employee.application.EmployeeContext;
 import com.ewos.employee.domain.Employee;
-import com.ewos.employee.domain.EmployeeStatus;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.leave.api.dto.CreateLeaveRequestRequest;
 import com.ewos.leave.api.dto.LeaveRequestResponse;
@@ -119,8 +117,7 @@ class LeaveSelfServiceTest {
         employee.setCompanyId(companyId);
         when(tenantContext.homeTenantId()).thenReturn(tenantId);
         when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(employeeId));
-        when(employees.findByIdAndTenantId(employeeId, tenantId))
-                .thenReturn(Optional.of(employee));
+        when(employees.findByIdAndTenantId(employeeId, tenantId)).thenReturn(Optional.of(employee));
 
         LocalDate start = LocalDate.now().plusDays(5);
         LocalDate end = LocalDate.now().plusDays(6);
@@ -130,7 +127,12 @@ class LeaveSelfServiceTest {
                 .create(
                         eq(
                                 new CreateLeaveRequestRequest(
-                                        tenantId, companyId, employeeId, leaveTypeId, start, end,
+                                        tenantId,
+                                        companyId,
+                                        employeeId,
+                                        leaveTypeId,
+                                        start,
+                                        end,
                                         "vacation")));
     }
 
@@ -142,7 +144,8 @@ class LeaveSelfServiceTest {
         UUID requestId = UUID.randomUUID();
         when(tenantContext.homeTenantId()).thenReturn(tenantId);
         when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(employeeId));
-        when(requests.getById(tenantId, requestId)).thenReturn(response(requestId, otherEmployeeId));
+        when(requests.getById(tenantId, requestId))
+                .thenReturn(response(requestId, otherEmployeeId));
 
         assertThatThrownBy(() -> service.submitMyRequest(requestId))
                 .isInstanceOf(ApiException.class)
@@ -181,7 +184,8 @@ class LeaveSelfServiceTest {
         UUID requestId = UUID.randomUUID();
         when(tenantContext.homeTenantId()).thenReturn(tenantId);
         when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(employeeId));
-        when(requests.getById(tenantId, requestId)).thenReturn(response(requestId, otherEmployeeId));
+        when(requests.getById(tenantId, requestId))
+                .thenReturn(response(requestId, otherEmployeeId));
 
         assertThatThrownBy(() -> service.cancelMyRequest(requestId))
                 .isInstanceOf(ApiException.class)

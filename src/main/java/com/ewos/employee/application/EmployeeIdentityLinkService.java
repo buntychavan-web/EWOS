@@ -23,9 +23,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Sprint 1.3 — admin-triggered actions linking an {@code Employee} to a {@code User} login. Linking is
- * deliberately admin-only, never self-service: an employee claiming their own record from inside the app
- * would be an impersonation risk with no reliable way to verify the claim (see the Sprint 1.3 SDD, §6.2).
+ * Sprint 1.3 — admin-triggered actions linking an {@code Employee} to a {@code User} login. Linking
+ * is deliberately admin-only, never self-service: an employee claiming their own record from inside
+ * the app would be an impersonation risk with no reliable way to verify the claim (see the Sprint
+ * 1.3 SDD, §6.2).
  */
 @Service
 @Transactional
@@ -64,7 +65,11 @@ public class EmployeeIdentityLinkService {
         UUID previousUserId = e.getUserId();
         e.setUserId(request.userId());
         historyRecorder.record(
-                e, EmployeeIdentityLinkAction.LINK, previousUserId, request.userId(), request.reason());
+                e,
+                EmployeeIdentityLinkAction.LINK,
+                previousUserId,
+                request.userId(),
+                request.reason());
         return mapper.toResponse(e);
     }
 
@@ -73,7 +78,8 @@ public class EmployeeIdentityLinkService {
         guard.requireAccessForCompany(e.getCompanyId());
         UUID previousUserId = e.getUserId();
         if (previousUserId == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Employee has no linked login to unlink");
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Employee has no linked login to unlink");
         }
         e.setUserId(null);
         historyRecorder.record(
@@ -81,7 +87,8 @@ public class EmployeeIdentityLinkService {
         return mapper.toResponse(e);
     }
 
-    public EmployeeResponse provisionUser(UUID tenantId, UUID employeeId, ProvisionUserRequest request) {
+    public EmployeeResponse provisionUser(
+            UUID tenantId, UUID employeeId, ProvisionUserRequest request) {
         Employee e = require(tenantId, employeeId);
         guard.requireAccessForCompany(e.getCompanyId());
         if (e.getUserId() != null) {

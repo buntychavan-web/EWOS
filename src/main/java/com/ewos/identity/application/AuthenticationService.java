@@ -218,7 +218,9 @@ public class AuthenticationService {
                 tenantId ->
                         employeeClaimResolver
                                 .resolveEmployeeId(user.getId(), tenantId)
-                                .ifPresent(employeeId -> claims.put("employeeId", employeeId.toString())));
+                                .ifPresent(
+                                        employeeId ->
+                                                claims.put("employeeId", employeeId.toString())));
 
         String accessToken = jwtService.generateAccessToken(user.getId().toString(), claims);
 

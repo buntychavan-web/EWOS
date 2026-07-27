@@ -20,8 +20,8 @@ import org.springframework.web.client.RestTemplate;
 
 /**
  * Posts the payload JSON to a configured HTTP endpoint. {@code config_json}: {@code {"url":
- * "https://...", "method": "POST"}} — {@code method} defaults to {@code POST}. Any non-2xx
- * response or transport failure is classified via {@link BusinessErrorClassifier}.
+ * "https://...", "method": "POST"}} — {@code method} defaults to {@code POST}. Any non-2xx response
+ * or transport failure is classified via {@link BusinessErrorClassifier}.
  */
 @Component
 public class RestIntegrationAdapter implements IntegrationAdapter {
@@ -31,7 +31,8 @@ public class RestIntegrationAdapter implements IntegrationAdapter {
     private final RestTemplate restTemplate;
     private final BusinessErrorClassifier classifier;
 
-    public RestIntegrationAdapter(RestTemplate integrationRestTemplate, BusinessErrorClassifier classifier) {
+    public RestIntegrationAdapter(
+            RestTemplate integrationRestTemplate, BusinessErrorClassifier classifier) {
         this.restTemplate = integrationRestTemplate;
         this.classifier = classifier;
     }
@@ -48,18 +49,24 @@ public class RestIntegrationAdapter implements IntegrationAdapter {
         try {
             JsonNode config = readConfig(context.configJson());
             url = requireText(config, "url");
-            method = config.has("method") ? HttpMethod.valueOf(config.get("method").asText()) : HttpMethod.POST;
+            method =
+                    config.has("method")
+                            ? HttpMethod.valueOf(config.get("method").asText())
+                            : HttpMethod.POST;
         } catch (IllegalArgumentException e) {
-            return IntegrationAdapterResult.failure(ErrorClassification.CONFIGURATION, e.getMessage());
+            return IntegrationAdapterResult.failure(
+                    ErrorClassification.CONFIGURATION, e.getMessage());
         }
 
         MultiValueMap<String, String> headers = new HttpHeaders();
         headers.add(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         HttpEntity<String> entity =
-                new HttpEntity<>(context.payloadJson() == null ? "{}" : context.payloadJson(), headers);
+                new HttpEntity<>(
+                        context.payloadJson() == null ? "{}" : context.payloadJson(), headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, method, entity, String.class);
+            ResponseEntity<String> response =
+                    restTemplate.exchange(url, method, entity, String.class);
             if (response.getStatusCode().is2xxSuccessful()) {
                 return IntegrationAdapterResult.success(
                         "HTTP " + response.getStatusCode().value() + " from " + url);
@@ -79,14 +86,16 @@ public class RestIntegrationAdapter implements IntegrationAdapter {
         try {
             return JSON.readTree(configJson);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalArgumentException("Integration configuration config_json is not valid JSON", e);
+            throw new IllegalArgumentException(
+                    "Integration configuration config_json is not valid JSON", e);
         }
     }
 
     private static String requireText(JsonNode config, String field) {
         JsonNode node = config.get(field);
         if (node == null || node.asText().isBlank()) {
-            throw new IllegalArgumentException("Integration configuration is missing '" + field + "'");
+            throw new IllegalArgumentException(
+                    "Integration configuration is missing '" + field + "'");
         }
         return node.asText();
     }

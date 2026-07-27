@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The tenancy module's implementation of identity's {@link DefaultTenantMembershipProvisioner} port.
- * Backfills to the same bootstrap tenant {@code V34}/{@code V38} already use for every other
+ * The tenancy module's implementation of identity's {@link DefaultTenantMembershipProvisioner}
+ * port. Backfills to the same bootstrap tenant {@code V34}/{@code V38} already use for every other
  * migration-time-existing user.
  */
 @Component

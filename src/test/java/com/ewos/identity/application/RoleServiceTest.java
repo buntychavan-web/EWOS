@@ -34,7 +34,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * Role CRUD only — Role Usage Impact Analysis (assignedUsers/impact) moved to {@link
- * RoleImpactServiceTest} when {@link RoleImpactService} was split out (Sprint 1.4 audit, Finding 7).
+ * RoleImpactServiceTest} when {@link RoleImpactService} was split out (Sprint 1.4 audit, Finding
+ * 7).
  */
 @ExtendWith(MockitoExtension.class)
 class RoleServiceTest {
@@ -51,7 +52,8 @@ class RoleServiceTest {
     @BeforeEach
     void setUp() {
         service =
-                new RoleService(roles, permissions, users, new RoleMapper(), lookup, workflowUsageResolver);
+                new RoleService(
+                        roles, permissions, users, new RoleMapper(), lookup, workflowUsageResolver);
         lenient().when(lookup.requireTenantId()).thenReturn(tenantId);
         lenient()
                 .when(roles.save(any(Role.class)))
@@ -74,10 +76,13 @@ class RoleServiceTest {
 
     @Test
     void createRejectsDuplicateNameInSameTenant() {
-        when(roles.existsByTenantIdAndNameIgnoreCase(tenantId, "Payroll Reviewer")).thenReturn(true);
+        when(roles.existsByTenantIdAndNameIgnoreCase(tenantId, "Payroll Reviewer"))
+                .thenReturn(true);
 
         assertThatThrownBy(
-                        () -> service.create(new CreateRoleRequest("Payroll Reviewer", null, Set.of())))
+                        () ->
+                                service.create(
+                                        new CreateRoleRequest("Payroll Reviewer", null, Set.of())))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -123,7 +128,9 @@ class RoleServiceTest {
         grantCurrentAuthorities("EMP_READ"); // caller does NOT hold PAYROLL_ADMIN
 
         assertThatThrownBy(
-                        () -> service.create(new CreateRoleRequest("X", null, Set.of(perm.getId()))))
+                        () ->
+                                service.create(
+                                        new CreateRoleRequest("X", null, Set.of(perm.getId()))))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -136,7 +143,9 @@ class RoleServiceTest {
         // No authentication set at all.
 
         assertThatThrownBy(
-                        () -> service.create(new CreateRoleRequest("X", null, Set.of(perm.getId()))))
+                        () ->
+                                service.create(
+                                        new CreateRoleRequest("X", null, Set.of(perm.getId()))))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -168,7 +177,9 @@ class RoleServiceTest {
         when(lookup.requireVisible(systemRole.getId())).thenReturn(systemRole);
 
         assertThatThrownBy(
-                        () -> service.update(systemRole.getId(), new UpdateRoleRequest("X", null, null)))
+                        () ->
+                                service.update(
+                                        systemRole.getId(), new UpdateRoleRequest("X", null, null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -198,7 +209,8 @@ class RoleServiceTest {
         custom.setDescription("original");
         when(lookup.requireVisible(custom.getId())).thenReturn(custom);
 
-        RoleResponse response = service.update(custom.getId(), new UpdateRoleRequest(null, null, null));
+        RoleResponse response =
+                service.update(custom.getId(), new UpdateRoleRequest(null, null, null));
 
         assertThat(response.name()).isEqualTo("Custom");
         assertThat(response.description()).isEqualTo("original");
@@ -211,7 +223,9 @@ class RoleServiceTest {
         when(roles.existsByTenantIdAndNameIgnoreCase(tenantId, "Taken")).thenReturn(true);
 
         assertThatThrownBy(
-                        () -> service.update(custom.getId(), new UpdateRoleRequest("Taken", null, null)))
+                        () ->
+                                service.update(
+                                        custom.getId(), new UpdateRoleRequest("Taken", null, null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -224,7 +238,8 @@ class RoleServiceTest {
         when(lookup.requireVisible(custom.getId())).thenReturn(custom);
 
         RoleResponse response =
-                service.update(custom.getId(), new UpdateRoleRequest("Payroll Reviewer", null, null));
+                service.update(
+                        custom.getId(), new UpdateRoleRequest("Payroll Reviewer", null, null));
 
         assertThat(response.name()).isEqualTo("Payroll Reviewer");
     }
@@ -313,7 +328,8 @@ class RoleServiceTest {
 
     @Test
     void catalogReturnsAllSeededPermissions() {
-        when(permissions.findAll()).thenReturn(List.of(permission("EMP_READ"), permission("EMP_WRITE")));
+        when(permissions.findAll())
+                .thenReturn(List.of(permission("EMP_READ"), permission("EMP_WRITE")));
 
         assertThat(service.catalog()).hasSize(2);
     }
@@ -334,8 +350,7 @@ class RoleServiceTest {
     }
 
     private static void grantCurrentAuthorities(String... codes) {
-        var authorities =
-                List.of(codes).stream().map(SimpleGrantedAuthority::new).toList();
+        var authorities = List.of(codes).stream().map(SimpleGrantedAuthority::new).toList();
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(

@@ -67,7 +67,9 @@ public class CandidateTimelineService {
                 candidates
                         .findByIdAndTenantId(candidateId, tenantId)
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.NOT_FOUND, "Candidate not found"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Candidate not found"));
         guard.requireAccessForCompany(c.getCompanyId());
         return timeline
                 .findAllByTenantIdAndCandidateIdOrderByOccurredAtDesc(tenantId, candidateId)

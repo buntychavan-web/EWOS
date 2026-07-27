@@ -7,10 +7,10 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Exposes leave-request fields to workflow guard expressions (Sprint 4 auto-approval rules), e.g.
- * a tenant can configure an auto transition guarded by {@code #daysRequested <= 2} to skip the
- * human approval step for short leave. Read-only — the workflow engine never writes back through
- * this port.
+ * Exposes leave-request fields to workflow guard expressions (Sprint 4 auto-approval rules), e.g. a
+ * tenant can configure an auto transition guarded by {@code #daysRequested <= 2} to skip the human
+ * approval step for short leave. Read-only — the workflow engine never writes back through this
+ * port.
  */
 @Component
 public class LeaveRequestWorkflowVariableResolver implements WorkflowVariableResolver {
@@ -28,8 +28,7 @@ public class LeaveRequestWorkflowVariableResolver implements WorkflowVariableRes
 
     @Override
     public Map<String, Object> resolve(UUID subjectId) {
-        return requests
-                .findById(subjectId)
+        return requests.findById(subjectId)
                 .map(
                         r ->
                                 Map.<String, Object>of(

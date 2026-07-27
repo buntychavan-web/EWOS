@@ -15,7 +15,8 @@ class XlsxWriterTest {
     @Test
     void producesAValidZipWithTheFiveRequiredOoxmlParts() throws IOException {
         byte[] bytes =
-                XlsxWriter.write(List.of(List.of("Header1", "Header2"), List.of("value & <1>", "v2")));
+                XlsxWriter.write(
+                        List.of(List.of("Header1", "Header2"), List.of("value & <1>", "v2")));
 
         List<String> entries = new ArrayList<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {

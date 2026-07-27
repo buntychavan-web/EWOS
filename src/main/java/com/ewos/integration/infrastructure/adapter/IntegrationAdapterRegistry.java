@@ -8,7 +8,10 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 
-/** Resolves the one {@link IntegrationAdapter} bean registered for each {@link IntegrationAdapterType}. */
+/**
+ * Resolves the one {@link IntegrationAdapter} bean registered for each {@link
+ * IntegrationAdapterType}.
+ */
 @Component
 public class IntegrationAdapterRegistry {
 

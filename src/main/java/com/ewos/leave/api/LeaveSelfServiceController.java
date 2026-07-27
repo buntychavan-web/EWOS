@@ -25,9 +25,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Sprint 3 — Employee Self-Service over Leave. Requires only authentication (no LEAVE_* permission):
- * every method resolves the caller's own employee record and is scoped to it. Mirrors {@code
- * EmployeeController.me()} (Sprint 1.3) exactly for how "no linked employee" is handled.
+ * Sprint 3 — Employee Self-Service over Leave. Requires only authentication (no LEAVE_*
+ * permission): every method resolves the caller's own employee record and is scoped to it. Mirrors
+ * {@code EmployeeController.me()} (Sprint 1.3) exactly for how "no linked employee" is handled.
  */
 @RestController
 @RequestMapping("/api/v1/leave/self-service")

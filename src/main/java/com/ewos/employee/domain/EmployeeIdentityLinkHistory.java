@@ -13,10 +13,10 @@ import java.util.UUID;
 
 /**
  * Append-only audit trail for link / unlink / provision actions on {@link Employee#getUserId()}.
- * Follows the same idiom as {@code LoginHistory} (identity), {@code WorkflowHistory} (workflow), and
- * {@code DataExchangeHistory} (dataexchange): extends {@link AuditableEntity} so {@code created_by} /
- * {@code created_at} capture "performed by" / "date-time" automatically via the platform's existing
- * audit framework, rather than a parallel one.
+ * Follows the same idiom as {@code LoginHistory} (identity), {@code WorkflowHistory} (workflow),
+ * and {@code DataExchangeHistory} (dataexchange): extends {@link AuditableEntity} so {@code
+ * created_by} / {@code created_at} capture "performed by" / "date-time" automatically via the
+ * platform's existing audit framework, rather than a parallel one.
  */
 @Entity
 @Table(name = "employee_identity_link_history")

@@ -27,8 +27,7 @@ class WorkflowGuardEvaluatorTest {
     @Test
     void falseExpressionFails() {
         boolean result =
-                evaluator.evaluate(
-                        "#daysRequested <= 2", Map.of("daysRequested", BigDecimal.TEN));
+                evaluator.evaluate("#daysRequested <= 2", Map.of("daysRequested", BigDecimal.TEN));
         assertThat(result).isFalse();
     }
 

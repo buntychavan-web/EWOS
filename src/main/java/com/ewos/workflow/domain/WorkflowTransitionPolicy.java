@@ -83,8 +83,8 @@ public final class WorkflowTransitionPolicy {
 
     /**
      * All auto transitions leaving {@code fromState}, ordered deterministically by action code.
-     * More than one is only meaningful when each carries a distinct {@code guardExpression} —
-     * see {@code WorkflowInstanceService#maybeAutoAdvance}, which evaluates them in this order and
+     * More than one is only meaningful when each carries a distinct {@code guardExpression} — see
+     * {@code WorkflowInstanceService#maybeAutoAdvance}, which evaluates them in this order and
      * follows the first whose guard passes (Sprint 4 auto-approval/rejection rules).
      */
     public List<WorkflowTransition> findAutoTransitions(

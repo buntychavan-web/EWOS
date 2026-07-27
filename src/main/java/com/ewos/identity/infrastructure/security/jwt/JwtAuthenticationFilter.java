@@ -42,10 +42,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /**
      * Request-attribute name the resolved employee is published under, read by {@code
-     * com.ewos.employee.application.EmployeeContext}. Same independently-duplicated-literal idiom as
-     * {@link #TENANT_ID_REQUEST_ATTRIBUTE}.
+     * com.ewos.employee.application.EmployeeContext}. Same independently-duplicated-literal idiom
+     * as {@link #TENANT_ID_REQUEST_ATTRIBUTE}.
      */
-    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE = "com.ewos.employee.currentEmployeeId";
+    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE =
+            "com.ewos.employee.currentEmployeeId";
 
     private final JwtService jwtService;
 
@@ -76,11 +77,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 extractTenantId(claims)
                         .ifPresent(
                                 tenantId ->
-                                        request.setAttribute(TENANT_ID_REQUEST_ATTRIBUTE, tenantId));
+                                        request.setAttribute(
+                                                TENANT_ID_REQUEST_ATTRIBUTE, tenantId));
                 extractUuidClaim(claims, EMPLOYEE_ID_CLAIM)
                         .ifPresent(
                                 employeeId ->
-                                        request.setAttribute(EMPLOYEE_ID_REQUEST_ATTRIBUTE, employeeId));
+                                        request.setAttribute(
+                                                EMPLOYEE_ID_REQUEST_ATTRIBUTE, employeeId));
             } catch (JwtException ex) {
                 log.debug("Rejected JWT: {}", ex.getMessage());
                 SecurityContextHolder.clearContext();

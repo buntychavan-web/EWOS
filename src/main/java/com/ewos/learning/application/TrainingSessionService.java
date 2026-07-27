@@ -139,7 +139,10 @@ public class TrainingSessionService {
                 .toList();
     }
 
-    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
+    /**
+     * Package-private: called only after the caller's own guarded lookup already validated
+     * companyId.
+     */
     long scheduledCount(UUID tenantId, UUID companyId) {
         return sessions.findAllByTenantIdAndCompanyIdAndStatus(
                         tenantId, companyId, TrainingSessionStatus.SCHEDULED)
@@ -148,8 +151,7 @@ public class TrainingSessionService {
 
     TrainingSession require(UUID tenantId, UUID id) {
         TrainingSession s =
-                sessions
-                        .findByIdAndTenantId(id, tenantId)
+                sessions.findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(

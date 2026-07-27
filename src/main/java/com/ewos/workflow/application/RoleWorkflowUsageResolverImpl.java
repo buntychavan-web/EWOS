@@ -24,7 +24,8 @@ public class RoleWorkflowUsageResolverImpl implements RoleWorkflowUsageResolver 
 
     @Override
     public int countPendingTasksForRole(UUID tenantId, String roleName) {
-        return tasks.findAllByTenantIdAndAssigneeRoleCodeAndStatusIn(tenantId, roleName, PENDING_STATUSES)
+        return tasks.findAllByTenantIdAndAssigneeRoleCodeAndStatusIn(
+                        tenantId, roleName, PENDING_STATUSES)
                 .size();
     }
 }

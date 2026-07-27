@@ -20,7 +20,11 @@ class BusinessErrorClassifierTest {
     void classifiesUnauthorizedAsAuthentication() {
         HttpClientErrorException error =
                 HttpClientErrorException.create(
-                        HttpStatus.UNAUTHORIZED, "Unauthorized", HttpHeaders.EMPTY, new byte[0], null);
+                        HttpStatus.UNAUTHORIZED,
+                        "Unauthorized",
+                        HttpHeaders.EMPTY,
+                        new byte[0],
+                        null);
 
         assertThat(classifier.classify(error)).isEqualTo(ErrorClassification.AUTHENTICATION);
     }
@@ -38,7 +42,11 @@ class BusinessErrorClassifierTest {
     void classifiesOtherClientErrorsAsValidation() {
         HttpClientErrorException error =
                 HttpClientErrorException.create(
-                        HttpStatus.BAD_REQUEST, "Bad Request", HttpHeaders.EMPTY, new byte[0], null);
+                        HttpStatus.BAD_REQUEST,
+                        "Bad Request",
+                        HttpHeaders.EMPTY,
+                        new byte[0],
+                        null);
 
         assertThat(classifier.classify(error)).isEqualTo(ErrorClassification.VALIDATION);
     }
@@ -47,7 +55,11 @@ class BusinessErrorClassifierTest {
     void classifiesServerErrorsAsExternalSystem() {
         HttpServerErrorException error =
                 HttpServerErrorException.create(
-                        HttpStatus.INTERNAL_SERVER_ERROR, "Server Error", HttpHeaders.EMPTY, new byte[0], null);
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Server Error",
+                        HttpHeaders.EMPTY,
+                        new byte[0],
+                        null);
 
         assertThat(classifier.classify(error)).isEqualTo(ErrorClassification.EXTERNAL_SYSTEM);
     }

@@ -55,7 +55,8 @@ public class OperationsDashboardService {
     public OperationsDashboardResponse forCompany(UUID tenantId, UUID companyId) {
         guard.requireAccessForCompany(companyId);
         List<PayrollRun> companyRuns =
-                runs.findAllByTenantIdAndCompanyIdInOrderByCreatedAtDesc(tenantId, List.of(companyId));
+                runs.findAllByTenantIdAndCompanyIdInOrderByCreatedAtDesc(
+                        tenantId, List.of(companyId));
 
         List<OperationsPipelineRowResponse> rows =
                 companyRuns.stream().limit(RUN_LIMIT).map(run -> toRow(tenantId, run)).toList();
@@ -81,7 +82,8 @@ public class OperationsDashboardService {
                 dataExchangeRecord == null
                         ? null
                         : executions
-                                .findAllByDataExchangeRecordIdOrderByStartedAtDesc(dataExchangeRecord.getId())
+                                .findAllByDataExchangeRecordIdOrderByStartedAtDesc(
+                                        dataExchangeRecord.getId())
                                 .stream()
                                 .findFirst()
                                 .orElse(null);

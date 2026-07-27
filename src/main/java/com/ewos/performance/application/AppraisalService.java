@@ -327,7 +327,9 @@ public class AppraisalService {
                 appraisals
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.NOT_FOUND, "Appraisal not found"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Appraisal not found"));
         guard.requireAccessForCompany(a.getCompanyId());
         return a;
     }

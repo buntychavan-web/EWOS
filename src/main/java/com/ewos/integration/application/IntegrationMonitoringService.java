@@ -32,7 +32,9 @@ public class IntegrationMonitoringService {
     private final IntegrationMapper mapper;
 
     public IntegrationMonitoringService(
-            IntegrationExecutionRecordRepository executions, ClientAccessGuard guard, IntegrationMapper mapper) {
+            IntegrationExecutionRecordRepository executions,
+            ClientAccessGuard guard,
+            IntegrationMapper mapper) {
         this.executions = executions;
         this.guard = guard;
         this.mapper = mapper;
@@ -46,17 +48,23 @@ public class IntegrationMonitoringService {
         Map<IntegrationAdapterType, Long> byAdapterType =
                 all.stream()
                         .filter(r -> r.getAdapterType() != null)
-                        .collect(Collectors.groupingBy(IntegrationExecutionRecord::getAdapterType, Collectors.counting()));
+                        .collect(
+                                Collectors.groupingBy(
+                                        IntegrationExecutionRecord::getAdapterType,
+                                        Collectors.counting()));
 
         Map<ErrorClassification, Long> byErrorClassification =
                 all.stream()
                         .filter(r -> r.getErrorClassification() != null)
                         .collect(
                                 Collectors.groupingBy(
-                                        IntegrationExecutionRecord::getErrorClassification, Collectors.counting()));
+                                        IntegrationExecutionRecord::getErrorClassification,
+                                        Collectors.counting()));
 
         long successCount =
-                all.stream().filter(r -> r.getOutcome() == IntegrationExecutionOutcome.SUCCESS).count();
+                all.stream()
+                        .filter(r -> r.getOutcome() == IntegrationExecutionOutcome.SUCCESS)
+                        .count();
         long failureCount = all.size() - successCount;
 
         List<com.ewos.integration.api.dto.IntegrationExecutionResponse> recentFailures =
@@ -67,6 +75,12 @@ public class IntegrationMonitoringService {
                         .toList();
 
         return new IntegrationMonitoringSummaryResponse(
-                companyId, all.size(), successCount, failureCount, byAdapterType, byErrorClassification, recentFailures);
+                companyId,
+                all.size(),
+                successCount,
+                failureCount,
+                byAdapterType,
+                byErrorClassification,
+                recentFailures);
     }
 }

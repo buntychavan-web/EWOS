@@ -13,12 +13,11 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * Which {@link IntegrationAdapterType} and connection settings a company uses for a given
- * exchange type. One active configuration per (company, exchangeType) at a time — {@code
- * config_json} is transport-specific (endpoint URL for REST, host/port/path for SFTP, output
- * directory for CSV/EXCEL/FILE_UPLOAD), kept as opaque metadata so adding a new field never
- * requires a schema change, matching the platform's existing zero-hardcoded-vocabulary
- * convention.
+ * Which {@link IntegrationAdapterType} and connection settings a company uses for a given exchange
+ * type. One active configuration per (company, exchangeType) at a time — {@code config_json} is
+ * transport-specific (endpoint URL for REST, host/port/path for SFTP, output directory for
+ * CSV/EXCEL/FILE_UPLOAD), kept as opaque metadata so adding a new field never requires a schema
+ * change, matching the platform's existing zero-hardcoded-vocabulary convention.
  */
 @Entity
 @Table(name = "integration_configurations")

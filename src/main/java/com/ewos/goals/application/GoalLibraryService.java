@@ -99,8 +99,7 @@ public class GoalLibraryService {
 
     GoalLibraryItem require(UUID tenantId, UUID id) {
         GoalLibraryItem g =
-                library
-                        .findByIdAndTenantId(id, tenantId)
+                library.findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(

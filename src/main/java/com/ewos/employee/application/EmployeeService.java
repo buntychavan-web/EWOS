@@ -231,15 +231,17 @@ public class EmployeeService {
     }
 
     /**
-     * Self-service lookup of the caller's own {@code Employee} record. {@code employeeIdFromClaim} is
-     * the (possibly absent) {@code employeeId} JWT claim resolved at login — trusted for the token's
-     * lifetime, same staleness window {@code tenantId} already accepts, so this does not re-query on
-     * the common path. Falls back to a live lookup only to shape the error when the claim is absent: a
-     * caller with zero linked employees gets 404, one with more than one (multi-company) gets 409 with
-     * the candidate company ids so they can retry with {@code companyId}.
+     * Self-service lookup of the caller's own {@code Employee} record. {@code employeeIdFromClaim}
+     * is the (possibly absent) {@code employeeId} JWT claim resolved at login — trusted for the
+     * token's lifetime, same staleness window {@code tenantId} already accepts, so this does not
+     * re-query on the common path. Falls back to a live lookup only to shape the error when the
+     * claim is absent: a caller with zero linked employees gets 404, one with more than one
+     * (multi-company) gets 409 with the candidate company ids so they can retry with {@code
+     * companyId}.
      */
     @Transactional(readOnly = true)
-    public EmployeeResponse getMe(UUID tenantId, UUID userId, UUID employeeIdFromClaim, UUID companyId) {
+    public EmployeeResponse getMe(
+            UUID tenantId, UUID userId, UUID employeeIdFromClaim, UUID companyId) {
         if (companyId != null) {
             Employee e =
                     employees.findAllByUserIdAndTenantId(userId, tenantId).stream()

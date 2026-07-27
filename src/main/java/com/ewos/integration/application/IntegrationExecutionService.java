@@ -75,7 +75,9 @@ public class IntegrationExecutionService {
         IntegrationAdapterResult result;
         IntegrationConfiguration resolvedConfig = config.orElse(null);
         IntegrationAdapter adapter =
-                resolvedConfig == null ? null : adapters.find(resolvedConfig.getAdapterType()).orElse(null);
+                resolvedConfig == null
+                        ? null
+                        : adapters.find(resolvedConfig.getAdapterType()).orElse(null);
 
         if (resolvedConfig == null) {
             result =
@@ -105,7 +107,9 @@ public class IntegrationExecutionService {
                     dataExchangeRecordId,
                     new MarkFailedRequest(
                             result.errorClassification().name(),
-                            result.detail() == null ? "Integration execution failed" : result.detail()));
+                            result.detail() == null
+                                    ? "Integration execution failed"
+                                    : result.detail()));
         }
         return mapper.toResponse(execution);
     }
@@ -114,7 +118,9 @@ public class IntegrationExecutionService {
     public List<IntegrationExecutionResponse> historyOf(UUID tenantId, UUID dataExchangeRecordId) {
         // Ownership/tenant scoping enforced by getById's own guard check.
         dataExchange.getById(tenantId, dataExchangeRecordId);
-        return executions.findAllByDataExchangeRecordIdOrderByStartedAtDesc(dataExchangeRecordId).stream()
+        return executions
+                .findAllByDataExchangeRecordIdOrderByStartedAtDesc(dataExchangeRecordId)
+                .stream()
                 .map(mapper::toResponse)
                 .toList();
     }

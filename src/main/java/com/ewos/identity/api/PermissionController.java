@@ -11,9 +11,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Split out of {@code RoleController} post-audit (Sprint 1.4 audit, Finding 8): {@code permissions} and
- * {@code roles} are two distinct REST resources and every other controller on the platform maps one
- * resource per controller.
+ * Split out of {@code RoleController} post-audit (Sprint 1.4 audit, Finding 8): {@code permissions}
+ * and {@code roles} are two distinct REST resources and every other controller on the platform maps
+ * one resource per controller.
  */
 @RestController
 @RequestMapping("/api/v1/permissions")

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,12 +18,12 @@ import com.ewos.integration.domain.ErrorClassification;
 import com.ewos.integration.domain.IntegrationAdapter;
 import com.ewos.integration.domain.IntegrationAdapterResult;
 import com.ewos.integration.domain.IntegrationAdapterType;
+import com.ewos.integration.domain.IntegrationConfiguration;
 import com.ewos.integration.domain.IntegrationExecutionOutcome;
 import com.ewos.integration.domain.IntegrationExecutionRecord;
 import com.ewos.integration.infrastructure.adapter.IntegrationAdapterRegistry;
 import com.ewos.integration.infrastructure.persistence.IntegrationConfigurationRepository;
 import com.ewos.integration.infrastructure.persistence.IntegrationExecutionRecordRepository;
-import com.ewos.integration.domain.IntegrationConfiguration;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
 import java.util.Optional;
@@ -139,11 +138,7 @@ class IntegrationExecutionServiceTest {
         assertThat(response.outcome()).isEqualTo(IntegrationExecutionOutcome.FAILURE);
         assertThat(response.errorClassification()).isEqualTo(ErrorClassification.CONFIGURATION);
         verify(adapters, never()).find(any());
-        verify(dataExchange)
-                .markFailed(
-                        eq(tenantId),
-                        eq(recordId),
-                        any(MarkFailedRequest.class));
+        verify(dataExchange).markFailed(eq(tenantId), eq(recordId), any(MarkFailedRequest.class));
     }
 
     @Test
@@ -178,7 +173,9 @@ class IntegrationExecutionServiceTest {
                 .thenReturn(Optional.of(config));
         when(adapters.find(IntegrationAdapterType.CSV)).thenReturn(Optional.of(adapter));
         when(adapter.execute(any()))
-                .thenReturn(IntegrationAdapterResult.failure(ErrorClassification.EXTERNAL_SYSTEM, "boom"));
+                .thenReturn(
+                        IntegrationAdapterResult.failure(
+                                ErrorClassification.EXTERNAL_SYSTEM, "boom"));
 
         IntegrationExecutionResponse response = service.process(tenantId, recordId);
 
@@ -231,7 +228,8 @@ class IntegrationExecutionServiceTest {
     void historyOfDelegatesOwnershipCheckToDataExchangeGetById() {
         UUID tenantId = UUID.randomUUID();
         UUID recordId = UUID.randomUUID();
-        when(dataExchange.getById(tenantId, recordId)).thenReturn(record(recordId, UUID.randomUUID()));
+        when(dataExchange.getById(tenantId, recordId))
+                .thenReturn(record(recordId, UUID.randomUUID()));
         when(executions.findAllByDataExchangeRecordIdOrderByStartedAtDesc(recordId))
                 .thenReturn(List.of());
 

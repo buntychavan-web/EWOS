@@ -3,8 +3,8 @@ package com.ewos.integration.domain;
 /**
  * Business error taxonomy for a failed {@link IntegrationExecutionRecord}. Lets the Integration
  * Monitoring Dashboard and Operations Dashboard group failures by cause rather than raw exception
- * text, and lets {@link com.ewos.integration.application.IntegrationExecutionService} decide
- * which failures are worth an automatic {@code RETRY} (see {@link #retryable()}).
+ * text, and lets {@link com.ewos.integration.application.IntegrationExecutionService} decide which
+ * failures are worth an automatic {@code RETRY} (see {@link #retryable()}).
  */
 public enum ErrorClassification {
     /** The payload itself is malformed or fails a business rule — retrying won't help. */

@@ -9,9 +9,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * Persists one {@link EmployeeIdentityLinkHistory} row per link / unlink / provision action. Unlike
- * {@code LoginHistoryRecorder} (which uses {@code REQUIRES_NEW} so failed-login rows survive a rollback),
- * this recorder participates in the caller's transaction: an audit row for an action that itself gets
- * rolled back should roll back too.
+ * {@code LoginHistoryRecorder} (which uses {@code REQUIRES_NEW} so failed-login rows survive a
+ * rollback), this recorder participates in the caller's transaction: an audit row for an action
+ * that itself gets rolled back should roll back too.
  */
 @Service
 public class EmployeeIdentityLinkHistoryRecorder {

@@ -11,10 +11,10 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
- * Resolves the current request's authenticated tenant. The tenant is derived from the JWT's
- * {@code tenantId} claim — set by {@code JwtAuthenticationFilter} as a request attribute at
- * authentication time — never from client-supplied input, closing the gap where {@code
- * X-Tenant-Id} was previously trusted with no server-side verification.
+ * Resolves the current request's authenticated tenant. The tenant is derived from the JWT's {@code
+ * tenantId} claim — set by {@code JwtAuthenticationFilter} as a request attribute at authentication
+ * time — never from client-supplied input, closing the gap where {@code X-Tenant-Id} was previously
+ * trusted with no server-side verification.
  *
  * <p>The request-attribute name below is intentionally a plain literal duplicated on both the
  * producer ({@code JwtAuthenticationFilter}, {@code com.ewos.identity}) and this consumer ({@code
@@ -49,8 +49,10 @@ public class TenantContext {
         return tenantId;
     }
 
-    /** Same idiom used platform-wide to resolve the authenticated caller: the JWT filter puts the
-     * user's UUID string into {@code Authentication#getName()}. */
+    /**
+     * Same idiom used platform-wide to resolve the authenticated caller: the JWT filter puts the
+     * user's UUID string into {@code Authentication#getName()}.
+     */
     public Optional<UUID> currentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getName() == null) {
@@ -67,7 +69,8 @@ public class TenantContext {
         Object attributes = RequestContextHolder.getRequestAttributes();
         if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
             throw new ApiException(
-                    HttpStatus.INTERNAL_SERVER_ERROR, "No request context available to resolve tenant");
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No request context available to resolve tenant");
         }
         return servletAttributes;
     }

@@ -35,16 +35,21 @@ class SftpIntegrationAdapterTest {
                         + " \"username\": \"svc\", \"credentialRef\": \"vault:sftp\"}";
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "PAYROLL_RUN:abc",
-                        "{\"x\":1}", configJson);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "PAYROLL_RUN:abc",
+                        "{\"x\":1}",
+                        configJson);
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 
         assertThat(result.outcome()).isEqualTo(IntegrationExecutionOutcome.SUCCESS);
         verify(transport)
                 .upload(
-                        eq(new SftpTransport.SftpTarget(
-                                "sftp.example.com", 2222, "svc", "vault:sftp", "/inbound")),
+                        eq(
+                                new SftpTransport.SftpTarget(
+                                        "sftp.example.com", 2222, "svc", "vault:sftp", "/inbound")),
                         eq("PAYROLL_RUN_abc.json"),
                         any());
     }
@@ -54,7 +59,12 @@ class SftpIntegrationAdapterTest {
         String configJson = "{\"host\": \"sftp.example.com\", \"remotePath\": \"/inbound\"}";
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}", configJson);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
+                        configJson);
         doThrow(new IOException("connection refused")).when(transport).upload(any(), any(), any());
 
         IntegrationAdapterResult result = adapter.execute(ctx);
@@ -67,7 +77,11 @@ class SftpIntegrationAdapterTest {
     void failsWithConfigurationClassificationWhenHostMissing() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
                         "{\"remotePath\": \"/inbound\"}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);

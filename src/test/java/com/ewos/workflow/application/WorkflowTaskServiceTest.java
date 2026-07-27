@@ -3,7 +3,6 @@ package com.ewos.workflow.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -13,7 +12,6 @@ import static org.mockito.Mockito.when;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.WorkflowMapper;
-import com.ewos.workflow.api.dto.AssignTaskRequest;
 import com.ewos.workflow.api.dto.CompleteTaskRequest;
 import com.ewos.workflow.domain.WorkflowActorType;
 import com.ewos.workflow.domain.WorkflowApprovalMode;
@@ -57,12 +55,19 @@ class WorkflowTaskServiceTest {
     void setUp() {
         service =
                 new WorkflowTaskService(
-                        tasks, instanceService, policy, new WorkflowMapper(), guard, approverResolver,
-                        delegations, events);
+                        tasks,
+                        instanceService,
+                        policy,
+                        new WorkflowMapper(),
+                        guard,
+                        approverResolver,
+                        delegations,
+                        events);
         tenantId = UUID.randomUUID();
         actor = UUID.randomUUID();
         SecurityContextHolder.getContext()
-                .setAuthentication(new UsernamePasswordAuthenticationToken(actor.toString(), null, List.of()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(actor.toString(), null, List.of()));
     }
 
     @AfterEach
@@ -89,7 +94,8 @@ class WorkflowTaskServiceTest {
         return s;
     }
 
-    private static WorkflowTask task(WorkflowInstance instance, WorkflowState state, UUID assignee) {
+    private static WorkflowTask task(
+            WorkflowInstance instance, WorkflowState state, UUID assignee) {
         WorkflowTask t = new WorkflowTask();
         t.setId(UUID.randomUUID());
         t.setInstance(instance);
@@ -126,10 +132,12 @@ class WorkflowTaskServiceTest {
         when(tasks.findByIdAndTenantId(completing.getId(), tenantId))
                 .thenReturn(java.util.Optional.of(completing));
         when(tasks.findAllOfInstanceInStatus(
-                        instance.getId(), List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
+                        instance.getId(),
+                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
                 .thenReturn(List.of(sibling));
 
-        service.complete(tenantId, completing.getId(), new CompleteTaskRequest("APPROVE", null, null));
+        service.complete(
+                tenantId, completing.getId(), new CompleteTaskRequest("APPROVE", null, null));
 
         assertThat(sibling.getStatus()).isEqualTo(WorkflowTaskStatus.CANCELLED);
         verify(instanceService).advance(instance, "APPROVE", actor, completing.getId(), null);
@@ -146,12 +154,15 @@ class WorkflowTaskServiceTest {
         when(tasks.findByIdAndTenantId(completing.getId(), tenantId))
                 .thenReturn(java.util.Optional.of(completing));
         when(tasks.findAllOfInstanceInStatus(
-                        instance.getId(), List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
+                        instance.getId(),
+                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
                 .thenReturn(List.of(openSibling));
-        when(tasks.findAllOfInstanceInStatus(instance.getId(), List.of(WorkflowTaskStatus.COMPLETED)))
+        when(tasks.findAllOfInstanceInStatus(
+                        instance.getId(), List.of(WorkflowTaskStatus.COMPLETED)))
                 .thenReturn(List.of());
 
-        service.complete(tenantId, completing.getId(), new CompleteTaskRequest("APPROVE", null, null));
+        service.complete(
+                tenantId, completing.getId(), new CompleteTaskRequest("APPROVE", null, null));
 
         verify(instanceService, never()).advance(any(), any(), any(), any(), any());
         assertThat(completing.getStatus()).isEqualTo(WorkflowTaskStatus.COMPLETED);
@@ -168,12 +179,15 @@ class WorkflowTaskServiceTest {
         when(tasks.findByIdAndTenantId(completing.getId(), tenantId))
                 .thenReturn(java.util.Optional.of(completing));
         when(tasks.findAllOfInstanceInStatus(
-                        instance.getId(), List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
+                        instance.getId(),
+                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
                 .thenReturn(List.of());
-        when(tasks.findAllOfInstanceInStatus(instance.getId(), List.of(WorkflowTaskStatus.COMPLETED)))
+        when(tasks.findAllOfInstanceInStatus(
+                        instance.getId(), List.of(WorkflowTaskStatus.COMPLETED)))
                 .thenReturn(List.of(alreadyCompleted));
 
-        service.complete(tenantId, completing.getId(), new CompleteTaskRequest("APPROVE", null, null));
+        service.complete(
+                tenantId, completing.getId(), new CompleteTaskRequest("APPROVE", null, null));
 
         verify(instanceService).advance(instance, "APPROVE", actor, completing.getId(), null);
     }
@@ -190,13 +204,16 @@ class WorkflowTaskServiceTest {
         when(tasks.findByIdAndTenantId(completing.getId(), tenantId))
                 .thenReturn(java.util.Optional.of(completing));
         when(tasks.findAllOfInstanceInStatus(
-                        instance.getId(), List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
+                        instance.getId(),
+                        List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED)))
                 .thenReturn(List.of(stillOpen));
-        when(tasks.findAllOfInstanceInStatus(instance.getId(), List.of(WorkflowTaskStatus.COMPLETED)))
+        when(tasks.findAllOfInstanceInStatus(
+                        instance.getId(), List.of(WorkflowTaskStatus.COMPLETED)))
                 .thenReturn(List.of(alreadyApproved));
 
         // This task rejects, diverging from the prior APPROVE decision — fail-fast.
-        service.complete(tenantId, completing.getId(), new CompleteTaskRequest("REJECT", null, null));
+        service.complete(
+                tenantId, completing.getId(), new CompleteTaskRequest("REJECT", null, null));
 
         verify(instanceService).advance(instance, "REJECT", actor, completing.getId(), null);
         assertThat(stillOpen.getStatus()).isEqualTo(WorkflowTaskStatus.CANCELLED);
@@ -244,7 +261,12 @@ class WorkflowTaskServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.assignAuto(
-                                        tenantId, instance.getId(), UUID.randomUUID(), "APPROVE", null, null))
+                                        tenantId,
+                                        instance.getId(),
+                                        UUID.randomUUID(),
+                                        "APPROVE",
+                                        null,
+                                        null))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.BAD_REQUEST);
@@ -257,13 +279,19 @@ class WorkflowTaskServiceTest {
         WorkflowInstance instance = instance(state);
         UUID subjectEmployeeId = UUID.randomUUID();
         when(instanceService.require(tenantId, instance.getId())).thenReturn(instance);
-        when(approverResolver.resolve(tenantId, instance.getCompanyId(), subjectEmployeeId, "MANAGER"))
+        when(approverResolver.resolve(
+                        tenantId, instance.getCompanyId(), subjectEmployeeId, "MANAGER"))
                 .thenReturn(List.of());
 
         assertThatThrownBy(
                         () ->
                                 service.assignAuto(
-                                        tenantId, instance.getId(), subjectEmployeeId, "APPROVE", null, null))
+                                        tenantId,
+                                        instance.getId(),
+                                        subjectEmployeeId,
+                                        "APPROVE",
+                                        null,
+                                        null))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -278,15 +306,19 @@ class WorkflowTaskServiceTest {
         UUID approver1 = UUID.randomUUID();
         UUID approver2 = UUID.randomUUID();
         when(instanceService.require(tenantId, instance.getId())).thenReturn(instance);
-        when(approverResolver.resolve(tenantId, instance.getCompanyId(), subjectEmployeeId, "FINANCE"))
+        when(approverResolver.resolve(
+                        tenantId, instance.getCompanyId(), subjectEmployeeId, "FINANCE"))
                 .thenReturn(
                         List.of(
-                                new ApproverResolver.ResolvedApprover(WorkflowActorType.USER, approver1),
-                                new ApproverResolver.ResolvedApprover(WorkflowActorType.USER, approver2)));
+                                new ApproverResolver.ResolvedApprover(
+                                        WorkflowActorType.USER, approver1),
+                                new ApproverResolver.ResolvedApprover(
+                                        WorkflowActorType.USER, approver2)));
         lenient().when(tasks.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var result =
-                service.assignAuto(tenantId, instance.getId(), subjectEmployeeId, "APPROVE", null, null);
+                service.assignAuto(
+                        tenantId, instance.getId(), subjectEmployeeId, "APPROVE", null, null);
 
         assertThat(result).hasSize(2);
         verify(tasks, times(2)).save(any());

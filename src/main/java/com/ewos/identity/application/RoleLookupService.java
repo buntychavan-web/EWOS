@@ -11,14 +11,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Shared role-visibility resolution for {@link RoleService} and {@link RoleImpactService} — extracted
- * so both read the same rule rather than maintaining two copies (see the Sprint 1.4 audit, Finding 13).
+ * Shared role-visibility resolution for {@link RoleService} and {@link RoleImpactService} —
+ * extracted so both read the same rule rather than maintaining two copies (see the Sprint 1.4
+ * audit, Finding 13).
  *
- * <p>System roles ({@code tenant_id IS NULL}, e.g. {@code SYSTEM_ADMIN}) are visible to every caller,
- * including one with no resolved tenant at all — fixing the audit's Finding 2: a caller whose account has
- * no {@code UserTenantMembership} yet (e.g. the bootstrap admin, before {@link
- * DefaultTenantMembershipProvisioner} ran) could otherwise never see even the one role they hold. Tenant
- * <em>write</em> operations (create/update/delete) still require a real tenant — {@link
+ * <p>System roles ({@code tenant_id IS NULL}, e.g. {@code SYSTEM_ADMIN}) are visible to every
+ * caller, including one with no resolved tenant at all — fixing the audit's Finding 2: a caller
+ * whose account has no {@code UserTenantMembership} yet (e.g. the bootstrap admin, before {@link
+ * DefaultTenantMembershipProvisioner} ran) could otherwise never see even the one role they hold.
+ * Tenant <em>write</em> operations (create/update/delete) still require a real tenant — {@link
  * #requireTenantId()} keeps its hard-fail behavior for those.
  */
 @Component
@@ -33,15 +34,22 @@ public class RoleLookupService {
         this.requestTenantContext = requestTenantContext;
     }
 
-    /** Visible everywhere for system roles; degrades to system-roles-only when no tenant is resolved. */
+    /**
+     * Visible everywhere for system roles; degrades to system-roles-only when no tenant is
+     * resolved.
+     */
     public Role requireVisible(UUID id) {
         Optional<UUID> tenantId = requestTenantContext.currentTenantId();
         Optional<Role> found =
-                tenantId.isPresent() ? roles.findVisible(id, tenantId.get()) : roles.findSystemRoleById(id);
+                tenantId.isPresent()
+                        ? roles.findVisible(id, tenantId.get())
+                        : roles.findSystemRoleById(id);
         return found.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Role not found"));
     }
 
-    /** System roles plus the caller's own tenant's custom roles; system-roles-only with no tenant. */
+    /**
+     * System roles plus the caller's own tenant's custom roles; system-roles-only with no tenant.
+     */
     public List<Role> listVisible() {
         return requestTenantContext
                 .currentTenantId()

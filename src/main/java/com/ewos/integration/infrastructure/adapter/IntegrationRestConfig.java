@@ -6,15 +6,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
 
-/** Dedicated {@link RestTemplate} for {@link RestIntegrationAdapter} — bounded timeouts so a slow
- * or unreachable external system can't hang an integration execution indefinitely. */
+/**
+ * Dedicated {@link RestTemplate} for {@link RestIntegrationAdapter} — bounded timeouts so a slow or
+ * unreachable external system can't hang an integration execution indefinitely.
+ */
 @Configuration
 public class IntegrationRestConfig {
 
     @Bean
     public RestTemplate integrationRestTemplate(RestTemplateBuilder builder) {
-        return builder
-                .setConnectTimeout(Duration.ofSeconds(10))
+        return builder.setConnectTimeout(Duration.ofSeconds(10))
                 .setReadTimeout(Duration.ofSeconds(30))
                 .build();
     }

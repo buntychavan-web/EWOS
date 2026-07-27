@@ -93,13 +93,13 @@ public class WorkflowTaskService {
     }
 
     /**
-     * Assigns task(s) at the instance's current state using its {@code defaultApproverRole}
-     * instead of a caller-supplied actor (Sprint 4 dynamic approvers). {@code subjectEmployeeId} is
-     * the employee the role is resolved relative to (e.g. whose manager to find) — the workflow
-     * engine has no notion of "the employee this instance is about" itself, since a subject can be
-     * any entity type, so the caller (the owning module) supplies it. A role that resolves to
-     * several people (e.g. everyone holding {@code FINANCE}) creates one task per person; combine
-     * with {@code approvalMode = ALL} or {@code ANY} on the state to control how many must act.
+     * Assigns task(s) at the instance's current state using its {@code defaultApproverRole} instead
+     * of a caller-supplied actor (Sprint 4 dynamic approvers). {@code subjectEmployeeId} is the
+     * employee the role is resolved relative to (e.g. whose manager to find) — the workflow engine
+     * has no notion of "the employee this instance is about" itself, since a subject can be any
+     * entity type, so the caller (the owning module) supplies it. A role that resolves to several
+     * people (e.g. everyone holding {@code FINANCE}) creates one task per person; combine with
+     * {@code approvalMode = ALL} or {@code ANY} on the state to control how many must act.
      */
     public List<WorkflowTaskResponse> assignAuto(
             UUID tenantId,
@@ -131,7 +131,12 @@ public class WorkflowTaskService {
                                         tenantId,
                                         instanceId,
                                         new AssignTaskRequest(
-                                                a.actorType(), a.actorId(), null, actionCode, dueAt, notes)))
+                                                a.actorType(),
+                                                a.actorId(),
+                                                null,
+                                                actionCode,
+                                                dueAt,
+                                                notes)))
                 .toList();
     }
 
@@ -185,12 +190,16 @@ public class WorkflowTaskService {
             return mapper.toResponse(task);
         }
 
-        List<WorkflowTask> openSiblings = siblingsInState(task, List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED));
+        List<WorkflowTask> openSiblings =
+                siblingsInState(task, List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED));
         if (mode == WorkflowApprovalMode.ANY) {
             for (WorkflowTask sibling : openSiblings) {
                 sibling.setStatus(WorkflowTaskStatus.CANCELLED);
                 sibling.setCompletedAt(Instant.now());
-                sibling.setNotes(appendNote(sibling.getNotes(), "auto-cancelled: ANY-mode sibling task already completed"));
+                sibling.setNotes(
+                        appendNote(
+                                sibling.getNotes(),
+                                "auto-cancelled: ANY-mode sibling task already completed"));
             }
             instanceService.advance(
                     task.getInstance(), request.actionCode(), actor, task.getId(), request.notes());
@@ -198,20 +207,25 @@ public class WorkflowTaskService {
         }
 
         // ALL mode: fail-fast on a divergent decision, otherwise wait for every sibling.
-        List<WorkflowTask> completedSiblings = siblingsInState(task, List.of(WorkflowTaskStatus.COMPLETED));
+        List<WorkflowTask> completedSiblings =
+                siblingsInState(task, List.of(WorkflowTaskStatus.COMPLETED));
         boolean divergent =
                 completedSiblings.stream()
                         .anyMatch(
                                 t ->
                                         !t.getId().equals(task.getId())
-                                                && !request.actionCode().equalsIgnoreCase(t.getActionCode()));
+                                                && !request.actionCode()
+                                                        .equalsIgnoreCase(t.getActionCode()));
         if (divergent || openSiblings.isEmpty()) {
             // Divergent decision advances immediately (fail-fast); otherwise this was the last
             // outstanding task in the state and every completed sibling agreed — advance now.
             for (WorkflowTask sibling : openSiblings) {
                 sibling.setStatus(WorkflowTaskStatus.CANCELLED);
                 sibling.setCompletedAt(Instant.now());
-                sibling.setNotes(appendNote(sibling.getNotes(), "auto-cancelled: ALL-mode resolved by a divergent decision"));
+                sibling.setNotes(
+                        appendNote(
+                                sibling.getNotes(),
+                                "auto-cancelled: ALL-mode resolved by a divergent decision"));
             }
             instanceService.advance(
                     task.getInstance(), request.actionCode(), actor, task.getId(), request.notes());
@@ -220,14 +234,18 @@ public class WorkflowTaskService {
         return mapper.toResponse(task);
     }
 
-    private List<WorkflowTask> siblingsInState(WorkflowTask task, List<WorkflowTaskStatus> statuses) {
+    private List<WorkflowTask> siblingsInState(
+            WorkflowTask task, List<WorkflowTaskStatus> statuses) {
         return tasks.findAllOfInstanceInStatus(task.getInstance().getId(), statuses).stream()
                 .filter(t -> t.getState().getId().equals(task.getState().getId()))
                 .toList();
     }
 
     private static String appendNote(String existing, String addition) {
-        return (existing != null && !existing.isBlank() ? existing + " " : "") + "[" + addition + "]";
+        return (existing != null && !existing.isBlank() ? existing + " " : "")
+                + "["
+                + addition
+                + "]";
     }
 
     @Transactional(readOnly = true)

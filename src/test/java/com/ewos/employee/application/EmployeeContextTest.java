@@ -11,7 +11,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 class EmployeeContextTest {
 
-    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE = "com.ewos.employee.currentEmployeeId";
+    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE =
+            "com.ewos.employee.currentEmployeeId";
 
     private final EmployeeContext employeeContext = new EmployeeContext();
 

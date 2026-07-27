@@ -37,7 +37,9 @@ class TenantAccessGrantServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TenantAccessGrantService(repository, tenantRepository, tenantContext, new TenancyMapper());
+        service =
+                new TenantAccessGrantService(
+                        repository, tenantRepository, tenantContext, new TenancyMapper());
     }
 
     @Test
@@ -51,7 +53,8 @@ class TenantAccessGrantServiceTest {
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         TenantAccessGrantResponse response =
-                service.grant(new CreateTenantAccessGrantRequest(userId, tenantId, "reason", expiresAt));
+                service.grant(
+                        new CreateTenantAccessGrantRequest(userId, tenantId, "reason", expiresAt));
 
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.tenantId()).isEqualTo(tenantId);
@@ -119,7 +122,8 @@ class TenantAccessGrantServiceTest {
     @Test
     void listForUserDelegatesToRepository() {
         UUID userId = UUID.randomUUID();
-        when(repository.findAllByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of(activeGrant()));
+        when(repository.findAllByUserIdOrderByCreatedAtDesc(userId))
+                .thenReturn(List.of(activeGrant()));
 
         assertThat(service.listForUser(userId)).hasSize(1);
     }

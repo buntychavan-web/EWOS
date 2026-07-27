@@ -47,7 +47,8 @@ class ClientGoLiveConfigurationServiceTest {
                         });
     }
 
-    private static ClientGoLiveConfiguration configuration(UUID companyId, ClientGoLiveStatus status) {
+    private static ClientGoLiveConfiguration configuration(
+            UUID companyId, ClientGoLiveStatus status) {
         ClientGoLiveConfiguration c = new ClientGoLiveConfiguration();
         c.setTenantId(UUID.randomUUID());
         c.setClientId(UUID.randomUUID());
@@ -126,7 +127,8 @@ class ClientGoLiveConfigurationServiceTest {
     void forCompanyThrowsWhenNoneExists() {
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
-        when(repository.findByTenantIdAndCompanyId(tenantId, companyId)).thenReturn(Optional.empty());
+        when(repository.findByTenantIdAndCompanyId(tenantId, companyId))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.forCompany(tenantId, companyId))
                 .isInstanceOf(ApiException.class);

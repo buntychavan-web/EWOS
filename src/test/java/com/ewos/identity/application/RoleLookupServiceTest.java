@@ -18,8 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 /**
- * Sprint 1.4 audit remediation, Finding 2 — system-role visibility must not require a resolved tenant
- * (a caller with no {@code UserTenantMembership} yet, e.g. the bootstrap admin before {@link
+ * Sprint 1.4 audit remediation, Finding 2 — system-role visibility must not require a resolved
+ * tenant (a caller with no {@code UserTenantMembership} yet, e.g. the bootstrap admin before {@link
  * DefaultTenantMembershipProvisioner} ran, must still be able to see {@code SYSTEM_ADMIN}).
  */
 @ExtendWith(MockitoExtension.class)

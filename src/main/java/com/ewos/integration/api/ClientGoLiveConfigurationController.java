@@ -43,11 +43,17 @@ public class ClientGoLiveConfigurationController {
     @Operation(summary = "Create a go-live configuration for a company")
     @ApiResponse(
             responseCode = "201",
-            content = @Content(schema = @Schema(implementation = ClientGoLiveConfigurationResponse.class)))
+            content =
+                    @Content(
+                            schema =
+                                    @Schema(
+                                            implementation =
+                                                    ClientGoLiveConfigurationResponse.class)))
     public ResponseEntity<ClientGoLiveConfigurationResponse> create(
             @Valid @RequestBody CreateClientGoLiveConfigurationRequest request) {
         ClientGoLiveConfigurationResponse created = service.create(request);
-        return ResponseEntity.created(URI.create("/api/v1/integration/golive/" + created.id())).body(created);
+        return ResponseEntity.created(URI.create("/api/v1/integration/golive/" + created.id()))
+                .body(created);
     }
 
     @GetMapping("/{id}")

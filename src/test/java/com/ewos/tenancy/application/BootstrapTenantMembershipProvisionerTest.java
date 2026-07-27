@@ -39,7 +39,8 @@ class BootstrapTenantMembershipProvisionerTest {
 
         provisioner.ensureDefaultMembership(userId);
 
-        ArgumentCaptor<UserTenantMembership> captor = ArgumentCaptor.forClass(UserTenantMembership.class);
+        ArgumentCaptor<UserTenantMembership> captor =
+                ArgumentCaptor.forClass(UserTenantMembership.class);
         verify(memberships).save(captor.capture());
         assertThat(captor.getValue().getUserId()).isEqualTo(userId);
         assertThat(captor.getValue().getTenantId()).isEqualTo(BOOTSTRAP_TENANT_ID);

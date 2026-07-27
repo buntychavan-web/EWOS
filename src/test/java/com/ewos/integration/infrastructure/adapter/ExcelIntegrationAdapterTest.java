@@ -17,7 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ExcelIntegrationAdapterTest {
 
-    private final ExcelIntegrationAdapter adapter = new ExcelIntegrationAdapter(new BusinessErrorClassifier());
+    private final ExcelIntegrationAdapter adapter =
+            new ExcelIntegrationAdapter(new BusinessErrorClassifier());
 
     @Test
     void typeIsExcel() {
@@ -26,11 +27,16 @@ class ExcelIntegrationAdapterTest {
 
     @Test
     void writesAnXlsxFileToTheConfiguredDirectory(@TempDir Path dir) throws IOException {
-        String configJson = "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
+        String configJson =
+                "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "PAYROLL_RUN:abc",
-                        "{\"x\":1}", configJson);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "PAYROLL_RUN:abc",
+                        "{\"x\":1}",
+                        configJson);
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 
@@ -44,7 +50,12 @@ class ExcelIntegrationAdapterTest {
     void failsWithConfigurationClassificationWhenOutputDirectoryMissing() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}", "{}");
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
+                        "{}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, 'claude/**', 'feature/**', 'release/**']
+    branches: [main, ewos-main, 'claude/**', 'feature/**', 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, ewos-main]
 
 concurrency:
   group: ci-${{ github.ref }}

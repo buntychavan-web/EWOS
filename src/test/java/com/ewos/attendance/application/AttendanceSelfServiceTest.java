@@ -28,7 +28,8 @@ class AttendanceSelfServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AttendanceSelfService(timeEntries, timesheets, tenantContext, employeeContext);
+        service =
+                new AttendanceSelfService(timeEntries, timesheets, tenantContext, employeeContext);
     }
 
     @Test

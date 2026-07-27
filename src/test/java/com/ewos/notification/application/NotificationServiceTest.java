@@ -37,7 +37,9 @@ class NotificationServiceTest {
         service = new NotificationService(repository);
         caller = UUID.randomUUID();
         SecurityContextHolder.getContext()
-                .setAuthentication(new UsernamePasswordAuthenticationToken(caller.toString(), null, List.of()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                caller.toString(), null, List.of()));
     }
 
     @AfterEach

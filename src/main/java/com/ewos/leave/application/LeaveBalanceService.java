@@ -138,8 +138,7 @@ public class LeaveBalanceService {
             UUID tenantId, UUID employeeId, int year) {
         List<LeaveAllocation> found =
                 allocations.findAllForEmployeeAndYear(tenantId, employeeId, year);
-        guard.requireAccessForCompanies(
-                found.stream().map(LeaveAllocation::getCompanyId).toList());
+        guard.requireAccessForCompanies(found.stream().map(LeaveAllocation::getCompanyId).toList());
         return found.stream().map(mapper::toResponse).toList();
     }
 

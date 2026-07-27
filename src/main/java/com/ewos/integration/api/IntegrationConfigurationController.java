@@ -46,11 +46,17 @@ public class IntegrationConfigurationController {
     @Operation(summary = "Create an integration configuration for a company + exchange type")
     @ApiResponse(
             responseCode = "201",
-            content = @Content(schema = @Schema(implementation = IntegrationConfigurationResponse.class)))
+            content =
+                    @Content(
+                            schema =
+                                    @Schema(
+                                            implementation =
+                                                    IntegrationConfigurationResponse.class)))
     public ResponseEntity<IntegrationConfigurationResponse> create(
             @Valid @RequestBody CreateIntegrationConfigurationRequest request) {
         IntegrationConfigurationResponse created = service.create(request);
-        return ResponseEntity.created(URI.create("/api/v1/integration/configurations/" + created.id()))
+        return ResponseEntity.created(
+                        URI.create("/api/v1/integration/configurations/" + created.id()))
                 .body(created);
     }
 

@@ -12,9 +12,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Resolves a dynamic approver role code (as configured on {@code WorkflowState.defaultApproverRole})
- * to concrete actor(s) for a given subject employee, so a workflow definition can say "the
- * employee's manager" instead of a caller hard-coding one specific employee id.
+ * Resolves a dynamic approver role code (as configured on {@code
+ * WorkflowState.defaultApproverRole}) to concrete actor(s) for a given subject employee, so a
+ * workflow definition can say "the employee's manager" instead of a caller hard-coding one specific
+ * employee id.
  *
  * <p>Two roles are resolved structurally, from the existing employee hierarchy:
  *
@@ -26,12 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
  * </ul>
  *
  * <p>Every other code — {@code HOD}, {@code HR}, {@code FINANCE}, or {@code CUSTOM:<name>} —
- * resolves by the same mechanism: look up a {@link Role} with that exact name visible to the
- * tenant (custom role first, system role second) and return every user holding it who also has an
- * {@link Employee} record in the target company. There is deliberately no separate
- * "department head" data model — building one is out of scope for this sprint; a tenant that wants
- * an HOD approver creates a role named {@code HOD} and assigns it to the right people, same as any
- * other role-based approver.
+ * resolves by the same mechanism: look up a {@link Role} with that exact name visible to the tenant
+ * (custom role first, system role second) and return every user holding it who also has an {@link
+ * Employee} record in the target company. There is deliberately no separate "department head" data
+ * model — building one is out of scope for this sprint; a tenant that wants an HOD approver creates
+ * a role named {@code HOD} and assigns it to the right people, same as any other role-based
+ * approver.
  */
 @Component
 @Transactional(readOnly = true)
@@ -44,7 +45,8 @@ public class ApproverResolver {
     private final RoleRepository roles;
     private final UserRepository users;
 
-    public ApproverResolver(EmployeeRepository employees, RoleRepository roles, UserRepository users) {
+    public ApproverResolver(
+            EmployeeRepository employees, RoleRepository roles, UserRepository users) {
         this.employees = employees;
         this.roles = roles;
         this.users = users;
@@ -65,9 +67,10 @@ public class ApproverResolver {
         if ("CEO".equalsIgnoreCase(code)) {
             return resolveTopOfChain(tenantId, subjectEmployeeId);
         }
-        String roleName = code.regionMatches(true, 0, CUSTOM_PREFIX, 0, CUSTOM_PREFIX.length())
-                ? code.substring(CUSTOM_PREFIX.length())
-                : code;
+        String roleName =
+                code.regionMatches(true, 0, CUSTOM_PREFIX, 0, CUSTOM_PREFIX.length())
+                        ? code.substring(CUSTOM_PREFIX.length())
+                        : code;
         return resolveByRole(tenantId, companyId, roleName);
     }
 
@@ -76,7 +79,8 @@ public class ApproverResolver {
         if (employee == null || employee.getManager() == null) {
             return List.of();
         }
-        return List.of(new ResolvedApprover(WorkflowActorType.EMPLOYEE, employee.getManager().getId()));
+        return List.of(
+                new ResolvedApprover(WorkflowActorType.EMPLOYEE, employee.getManager().getId()));
     }
 
     private List<ResolvedApprover> resolveTopOfChain(UUID tenantId, UUID employeeId) {
@@ -85,7 +89,10 @@ public class ApproverResolver {
             return List.of();
         }
         for (int hop = 0; hop < MAX_HIERARCHY_HOPS && current.getManager() != null; hop++) {
-            Employee next = employees.findByIdAndTenantId(current.getManager().getId(), tenantId).orElse(null);
+            Employee next =
+                    employees
+                            .findByIdAndTenantId(current.getManager().getId(), tenantId)
+                            .orElse(null);
             if (next == null) {
                 break;
             }

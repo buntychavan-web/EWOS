@@ -23,10 +23,11 @@ import org.hibernate.annotations.SQLRestriction;
 public class Role extends AuditableEntity {
 
     /**
-     * Sprint 1.4 — {@code null} for a system role (e.g. {@code SYSTEM_ADMIN}), visible platform-wide and
-     * immutable via the tenant-facing role API. Non-null scopes a tenant's own custom role, visible and
-     * usable only inside that tenant. Plain {@code UUID}, no hard FK — same cross-module convention as
-     * {@code employees.tenant_id}/{@code company_id}/{@code user_id}.
+     * Sprint 1.4 — {@code null} for a system role (e.g. {@code SYSTEM_ADMIN}), visible
+     * platform-wide and immutable via the tenant-facing role API. Non-null scopes a tenant's own
+     * custom role, visible and usable only inside that tenant. Plain {@code UUID}, no hard FK —
+     * same cross-module convention as {@code employees.tenant_id}/{@code company_id}/{@code
+     * user_id}.
      */
     @Column(name = "tenant_id")
     private UUID tenantId;

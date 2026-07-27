@@ -217,7 +217,8 @@ public class DevelopmentPlanService {
                         .orElseThrow(
                                 () ->
                                         new ApiException(
-                                                HttpStatus.NOT_FOUND, "Development plan not found"));
+                                                HttpStatus.NOT_FOUND,
+                                                "Development plan not found"));
         guard.requireAccessForCompany(p.getCompanyId());
         return p;
     }

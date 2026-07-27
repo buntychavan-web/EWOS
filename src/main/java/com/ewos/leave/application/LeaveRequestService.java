@@ -30,8 +30,8 @@ import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -315,7 +315,8 @@ public class LeaveRequestService {
      * existing admin-tier distinction the module already draws for cancelling APPROVED requests
      * (see {@code LeaveRequestController}).
      */
-    private void requireManagerAuthorityUnlessAdmin(UUID tenantId, LeaveRequest r, UUID actorUserId) {
+    private void requireManagerAuthorityUnlessAdmin(
+            UUID tenantId, LeaveRequest r, UUID actorUserId) {
         if (hasAuthority("LEAVE_ADMIN")) {
             return;
         }

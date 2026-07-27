@@ -125,7 +125,8 @@ class IntegrationConfigurationServiceTest {
                 service.update(
                         tenantId,
                         UUID.randomUUID(),
-                        new UpdateIntegrationConfigurationRequest("{\"outputDirectory\": \"/other\"}", false));
+                        new UpdateIntegrationConfigurationRequest(
+                                "{\"outputDirectory\": \"/other\"}", false));
 
         assertThat(updated.configJson()).isEqualTo("{\"outputDirectory\": \"/other\"}");
         assertThat(updated.active()).isFalse();

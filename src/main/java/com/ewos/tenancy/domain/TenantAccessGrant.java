@@ -9,9 +9,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A narrow, time-boxed, audited exception to a user's own {@link UserTenantMembership} —
- * replaces a blanket cross-tenant bypass authority with something scoped (one named tenant),
- * bounded (expires), and evidenced (who granted it, why, and whether/when it was revoked).
+ * A narrow, time-boxed, audited exception to a user's own {@link UserTenantMembership} — replaces a
+ * blanket cross-tenant bypass authority with something scoped (one named tenant), bounded
+ * (expires), and evidenced (who granted it, why, and whether/when it was revoked).
  *
  * <p>Deliberately not soft-deleted: a revoked grant must stay visible for audit, so revocation is
  * expressed as {@code revokedAt}/{@code revokedBy} columns rather than {@code @SQLDelete} hiding

@@ -5,9 +5,9 @@ import java.util.UUID;
 
 /**
  * Result of {@link RoleCompanyUsageResolver#resolveUsage(java.util.Set)} — owned by {@code
- * com.ewos.identity} (not {@code com.ewos.employee}) so the port's consumer never needs to depend on the
- * producer's types, mirroring how {@link TenantClaimResolver}/{@link EmployeeClaimResolver} return
- * identity-/JDK-owned types rather than the implementing module's own domain classes.
+ * com.ewos.identity} (not {@code com.ewos.employee}) so the port's consumer never needs to depend
+ * on the producer's types, mirroring how {@link TenantClaimResolver}/{@link EmployeeClaimResolver}
+ * return identity-/JDK-owned types rather than the implementing module's own domain classes.
  */
 public record RoleCompanyUsage(List<CompanyUsage> companies, List<DepartmentUsage> departments) {
 

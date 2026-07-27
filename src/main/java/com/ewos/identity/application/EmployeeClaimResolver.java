@@ -12,9 +12,9 @@ import java.util.UUID;
 public interface EmployeeClaimResolver {
 
     /**
-     * Empty when the user has no linked {@code Employee} in this tenant, or when they have more than one
-     * (the multi-company edge case — same tenant, different companies) and the ambiguity can't be
-     * resolved at login time. Both are normal, non-error states.
+     * Empty when the user has no linked {@code Employee} in this tenant, or when they have more
+     * than one (the multi-company edge case — same tenant, different companies) and the ambiguity
+     * can't be resolved at login time. Both are normal, non-error states.
      */
     Optional<UUID> resolveEmployeeId(UUID userId, UUID tenantId);
 }

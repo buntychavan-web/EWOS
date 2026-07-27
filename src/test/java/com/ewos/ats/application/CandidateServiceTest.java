@@ -25,10 +25,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 
 /**
- * {@link CandidateService#require} is the single choke point every other ATS service (notes,
- * tags, documents, résumés, communications, job applications) resolves a candidate through — these
- * tests exist specifically to prove the Sprint 1.2 ClientAccessGuard wiring at that choke point,
- * not to cover the module end-to-end (no test suite pre-existed for this module).
+ * {@link CandidateService#require} is the single choke point every other ATS service (notes, tags,
+ * documents, résumés, communications, job applications) resolves a candidate through — these tests
+ * exist specifically to prove the Sprint 1.2 ClientAccessGuard wiring at that choke point, not to
+ * cover the module end-to-end (no test suite pre-existed for this module).
  */
 @ExtendWith(MockitoExtension.class)
 class CandidateServiceTest {
@@ -47,7 +47,14 @@ class CandidateServiceTest {
     void setUp() {
         service =
                 new CandidateService(
-                        candidates, employees, numbers, duplicates, timeline, new AtsMapper(), events, guard);
+                        candidates,
+                        employees,
+                        numbers,
+                        duplicates,
+                        timeline,
+                        new AtsMapper(),
+                        events,
+                        guard);
     }
 
     @Test
@@ -92,6 +99,7 @@ class CandidateServiceTest {
 
         assertThatThrownBy(() -> service.require(tenant, id)).isInstanceOf(ApiException.class);
 
-        verify(guard, org.mockito.Mockito.never()).requireAccessForCompany(org.mockito.ArgumentMatchers.any());
+        verify(guard, org.mockito.Mockito.never())
+                .requireAccessForCompany(org.mockito.ArgumentMatchers.any());
     }
 }

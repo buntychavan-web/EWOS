@@ -341,8 +341,7 @@ public class ProbationService {
 
     ProbationRecord require(UUID tenantId, UUID id) {
         ProbationRecord r =
-                records
-                        .findByIdAndTenantId(id, tenantId)
+                records.findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(

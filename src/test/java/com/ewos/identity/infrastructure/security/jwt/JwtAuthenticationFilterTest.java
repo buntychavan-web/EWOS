@@ -47,7 +47,8 @@ class JwtAuthenticationFilterTest {
         filter.doFilter(request, response, chain);
 
         assertThat(request.getAttribute(TENANT_ID_REQUEST_ATTRIBUTE)).isEqualTo(tenantId);
-        assertThat(SecurityContextHolder.getContext().getAuthentication().getName()).isEqualTo(subject);
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getName())
+                .isEqualTo(subject);
     }
 
     @Test

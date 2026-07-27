@@ -11,7 +11,9 @@ import java.util.UUID;
  */
 public interface TenantClaimResolver {
 
-    /** Empty when the user has no {@code UserTenantMembership} yet — a real, admin-actionable
-     * state (e.g. a brand-new account mid-provisioning), not an error. */
+    /**
+     * Empty when the user has no {@code UserTenantMembership} yet — a real, admin-actionable state
+     * (e.g. a brand-new account mid-provisioning), not an error.
+     */
     Optional<UUID> resolveTenantId(UUID userId);
 }

@@ -19,13 +19,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Validates the {@code X-Tenant-Id} header — previously trusted as bare client-supplied input
- * across ~88 controllers with zero server-side check — against the caller's own JWT-derived
- * tenant ({@link TenantContext#homeTenantId()}), or an active {@link
+ * across ~88 controllers with zero server-side check — against the caller's own JWT-derived tenant
+ * ({@link TenantContext#homeTenantId()}), or an active {@link
  * com.ewos.tenancy.domain.TenantAccessGrant} covering a different tenant.
  *
  * <p>Deliberately does not remove or replace the header: every existing controller still reads
- * {@code X-Tenant-Id} exactly as before and uses that value in its service calls. This filter
- * only decides whether the caller is allowed to assert that value at all, closing the gap without
+ * {@code X-Tenant-Id} exactly as before and uses that value in its service calls. This filter only
+ * decides whether the caller is allowed to assert that value at all, closing the gap without
  * touching any of the ~88 existing controller signatures — see the Sprint 1 SDD's transition
  * strategy for why.
  */
@@ -63,7 +63,11 @@ public class TenantHeaderValidationFilter extends OncePerRequestFilter {
         try {
             headerTenantId = UUID.fromString(request.getHeader(TENANT_HEADER));
         } catch (IllegalArgumentException ex) {
-            writeError(response, request, HttpStatus.BAD_REQUEST, "X-Tenant-Id header is not a valid UUID");
+            writeError(
+                    response,
+                    request,
+                    HttpStatus.BAD_REQUEST,
+                    "X-Tenant-Id header is not a valid UUID");
             return;
         }
 
@@ -91,9 +95,14 @@ public class TenantHeaderValidationFilter extends OncePerRequestFilter {
     }
 
     private void writeError(
-            HttpServletResponse response, HttpServletRequest request, HttpStatus status, String message)
+            HttpServletResponse response,
+            HttpServletRequest request,
+            HttpStatus status,
+            String message)
             throws IOException {
-        ApiError body = ApiError.of(status.value(), status.getReasonPhrase(), message, request.getRequestURI());
+        ApiError body =
+                ApiError.of(
+                        status.value(), status.getReasonPhrase(), message, request.getRequestURI());
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(response.getWriter(), body);

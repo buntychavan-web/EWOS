@@ -1,6 +1,5 @@
 package com.ewos.identity.application;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,7 +43,11 @@ class IdentityBootstrapTest {
     void setUp() {
         bootstrap =
                 new IdentityBootstrap(
-                        userRepository, roleRepository, passwordEncoder, properties, tenantMembershipProvisioner);
+                        userRepository,
+                        roleRepository,
+                        passwordEncoder,
+                        properties,
+                        tenantMembershipProvisioner);
     }
 
     @Test
@@ -70,7 +73,8 @@ class IdentityBootstrapTest {
 
     @Test
     void provisionsTenantMembershipForAlreadyExistingAdmin() {
-        // The self-healing case: a deployment created before this fix existed still gets its bootstrap
+        // The self-healing case: a deployment created before this fix existed still gets its
+        // bootstrap
         // admin's membership backfilled on the next restart, not just at first-ever creation.
         User existing = new User();
         existing.setId(UUID.randomUUID());

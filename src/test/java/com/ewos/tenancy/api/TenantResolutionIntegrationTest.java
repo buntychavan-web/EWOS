@@ -36,9 +36,7 @@ class TenantResolutionIntegrationTest extends AbstractIntegrationTest {
     void meResolvesTheBackfilledBootstrapTenantFromTheJwt() throws Exception {
         String accessToken = login().accessToken();
 
-        mockMvc.perform(
-                        get("/api/v1/tenants/me")
-                                .header("Authorization", "Bearer " + accessToken))
+        mockMvc.perform(get("/api/v1/tenants/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(BOOTSTRAP_TENANT_ID.toString()));
     }

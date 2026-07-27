@@ -85,7 +85,8 @@ class LeaveRequestServiceTest {
         managerId = UUID.randomUUID();
         SecurityContextHolder.getContext()
                 .setAuthentication(
-                        new UsernamePasswordAuthenticationToken(actorUserId.toString(), null, List.of()));
+                        new UsernamePasswordAuthenticationToken(
+                                actorUserId.toString(), null, List.of()));
     }
 
     @AfterEach
@@ -123,7 +124,9 @@ class LeaveRequestServiceTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
-                                actorUserId.toString(), null, List.of(new SimpleGrantedAuthority("LEAVE_ADMIN"))));
+                                actorUserId.toString(),
+                                null,
+                                List.of(new SimpleGrantedAuthority("LEAVE_ADMIN"))));
     }
 
     private void stubBalance(LeaveRequest r) {
@@ -147,13 +150,17 @@ class LeaveRequestServiceTest {
         when(requests.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
         when(employees.findAllByUserIdAndTenantId(actorUserId, tenantId)).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.approve(tenantId, r.getId(), new DecideLeaveRequestRequest(null)))
+        assertThatThrownBy(
+                        () ->
+                                service.approve(
+                                        tenantId, r.getId(), new DecideLeaveRequestRequest(null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);
 
         org.mockito.Mockito.verify(balances, never())
-                .requireBalanceForType(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt(), any());
+                .requireBalanceForType(
+                        any(), any(), any(), org.mockito.ArgumentMatchers.anyInt(), any());
     }
 
     @Test
@@ -161,7 +168,10 @@ class LeaveRequestServiceTest {
         LeaveRequest r = submittedRequest(null);
         when(requests.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
 
-        assertThatThrownBy(() -> service.approve(tenantId, r.getId(), new DecideLeaveRequestRequest(null)))
+        assertThatThrownBy(
+                        () ->
+                                service.approve(
+                                        tenantId, r.getId(), new DecideLeaveRequestRequest(null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -199,7 +209,9 @@ class LeaveRequestServiceTest {
         when(employees.findAllByUserIdAndTenantId(actorUserId, tenantId)).thenReturn(List.of());
 
         assertThatThrownBy(
-                        () -> service.reject(tenantId, r.getId(), new DecideLeaveRequestRequest("no")))
+                        () ->
+                                service.reject(
+                                        tenantId, r.getId(), new DecideLeaveRequestRequest("no")))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);

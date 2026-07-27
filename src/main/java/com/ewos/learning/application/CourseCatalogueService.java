@@ -102,8 +102,7 @@ public class CourseCatalogueService {
 
     TrainingCourse require(UUID tenantId, UUID id) {
         TrainingCourse c =
-                courses
-                        .findByIdAndTenantId(id, tenantId)
+                courses.findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(
@@ -112,7 +111,10 @@ public class CourseCatalogueService {
         return c;
     }
 
-    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
+    /**
+     * Package-private: called only after the caller's own guarded lookup already validated
+     * companyId.
+     */
     long activeCount(UUID tenantId, UUID companyId) {
         return courses.findAllByTenantIdAndCompanyIdAndActiveTrue(tenantId, companyId).size();
     }

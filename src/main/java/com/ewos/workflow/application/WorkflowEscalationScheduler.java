@@ -33,8 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Deliberately does not auto-reassign the task to a "next level" approver: the engine has no
  * generic way to know who that is for an arbitrary subject type (see {@code ApproverResolver}'s
  * javadoc — role resolution needs a subject employee id the scheduler doesn't have). Escalation
- * here means "flag it and notify", not "silently reroute it" — reassignment stays a human,
- * {@code WF_ADMIN}, or owning-module decision.
+ * here means "flag it and notify", not "silently reroute it" — reassignment stays a human, {@code
+ * WF_ADMIN}, or owning-module decision.
  *
  * <p>Runs outside any tenant's request context, so it reads/writes task repositories directly
  * rather than through {@code WorkflowTaskService} — the same pattern {@code PurgeJob} uses to

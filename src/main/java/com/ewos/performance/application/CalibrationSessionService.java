@@ -86,8 +86,7 @@ public class CalibrationSessionService {
 
     private CalibrationSession require(UUID tenantId, UUID id) {
         CalibrationSession s =
-                sessions
-                        .findByIdAndTenantId(id, tenantId)
+                sessions.findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(

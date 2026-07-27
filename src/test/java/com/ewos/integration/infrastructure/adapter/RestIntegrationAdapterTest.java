@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.ewos.integration.domain.BusinessErrorClassifier;
 import com.ewos.integration.domain.ErrorClassification;
@@ -40,7 +40,11 @@ class RestIntegrationAdapterTest {
                 .andRespond(withSuccess("{\"status\":\"ok\"}", MediaType.APPLICATION_JSON));
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{\"x\":1}",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{\"x\":1}",
                         "{\"url\": \"https://partner.example.com/hook\"}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
@@ -56,7 +60,11 @@ class RestIntegrationAdapterTest {
                 .andRespond(withSuccess());
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
                         "{\"url\": \"https://partner.example.com/hook\", \"method\": \"PUT\"}");
 
         adapter.execute(ctx);
@@ -70,7 +78,11 @@ class RestIntegrationAdapterTest {
                 .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
                         "{\"url\": \"https://partner.example.com/hook\"}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
@@ -84,7 +96,11 @@ class RestIntegrationAdapterTest {
         server.expect(requestTo("https://partner.example.com/hook")).andRespond(withServerError());
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}",
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
                         "{\"url\": \"https://partner.example.com/hook\"}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
@@ -97,7 +113,12 @@ class RestIntegrationAdapterTest {
     void failsWithConfigurationClassificationWhenUrlMissing() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}", "{}");
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
+                        "{}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 

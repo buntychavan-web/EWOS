@@ -64,7 +64,9 @@ class ApproverResolverTest {
                 resolver.resolve(tenantId, UUID.randomUUID(), employeeId, "MANAGER");
 
         assertThat(result)
-                .containsExactly(new ApproverResolver.ResolvedApprover(WorkflowActorType.EMPLOYEE, managerId));
+                .containsExactly(
+                        new ApproverResolver.ResolvedApprover(
+                                WorkflowActorType.EMPLOYEE, managerId));
     }
 
     @Test
@@ -94,7 +96,8 @@ class ApproverResolverTest {
                 resolver.resolve(tenantId, UUID.randomUUID(), employeeId, "CEO");
 
         assertThat(result)
-                .containsExactly(new ApproverResolver.ResolvedApprover(WorkflowActorType.EMPLOYEE, ceoId));
+                .containsExactly(
+                        new ApproverResolver.ResolvedApprover(WorkflowActorType.EMPLOYEE, ceoId));
     }
 
     @Test
@@ -120,7 +123,9 @@ class ApproverResolverTest {
                 resolver.resolve(tenantId, companyId, employeeId, "CUSTOM:FINANCE");
 
         assertThat(result)
-                .containsExactly(new ApproverResolver.ResolvedApprover(WorkflowActorType.USER, inCompanyUserId));
+                .containsExactly(
+                        new ApproverResolver.ResolvedApprover(
+                                WorkflowActorType.USER, inCompanyUserId));
     }
 
     @Test
@@ -128,6 +133,7 @@ class ApproverResolverTest {
         UUID tenantId = UUID.randomUUID();
         lenient().when(roles.findVisibleByName(any(), any())).thenReturn(List.of());
 
-        assertThat(resolver.resolve(tenantId, UUID.randomUUID(), UUID.randomUUID(), "HR")).isEmpty();
+        assertThat(resolver.resolve(tenantId, UUID.randomUUID(), UUID.randomUUID(), "HR"))
+                .isEmpty();
     }
 }

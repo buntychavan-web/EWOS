@@ -19,12 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
  * the user is already present.
  *
  * <p>Also ensures that user has a tenant membership (Sprint 1.4 audit remediation, Finding 2):
- * {@code V38__tenant_resolution.sql}'s backfill runs once, at migration time, over whatever is already
- * in {@code users} — on a genuinely fresh deployment that's nobody, since this bootstrap runs
- * <em>after</em> Flyway migrations complete. Without the {@link DefaultTenantMembershipProvisioner}
- * call below, the bootstrap admin could never resolve a tenant at all. Runs on every boot, not just
- * first-creation, so a deployment that predates this fix self-heals on its next restart — the
- * provisioner itself is a no-op once a membership exists.
+ * {@code V38__tenant_resolution.sql}'s backfill runs once, at migration time, over whatever is
+ * already in {@code users} — on a genuinely fresh deployment that's nobody, since this bootstrap
+ * runs <em>after</em> Flyway migrations complete. Without the {@link
+ * DefaultTenantMembershipProvisioner} call below, the bootstrap admin could never resolve a tenant
+ * at all. Runs on every boot, not just first-creation, so a deployment that predates this fix
+ * self-heals on its next restart — the provisioner itself is a no-op once a membership exists.
  */
 @Component
 public class IdentityBootstrap implements ApplicationRunner {
@@ -58,7 +58,8 @@ public class IdentityBootstrap implements ApplicationRunner {
         Optional<User> existing = userRepository.findByUsername(properties.username());
         if (existing.isPresent()) {
             log.debug(
-                    "Default admin '{}' already present — skipping creation.", properties.username());
+                    "Default admin '{}' already present — skipping creation.",
+                    properties.username());
             tenantMembershipProvisioner.ensureDefaultMembership(existing.get().getId());
             return;
         }

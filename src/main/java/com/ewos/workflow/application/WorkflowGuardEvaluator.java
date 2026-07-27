@@ -56,13 +56,17 @@ public class WorkflowGuardEvaluator {
             }
         }
         try {
-            SimpleEvaluationContext context = SimpleEvaluationContext.forReadOnlyDataBinding().build();
+            SimpleEvaluationContext context =
+                    SimpleEvaluationContext.forReadOnlyDataBinding().build();
             variables.forEach(context::setVariable);
             Expression expression = parser.parseExpression(guardExpression);
             Boolean result = expression.getValue(context, Boolean.class);
             return Boolean.TRUE.equals(result);
         } catch (RuntimeException e) {
-            log.warn("Guard expression '{}' failed to evaluate — treating as false", guardExpression, e);
+            log.warn(
+                    "Guard expression '{}' failed to evaluate — treating as false",
+                    guardExpression,
+                    e);
             return false;
         }
     }

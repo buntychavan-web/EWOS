@@ -227,7 +227,8 @@ public class GoalService {
 
     @Transactional(readOnly = true)
     public List<GoalResponse> forCycle(UUID tenantId, UUID performanceCycleId) {
-        List<Goal> found = goals.findAllByTenantIdAndPerformanceCycleId(tenantId, performanceCycleId);
+        List<Goal> found =
+                goals.findAllByTenantIdAndPerformanceCycleId(tenantId, performanceCycleId);
         guard.requireAccessForCompanies(found.stream().map(Goal::getCompanyId).toList());
         return found.stream().map(mapper::toResponse).toList();
     }
@@ -279,7 +280,8 @@ public class GoalService {
     private Goal requireGoal(UUID tenantId, UUID id) {
         Goal g =
                 goals.findByIdAndTenantId(id, tenantId)
-                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Goal not found"));
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Goal not found"));
         guard.requireAccessForCompany(g.getCompanyId());
         return g;
     }

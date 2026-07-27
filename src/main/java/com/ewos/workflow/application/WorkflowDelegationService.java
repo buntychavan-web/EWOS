@@ -63,7 +63,9 @@ public class WorkflowDelegationService {
                 delegations
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.NOT_FOUND, "Delegation not found"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Delegation not found"));
         if (!d.getDelegatorActorId().equals(actor)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "This delegation does not belong to you");
         }

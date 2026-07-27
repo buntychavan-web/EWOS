@@ -72,7 +72,12 @@ class EmployeeIdentityLinkServiceTest {
         assertThat(e.getUserId()).isEqualTo(userId);
         verify(guard).requireAccessForCompany(e.getCompanyId());
         verify(historyRecorder)
-                .record(eq(e), eq(EmployeeIdentityLinkAction.LINK), eq(null), eq(userId), eq("onboarding"));
+                .record(
+                        eq(e),
+                        eq(EmployeeIdentityLinkAction.LINK),
+                        eq(null),
+                        eq(userId),
+                        eq("onboarding"));
     }
 
     @Test
@@ -84,7 +89,9 @@ class EmployeeIdentityLinkServiceTest {
         when(employees.existsByCompanyIdAndUserId(e.getCompanyId(), userId)).thenReturn(true);
 
         assertThatThrownBy(
-                        () -> service.linkUser(tenantId, e.getId(), new LinkUserRequest(userId, null)))
+                        () ->
+                                service.linkUser(
+                                        tenantId, e.getId(), new LinkUserRequest(userId, null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -118,7 +125,8 @@ class EmployeeIdentityLinkServiceTest {
         Employee e = employee(tenantId);
         when(employees.findByIdAndTenantId(e.getId(), tenantId)).thenReturn(Optional.of(e));
 
-        assertThatThrownBy(() -> service.unlinkUser(tenantId, e.getId(), new UnlinkUserRequest(null)))
+        assertThatThrownBy(
+                        () -> service.unlinkUser(tenantId, e.getId(), new UnlinkUserRequest(null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.BAD_REQUEST);
@@ -151,7 +159,12 @@ class EmployeeIdentityLinkServiceTest {
                         tenantId,
                         e.getId(),
                         new ProvisionUserRequest(
-                                "alice", "alice@ex.com", "T3mp0rary!", Set.of(), true, "first login"));
+                                "alice",
+                                "alice@ex.com",
+                                "T3mp0rary!",
+                                Set.of(),
+                                true,
+                                "first login"));
 
         assertThat(response.userId()).isEqualTo(newUserId);
         verify(historyRecorder)
@@ -176,7 +189,12 @@ class EmployeeIdentityLinkServiceTest {
                                         tenantId,
                                         e.getId(),
                                         new ProvisionUserRequest(
-                                                "bob", "bob@ex.com", "T3mp0rary!", Set.of(), true, null)))
+                                                "bob",
+                                                "bob@ex.com",
+                                                "T3mp0rary!",
+                                                Set.of(),
+                                                true,
+                                                null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -191,7 +209,9 @@ class EmployeeIdentityLinkServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.linkUser(
-                                        tenantId, employeeId, new LinkUserRequest(UUID.randomUUID(), null)))
+                                        tenantId,
+                                        employeeId,
+                                        new LinkUserRequest(UUID.randomUUID(), null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.NOT_FOUND);

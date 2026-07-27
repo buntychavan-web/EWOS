@@ -120,7 +120,8 @@ public class CertificationService {
 
     @Transactional(readOnly = true)
     public List<CertificationResponse> forEmployee(UUID tenantId, UUID employeeId) {
-        List<Certification> found = certifications.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
+        List<Certification> found =
+                certifications.findAllByTenantIdAndEmployeeId(tenantId, employeeId);
         guard.requireAccessForCompanies(found.stream().map(Certification::getCompanyId).toList());
         return found.stream().map(mapper::toResponse).toList();
     }
@@ -145,7 +146,10 @@ public class CertificationService {
                 .toList();
     }
 
-    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
+    /**
+     * Package-private: called only after the caller's own guarded lookup already validated
+     * companyId.
+     */
     long activeCount(UUID tenantId, UUID companyId) {
         return certifications
                 .findAllByTenantIdAndCompanyIdAndStatus(

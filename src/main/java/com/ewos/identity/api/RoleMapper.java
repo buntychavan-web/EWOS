@@ -30,7 +30,8 @@ public final class RoleMapper {
     }
 
     public PermissionResponse toResponse(Permission permission) {
-        return new PermissionResponse(permission.getId(), permission.getCode(), permission.getDescription());
+        return new PermissionResponse(
+                permission.getId(), permission.getCode(), permission.getDescription());
     }
 
     public RoleAssignedUserResponse toAssignedUserResponse(User user) {

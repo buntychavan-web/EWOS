@@ -17,9 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Grants a user narrow, time-boxed, audited access to a tenant that isn't their own — the
  * replacement for a blanket cross-tenant bypass authority. See the Sprint 1 Tenant Model
- * Architecture Review for why: scope (one named tenant, not every tenant), duration (expires),
- * and evidence (who granted it, why, and when it was used) are the three properties a bypass
- * authority lacked.
+ * Architecture Review for why: scope (one named tenant, not every tenant), duration (expires), and
+ * evidence (who granted it, why, and when it was used) are the three properties a bypass authority
+ * lacked.
  */
 @Service
 @Transactional
@@ -71,8 +71,10 @@ public class TenantAccessGrantService {
                 .toList();
     }
 
-    /** Used by {@code TenantHeaderValidationFilter} to allow a request against a tenant that
-     * isn't the caller's own, when an active grant covers it. */
+    /**
+     * Used by {@code TenantHeaderValidationFilter} to allow a request against a tenant that isn't
+     * the caller's own, when an active grant covers it.
+     */
     @Transactional(readOnly = true)
     public boolean hasActiveGrant(UUID userId, UUID tenantId) {
         return repository.existsByUserIdAndTenantIdAndRevokedAtIsNullAndExpiresAtAfter(
@@ -82,6 +84,9 @@ public class TenantAccessGrantService {
     private TenantAccessGrant require(UUID id) {
         return repository
                 .findById(id)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Tenant access grant not found"));
+                .orElseThrow(
+                        () ->
+                                new ApiException(
+                                        HttpStatus.NOT_FOUND, "Tenant access grant not found"));
     }
 }

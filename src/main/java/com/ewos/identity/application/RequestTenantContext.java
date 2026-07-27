@@ -8,11 +8,12 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * Resolves the current request's tenant from the JWT-derived request attribute {@code
- * JwtAuthenticationFilter} already publishes for {@code com.ewos.tenancy.application.TenantContext} to
- * consume. Reading it a second time from within {@code com.ewos.identity} itself lets {@link RoleService}
- * and {@code UserService} tenant-scope role visibility/assignment without {@code com.ewos.identity} taking
- * a compile-time dependency on {@code com.ewos.tenancy} — the same "producer and consumer share only a
- * literal" idiom {@code JwtAuthenticationFilter}'s own Javadoc documents, applied in the other direction.
+ * JwtAuthenticationFilter} already publishes for {@code com.ewos.tenancy.application.TenantContext}
+ * to consume. Reading it a second time from within {@code com.ewos.identity} itself lets {@link
+ * RoleService} and {@code UserService} tenant-scope role visibility/assignment without {@code
+ * com.ewos.identity} taking a compile-time dependency on {@code com.ewos.tenancy} — the same
+ * "producer and consumer share only a literal" idiom {@code JwtAuthenticationFilter}'s own Javadoc
+ * documents, applied in the other direction.
  */
 @Component
 public class RequestTenantContext {

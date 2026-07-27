@@ -42,7 +42,8 @@ class IntegrationAdapterRegistryTest {
     @Test
     void returnsEmptyForAnUnregisteredType() {
         IntegrationAdapterRegistry registry =
-                new IntegrationAdapterRegistry(List.of(new StubAdapter(IntegrationAdapterType.CSV)));
+                new IntegrationAdapterRegistry(
+                        List.of(new StubAdapter(IntegrationAdapterType.CSV)));
 
         assertThat(registry.find(IntegrationAdapterType.SFTP)).isEmpty();
     }

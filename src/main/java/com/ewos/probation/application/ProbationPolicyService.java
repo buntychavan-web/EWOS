@@ -95,8 +95,7 @@ public class ProbationPolicyService {
     /** Package-private accessor used by ProbationService. */
     ProbationPolicy require(UUID tenantId, UUID id) {
         ProbationPolicy p =
-                policies
-                        .findByIdAndTenantId(id, tenantId)
+                policies.findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () ->
                                         new ApiException(

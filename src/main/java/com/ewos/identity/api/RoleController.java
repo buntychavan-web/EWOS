@@ -62,7 +62,8 @@ public class RoleController {
     @PatchMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_WRITE')")
     @Operation(summary = "Update name / description / permission set; rejects system roles")
-    public RoleResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
+    public RoleResponse update(
+            @PathVariable UUID id, @Valid @RequestBody UpdateRoleRequest request) {
         return service.update(id, request);
     }
 

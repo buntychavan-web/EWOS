@@ -403,7 +403,9 @@ public class PreboardingService {
                 checklists
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.NOT_FOUND, "Checklist not found"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Checklist not found"));
         guard.requireAccessForCompany(c.getCompanyId());
         return c;
     }

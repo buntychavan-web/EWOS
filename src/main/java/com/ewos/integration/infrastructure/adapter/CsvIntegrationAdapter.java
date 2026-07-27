@@ -49,7 +49,8 @@ public class CsvIntegrationAdapter implements IntegrationAdapter {
             Files.writeString(file, csv, StandardCharsets.UTF_8);
             return IntegrationAdapterResult.success("Wrote " + file);
         } catch (IllegalArgumentException e) {
-            return IntegrationAdapterResult.failure(ErrorClassification.CONFIGURATION, e.getMessage());
+            return IntegrationAdapterResult.failure(
+                    ErrorClassification.CONFIGURATION, e.getMessage());
         } catch (IOException e) {
             return IntegrationAdapterResult.failure(classifier.classify(e), e.getMessage());
         }
@@ -64,8 +65,6 @@ public class CsvIntegrationAdapter implements IntegrationAdapter {
     }
 
     private static String safeFileName(String correlationId) {
-        return correlationId == null
-                ? "record"
-                : correlationId.replaceAll("[^A-Za-z0-9_.-]", "_");
+        return correlationId == null ? "record" : correlationId.replaceAll("[^A-Za-z0-9_.-]", "_");
     }
 }

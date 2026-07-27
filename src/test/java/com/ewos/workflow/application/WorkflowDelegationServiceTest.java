@@ -38,7 +38,9 @@ class WorkflowDelegationServiceTest {
         service = new WorkflowDelegationService(delegations);
         caller = UUID.randomUUID();
         SecurityContextHolder.getContext()
-                .setAuthentication(new UsernamePasswordAuthenticationToken(caller.toString(), null, List.of()));
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                caller.toString(), null, List.of()));
         lenient().when(delegations.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -50,7 +52,8 @@ class WorkflowDelegationServiceTest {
     @Test
     void createRejectsDelegatingToSelf() {
         CreateDelegationRequest request =
-                new CreateDelegationRequest(caller, null, Instant.now(), Instant.now().plusSeconds(3600), null);
+                new CreateDelegationRequest(
+                        caller, null, Instant.now(), Instant.now().plusSeconds(3600), null);
 
         assertThatThrownBy(() -> service.create(UUID.randomUUID(), request))
                 .isInstanceOf(ApiException.class)
@@ -62,7 +65,8 @@ class WorkflowDelegationServiceTest {
     void createRejectsEndBeforeStart() {
         Instant now = Instant.now();
         CreateDelegationRequest request =
-                new CreateDelegationRequest(UUID.randomUUID(), null, now, now.minusSeconds(60), null);
+                new CreateDelegationRequest(
+                        UUID.randomUUID(), null, now, now.minusSeconds(60), null);
 
         assertThatThrownBy(() -> service.create(UUID.randomUUID(), request))
                 .isInstanceOf(ApiException.class)
@@ -77,7 +81,8 @@ class WorkflowDelegationServiceTest {
         Instant start = Instant.now();
         Instant end = start.plus(7, ChronoUnit.DAYS);
 
-        service.create(tenantId, new CreateDelegationRequest(delegate, "APPROVER", start, end, "OOO"));
+        service.create(
+                tenantId, new CreateDelegationRequest(delegate, "APPROVER", start, end, "OOO"));
 
         var captor = org.mockito.ArgumentCaptor.forClass(WorkflowDelegation.class);
         org.mockito.Mockito.verify(delegations).save(captor.capture());
@@ -122,7 +127,10 @@ class WorkflowDelegationServiceTest {
         UUID delegator = UUID.randomUUID();
         WorkflowDelegation d = new WorkflowDelegation();
         d.setDelegateActorId(caller);
-        when(delegations.findActiveFor(org.mockito.ArgumentMatchers.eq(tenantId), org.mockito.ArgumentMatchers.eq(delegator), any()))
+        when(delegations.findActiveFor(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(delegator),
+                        any()))
                 .thenReturn(List.of(d));
 
         assertThat(service.isActiveDelegateOf(tenantId, delegator, caller)).isTrue();
@@ -132,7 +140,10 @@ class WorkflowDelegationServiceTest {
     void isActiveDelegateOfFalseWhenNoneMatch() {
         UUID tenantId = UUID.randomUUID();
         UUID delegator = UUID.randomUUID();
-        when(delegations.findActiveFor(org.mockito.ArgumentMatchers.eq(tenantId), org.mockito.ArgumentMatchers.eq(delegator), any()))
+        when(delegations.findActiveFor(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(delegator),
+                        any()))
                 .thenReturn(List.of());
 
         assertThat(service.isActiveDelegateOf(tenantId, delegator, caller)).isFalse();

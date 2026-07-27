@@ -208,7 +208,8 @@ class UserServiceTest {
         UUID otherTenant = UUID.randomUUID();
         Role foreignRole = role("PAYROLL_REVIEWER");
         foreignRole.setTenantId(otherTenant);
-        when(roleRepository.findAllById(Set.of(foreignRole.getId()))).thenReturn(List.of(foreignRole));
+        when(roleRepository.findAllById(Set.of(foreignRole.getId())))
+                .thenReturn(List.of(foreignRole));
         when(requestTenantContext.currentTenantId()).thenReturn(Optional.of(callerTenant));
 
         assertThatThrownBy(
@@ -248,7 +249,8 @@ class UserServiceTest {
     @Test
     void createAllowsSystemRoleRegardlessOfCallerTenant() {
         Role systemRole = role("SYSTEM_ADMIN");
-        when(roleRepository.findAllById(Set.of(systemRole.getId()))).thenReturn(List.of(systemRole));
+        when(roleRepository.findAllById(Set.of(systemRole.getId())))
+                .thenReturn(List.of(systemRole));
 
         UserResponse response =
                 service.create(

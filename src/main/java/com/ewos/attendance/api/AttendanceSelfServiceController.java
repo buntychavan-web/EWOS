@@ -17,7 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/v1/attendance/self-service")
-@Tag(name = "Attendance Self-Service", description = "An employee's own time entries and timesheets")
+@Tag(
+        name = "Attendance Self-Service",
+        description = "An employee's own time entries and timesheets")
 public class AttendanceSelfServiceController {
 
     private final AttendanceSelfService service;

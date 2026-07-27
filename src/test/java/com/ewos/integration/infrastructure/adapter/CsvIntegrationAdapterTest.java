@@ -11,27 +11,33 @@ import com.ewos.integration.domain.IntegrationExecutionOutcome;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class CsvIntegrationAdapterTest {
 
-    private final CsvIntegrationAdapter adapter = new CsvIntegrationAdapter(new BusinessErrorClassifier());
+    private final CsvIntegrationAdapter adapter =
+            new CsvIntegrationAdapter(new BusinessErrorClassifier());
 
     @Test
     void typeIsCsv() {
-        org.assertj.core.api.Assertions.assertThat(adapter.type()).isEqualTo(IntegrationAdapterType.CSV);
+        org.assertj.core.api.Assertions.assertThat(adapter.type())
+                .isEqualTo(IntegrationAdapterType.CSV);
     }
 
     @Test
     void writesACsvFileToTheConfiguredDirectory(@TempDir Path dir) throws IOException {
-        String configJson = "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
+        String configJson =
+                "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "PAYROLL_RUN:abc",
-                        "{\"x\":1}", configJson);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "PAYROLL_RUN:abc",
+                        "{\"x\":1}",
+                        configJson);
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 
@@ -45,7 +51,12 @@ class CsvIntegrationAdapterTest {
     void failsWithConfigurationClassificationWhenOutputDirectoryMissing() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}", "{}");
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
+                        "{}");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 
@@ -57,7 +68,12 @@ class CsvIntegrationAdapterTest {
     void failsWithConfigurationClassificationWhenConfigJsonBlank() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}", null);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
+                        null);
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 

@@ -44,10 +44,11 @@ public class Employee extends AuditableEntity {
 
     /**
      * Sprint 1.3 — optional link to the {@code User} login that belongs to this employment record.
-     * Plain {@code UUID}, no JPA association and no DB-level FK: {@code user_id} crosses into {@code
-     * com.ewos.identity}, so it follows the same cross-module convention as {@link #tenantId} / {@link
-     * #companyId} rather than the intra-module hard-FK pattern. Null is the normal, permanent state for
-     * any employee who has not been issued platform self-service access.
+     * Plain {@code UUID}, no JPA association and no DB-level FK: {@code user_id} crosses into
+     * {@code com.ewos.identity}, so it follows the same cross-module convention as {@link
+     * #tenantId} / {@link #companyId} rather than the intra-module hard-FK pattern. Null is the
+     * normal, permanent state for any employee who has not been issued platform self-service
+     * access.
      */
     @Column(name = "user_id")
     private UUID userId;

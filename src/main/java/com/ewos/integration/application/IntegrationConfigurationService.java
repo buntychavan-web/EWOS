@@ -14,7 +14,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** CRUD for {@link IntegrationConfiguration} — which adapter + settings a company uses per exchange type. */
+/**
+ * CRUD for {@link IntegrationConfiguration} — which adapter + settings a company uses per exchange
+ * type.
+ */
 @Service
 @Transactional
 public class IntegrationConfigurationService {
@@ -24,7 +27,9 @@ public class IntegrationConfigurationService {
     private final IntegrationMapper mapper;
 
     public IntegrationConfigurationService(
-            IntegrationConfigurationRepository repository, ClientAccessGuard guard, IntegrationMapper mapper) {
+            IntegrationConfigurationRepository repository,
+            ClientAccessGuard guard,
+            IntegrationMapper mapper) {
         this.repository = repository;
         this.guard = guard;
         this.mapper = mapper;
@@ -76,7 +81,9 @@ public class IntegrationConfigurationService {
     @Transactional(readOnly = true)
     public List<IntegrationConfigurationResponse> forCompany(UUID tenantId, UUID companyId) {
         guard.requireAccessForCompany(companyId);
-        return repository.findAllByTenantIdAndCompanyIdOrderByExchangeTypeAsc(tenantId, companyId).stream()
+        return repository
+                .findAllByTenantIdAndCompanyIdOrderByExchangeTypeAsc(tenantId, companyId)
+                .stream()
                 .map(mapper::toResponse)
                 .toList();
     }
@@ -93,6 +100,7 @@ public class IntegrationConfigurationService {
                 .orElseThrow(
                         () ->
                                 new ApiException(
-                                        HttpStatus.NOT_FOUND, "Integration configuration not found"));
+                                        HttpStatus.NOT_FOUND,
+                                        "Integration configuration not found"));
     }
 }

@@ -210,7 +210,10 @@ public class EnrollmentService {
                 .toList();
     }
 
-    /** Package-private: called only after the caller's own guarded lookup already validated companyId. */
+    /**
+     * Package-private: called only after the caller's own guarded lookup already validated
+     * companyId.
+     */
     long countByStatus(UUID tenantId, UUID companyId, EnrollmentStatus status) {
         return enrollments.countByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status);
     }

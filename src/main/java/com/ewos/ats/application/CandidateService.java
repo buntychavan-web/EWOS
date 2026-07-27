@@ -221,7 +221,9 @@ public class CandidateService {
                 candidates
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.NOT_FOUND, "Candidate not found"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Candidate not found"));
         guard.requireAccessForCompany(c.getCompanyId());
         return c;
     }

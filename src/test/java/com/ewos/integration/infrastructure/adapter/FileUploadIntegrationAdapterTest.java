@@ -27,11 +27,16 @@ class FileUploadIntegrationAdapterTest {
 
     @Test
     void writesTheRawPayloadVerbatim(@TempDir Path dir) throws IOException {
-        String configJson = "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
+        String configJson =
+                "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "PAYROLL_RUN:abc",
-                        "{\"x\":1}", configJson);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "PAYROLL_RUN:abc",
+                        "{\"x\":1}",
+                        configJson);
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 
@@ -42,10 +47,16 @@ class FileUploadIntegrationAdapterTest {
 
     @Test
     void defaultsToAnEmptyJsonObjectWhenPayloadIsNull(@TempDir Path dir) throws IOException {
-        String configJson = "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
+        String configJson =
+                "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", null, configJson);
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        null,
+                        configJson);
 
         adapter.execute(ctx);
 
@@ -57,7 +68,12 @@ class FileUploadIntegrationAdapterTest {
     void failsWithConfigurationClassificationWhenConfigJsonMissing() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(
-                        UUID.randomUUID(), UUID.randomUUID(), "PAYROLL_RUN_EXPORT", "corr-1", "{}", "");
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "corr-1",
+                        "{}",
+                        "");
 
         IntegrationAdapterResult result = adapter.execute(ctx);
 

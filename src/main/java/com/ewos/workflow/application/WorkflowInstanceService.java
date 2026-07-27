@@ -250,8 +250,8 @@ public class WorkflowInstanceService {
     }
 
     /**
-     * First auto transition from the instance's current state whose guard expression passes
-     * (Sprint 4 auto-approval/rejection rules). Variables come from whichever {@link
+     * First auto transition from the instance's current state whose guard expression passes (Sprint
+     * 4 auto-approval/rejection rules). Variables come from whichever {@link
      * WorkflowVariableResolver} is registered for the instance's subject type; if none is
      * registered, every guard sees an empty variable map, so any non-blank guard fails closed and
      * only ungated transitions are eligible — matching the pre-Sprint-4 fallback for subject types

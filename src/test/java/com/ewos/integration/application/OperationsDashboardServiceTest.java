@@ -76,11 +76,29 @@ class OperationsDashboardServiceTest {
                 .thenReturn(List.of(run(runId, companyId, PayrollRunStatus.FINALIZED)));
         WorkflowInstanceResponse instance =
                 new WorkflowInstanceResponse(
-                        UUID.randomUUID(), tenantId, companyId, UUID.randomUUID(), "PAYROLL_CLIENT_APPROVAL",
-                        1, "PAYROLL_RUN", runId, UUID.randomUUID(), "APPROVED",
-                        WorkflowInstanceStatus.COMPLETED, null, null, null, null, null, null, null, 0L);
-        when(workflowInstances.findBySubject(tenantId, "PAYROLL_RUN", runId)).thenReturn(List.of(instance));
-        DataExchangeRecord record = dataExchangeRecord(dataExchangeId, DataExchangeStatus.ACKNOWLEDGED);
+                        UUID.randomUUID(),
+                        tenantId,
+                        companyId,
+                        UUID.randomUUID(),
+                        "PAYROLL_CLIENT_APPROVAL",
+                        1,
+                        "PAYROLL_RUN",
+                        runId,
+                        UUID.randomUUID(),
+                        "APPROVED",
+                        WorkflowInstanceStatus.COMPLETED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0L);
+        when(workflowInstances.findBySubject(tenantId, "PAYROLL_RUN", runId))
+                .thenReturn(List.of(instance));
+        DataExchangeRecord record =
+                dataExchangeRecord(dataExchangeId, DataExchangeStatus.ACKNOWLEDGED);
         record.setAcknowledgedAt(java.time.Instant.now());
         when(dataExchangeRecords.findAllByTenantIdAndCorrelationIdOrderByCreatedAtDesc(
                         tenantId, "PAYROLL_RUN:" + runId))

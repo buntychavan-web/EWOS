@@ -134,14 +134,17 @@ public class EmployeeController {
                 tenantContext
                         .currentUserId()
                         .orElseThrow(
-                                () -> new ApiException(HttpStatus.UNAUTHORIZED, "Not authenticated"));
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.UNAUTHORIZED, "Not authenticated"));
         UUID employeeIdFromClaim = employeeContext.currentEmployeeId().orElse(null);
         return service.getMe(tenantId, userId, employeeIdFromClaim, companyId);
     }
 
     @PostMapping("/{id}/link-user")
     @PreAuthorize("hasAuthority('EMP_ADMIN')")
-    @Operation(summary = "Link an employee to an existing User login (admin-only; never self-service)")
+    @Operation(
+            summary = "Link an employee to an existing User login (admin-only; never self-service)")
     public EmployeeResponse linkUser(
             @RequestHeader("X-Tenant-Id") UUID tenantId,
             @PathVariable UUID id,
@@ -179,7 +182,8 @@ public class EmployeeController {
 
     @GetMapping("/me/reports")
     @Operation(
-            summary = "Direct reports of the caller's own linked employee record (manager self-service)",
+            summary =
+                    "Direct reports of the caller's own linked employee record (manager self-service)",
             description =
                     "Requires only authentication, not EMP_READ — reuses the existing "
                             + "managerEmployeeId search filter, scoped to the caller's own employee ID. "
@@ -191,7 +195,8 @@ public class EmployeeController {
             return List.of();
         }
         EmployeeSearchCriteria criteria =
-                new EmployeeSearchCriteria(tenantId, null, null, employeeId, null, null, null, null, null, null);
+                new EmployeeSearchCriteria(
+                        tenantId, null, null, employeeId, null, null, null, null, null, null);
         return service.search(criteria, Pageable.unpaged()).getContent();
     }
 }

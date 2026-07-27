@@ -147,7 +147,9 @@ public class WorkflowDefinition extends AuditableEntity {
         this.effectiveTo = effectiveTo;
     }
 
-    /** True when {@code at} falls within this definition's effective window (both ends optional). */
+    /**
+     * True when {@code at} falls within this definition's effective window (both ends optional).
+     */
     public boolean isEffectiveAt(Instant at) {
         if (effectiveFrom != null && at.isBefore(effectiveFrom)) {
             return false;

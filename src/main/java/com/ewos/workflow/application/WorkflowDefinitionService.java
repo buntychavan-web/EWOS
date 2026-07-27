@@ -149,10 +149,10 @@ public class WorkflowDefinitionService {
 
     /**
      * Resolves the single active, currently-effective definition for a subject type — the
-     * self-service lookup path (Sprint 4): callers no longer need to know a concrete definition
-     * id. Picks the highest {@code definitionVersion} among active definitions whose effective
-     * window (if any) covers now; 404s if none match, so the caller can surface "no approval
-     * workflow configured yet" rather than fail silently.
+     * self-service lookup path (Sprint 4): callers no longer need to know a concrete definition id.
+     * Picks the highest {@code definitionVersion} among active definitions whose effective window
+     * (if any) covers now; 404s if none match, so the caller can surface "no approval workflow
+     * configured yet" rather than fail silently.
      */
     @Transactional(readOnly = true)
     public WorkflowDefinition findEffective(UUID tenantId, String subjectType) {

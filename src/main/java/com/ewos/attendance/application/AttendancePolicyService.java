@@ -24,7 +24,9 @@ public class AttendancePolicyService {
     private final ClientAccessGuard guard;
 
     public AttendancePolicyService(
-            AttendancePolicyRepository repository, AttendanceMapper mapper, ClientAccessGuard guard) {
+            AttendancePolicyRepository repository,
+            AttendanceMapper mapper,
+            ClientAccessGuard guard) {
         this.repository = repository;
         this.mapper = mapper;
         this.guard = guard;
@@ -117,7 +119,10 @@ public class AttendancePolicyService {
     public List<AttendancePolicyResponse> list(UUID tenantId) {
         List<AttendancePolicy> found = repository.findAllByTenantIdOrderByNameAsc(tenantId);
         guard.requireAccessForCompanies(
-                found.stream().map(AttendancePolicy::getCompanyId).filter(Objects::nonNull).toList());
+                found.stream()
+                        .map(AttendancePolicy::getCompanyId)
+                        .filter(Objects::nonNull)
+                        .toList());
         return found.stream().map(mapper::toResponse).toList();
     }
 

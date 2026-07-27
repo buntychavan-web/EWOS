@@ -32,7 +32,10 @@ public class RoleCompanyUsageResolverImpl implements RoleCompanyUsageResolver {
         List<Employee> linked = employees.findAllByUserIdIn(userIds);
 
         Map<UUID, Long> byCompany =
-                linked.stream().collect(Collectors.groupingBy(Employee::getCompanyId, Collectors.counting()));
+                linked.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        Employee::getCompanyId, Collectors.counting()));
 
         Map<OrgUnitKey, Long> byOrgUnit =
                 linked.stream()
@@ -47,7 +50,10 @@ public class RoleCompanyUsageResolverImpl implements RoleCompanyUsageResolver {
 
         List<RoleCompanyUsage.CompanyUsage> companies =
                 byCompany.entrySet().stream()
-                        .map(entry -> new RoleCompanyUsage.CompanyUsage(entry.getKey(), entry.getValue()))
+                        .map(
+                                entry ->
+                                        new RoleCompanyUsage.CompanyUsage(
+                                                entry.getKey(), entry.getValue()))
                         .toList();
 
         List<RoleCompanyUsage.DepartmentUsage> departments =
@@ -55,7 +61,9 @@ public class RoleCompanyUsageResolverImpl implements RoleCompanyUsageResolver {
                         .map(
                                 entry ->
                                         new RoleCompanyUsage.DepartmentUsage(
-                                                entry.getKey().id(), entry.getKey().code(), entry.getValue()))
+                                                entry.getKey().id(),
+                                                entry.getKey().code(),
+                                                entry.getValue()))
                         .toList();
 
         return new RoleCompanyUsage(companies, departments);

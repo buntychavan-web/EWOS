@@ -148,7 +148,8 @@ public class UserService {
         if (roles.size() != roleIds.size()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "One or more role IDs are unknown");
         }
-        // Sprint 1.4: a role scoped to another tenant may never be assigned, even by an admin who can
+        // Sprint 1.4: a role scoped to another tenant may never be assigned, even by an admin who
+        // can
         // otherwise see and manage users platform-wide. System roles (tenantId == null) are always
         // assignable.
         UUID callerTenantId = requestTenantContext.currentTenantId().orElse(null);

@@ -417,7 +417,8 @@ public class OfferService {
     Offer require(UUID tenantId, UUID id) {
         Offer o =
                 offers.findByIdAndTenantId(id, tenantId)
-                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Offer not found"));
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Offer not found"));
         guard.requireAccessForCompany(o.getCompanyId());
         return o;
     }

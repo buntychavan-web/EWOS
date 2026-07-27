@@ -55,8 +55,14 @@ class IntegrationMonitoringServiceTest {
         when(executions.findAllByTenantIdAndCompanyIdOrderByStartedAtDesc(tenantId, companyId))
                 .thenReturn(
                         List.of(
-                                execution(IntegrationAdapterType.CSV, IntegrationExecutionOutcome.SUCCESS, null),
-                                execution(IntegrationAdapterType.CSV, IntegrationExecutionOutcome.SUCCESS, null),
+                                execution(
+                                        IntegrationAdapterType.CSV,
+                                        IntegrationExecutionOutcome.SUCCESS,
+                                        null),
+                                execution(
+                                        IntegrationAdapterType.CSV,
+                                        IntegrationExecutionOutcome.SUCCESS,
+                                        null),
                                 execution(
                                         IntegrationAdapterType.REST,
                                         IntegrationExecutionOutcome.FAILURE,
@@ -66,7 +72,8 @@ class IntegrationMonitoringServiceTest {
                                         IntegrationExecutionOutcome.FAILURE,
                                         ErrorClassification.CONFIGURATION)));
 
-        IntegrationMonitoringSummaryResponse summary = service.summaryForCompany(tenantId, companyId);
+        IntegrationMonitoringSummaryResponse summary =
+                service.summaryForCompany(tenantId, companyId);
 
         assertThat(summary.totalExecutions()).isEqualTo(4);
         assertThat(summary.successCount()).isEqualTo(2);
@@ -89,7 +96,8 @@ class IntegrationMonitoringServiceTest {
         when(executions.findAllByTenantIdAndCompanyIdOrderByStartedAtDesc(tenantId, companyId))
                 .thenReturn(List.of());
 
-        IntegrationMonitoringSummaryResponse summary = service.summaryForCompany(tenantId, companyId);
+        IntegrationMonitoringSummaryResponse summary =
+                service.summaryForCompany(tenantId, companyId);
 
         assertThat(summary.totalExecutions()).isZero();
         assertThat(summary.successCount()).isZero();

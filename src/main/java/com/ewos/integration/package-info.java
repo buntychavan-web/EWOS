@@ -3,8 +3,8 @@
  *
  * <p>Generic Integration Adapter Framework (REST/SFTP/CSV/Excel/File Upload), Integration
  * Monitoring, Business Error Classification, the Operations Dashboard, and Client Go-Live
- * Configuration. Composes entirely against Sprint 14.3's {@code DataExchangeService} public API
- * — no changes to {@code com.ewos.dataexchange}, {@code com.ewos.payroll}, or {@code
+ * Configuration. Composes entirely against Sprint 14.3's {@code DataExchangeService} public API —
+ * no changes to {@code com.ewos.dataexchange}, {@code com.ewos.payroll}, or {@code
  * com.ewos.workflow}.
  *
  * <ul>

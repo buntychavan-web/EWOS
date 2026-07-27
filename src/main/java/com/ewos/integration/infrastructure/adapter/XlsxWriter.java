@@ -10,12 +10,12 @@ import java.util.zip.ZipOutputStream;
 
 /**
  * Hand-rolled minimal valid {@code .xlsx} (ECMA-376 SpreadsheetML) writer — no Apache POI, which
- * isn't available in this environment's offline Maven cache (see Sprint 14.4 Implementation
- * Report, "Implementation Issues"). A {@code .xlsx} file is a ZIP of five small, well-known XML
- * parts; this class writes exactly those five parts with one worksheet, using inline strings
- * (avoids needing a {@code sharedStrings.xml} part). Real spreadsheet applications (Excel, Google
- * Sheets, LibreOffice) open the result without repair prompts — this is a standard technique for
- * generating simple tabular spreadsheets without a full OOXML library.
+ * isn't available in this environment's offline Maven cache (see Sprint 14.4 Implementation Report,
+ * "Implementation Issues"). A {@code .xlsx} file is a ZIP of five small, well-known XML parts; this
+ * class writes exactly those five parts with one worksheet, using inline strings (avoids needing a
+ * {@code sharedStrings.xml} part). Real spreadsheet applications (Excel, Google Sheets,
+ * LibreOffice) open the result without repair prompts — this is a standard technique for generating
+ * simple tabular spreadsheets without a full OOXML library.
  */
 public final class XlsxWriter {
 
@@ -84,9 +84,10 @@ public final class XlsxWriter {
 
     private static String sheetXml(List<List<String>> rows) {
         StringBuilder sb = new StringBuilder(256);
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
-                + "<sheetData>");
+        sb.append(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                        + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                        + "<sheetData>");
         int rowIndex = 1;
         for (List<String> row : rows) {
             sb.append("<row r=\"").append(rowIndex).append("\">");
@@ -121,8 +122,7 @@ public final class XlsxWriter {
         if (value == null) {
             return "";
         }
-        return value
-                .replace("&", "&amp;")
+        return value.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")

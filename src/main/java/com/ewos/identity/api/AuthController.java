@@ -40,7 +40,8 @@ public class AuthController {
     private static final String TENANT_ID_REQUEST_ATTRIBUTE = "com.ewos.tenancy.currentTenantId";
 
     /** Must match {@code JwtAuthenticationFilter.EMPLOYEE_ID_REQUEST_ATTRIBUTE} exactly. */
-    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE = "com.ewos.employee.currentEmployeeId";
+    private static final String EMPLOYEE_ID_REQUEST_ATTRIBUTE =
+            "com.ewos.employee.currentEmployeeId";
 
     private final AuthenticationService authenticationService;
     private final UserService userService;

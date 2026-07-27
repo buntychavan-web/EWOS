@@ -4,8 +4,8 @@ import java.util.UUID;
 
 /**
  * Everything an {@link IntegrationAdapter} needs to move one {@code DataExchangeRecord} to (or
- * from) an external system. Built entirely from Sprint 14.3's {@code DataExchangeResponse} —
- * see {@link com.ewos.integration.application.IntegrationExecutionService}.
+ * from) an external system. Built entirely from Sprint 14.3's {@code DataExchangeResponse} — see
+ * {@link com.ewos.integration.application.IntegrationExecutionService}.
  */
 public record IntegrationExecutionContext(
         UUID tenantId,
