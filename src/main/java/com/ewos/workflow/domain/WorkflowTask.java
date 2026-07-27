@@ -68,6 +68,12 @@ public class WorkflowTask extends AuditableEntity {
     @Column(name = "notes", length = 2048)
     private String notes;
 
+    @Column(name = "escalation_level", nullable = false)
+    private int escalationLevel;
+
+    @Column(name = "escalated_at")
+    private Instant escalatedAt;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -185,5 +191,21 @@ public class WorkflowTask extends AuditableEntity {
 
     public long getVersionNo() {
         return versionNo;
+    }
+
+    public int getEscalationLevel() {
+        return escalationLevel;
+    }
+
+    public void setEscalationLevel(int escalationLevel) {
+        this.escalationLevel = escalationLevel;
+    }
+
+    public Instant getEscalatedAt() {
+        return escalatedAt;
+    }
+
+    public void setEscalatedAt(Instant escalatedAt) {
+        this.escalatedAt = escalatedAt;
     }
 }

@@ -23,6 +23,8 @@ public record WorkflowTaskResponse(
         UUID completedBy,
         String outcomeCode,
         String notes,
+        int escalationLevel,
+        Instant escalatedAt,
         Instant createdAt,
         Instant updatedAt,
         long versionNo) {}

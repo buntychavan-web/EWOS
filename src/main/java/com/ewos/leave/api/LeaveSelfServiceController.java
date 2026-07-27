@@ -4,7 +4,6 @@ import com.ewos.leave.api.dto.BalanceResponse;
 import com.ewos.leave.api.dto.LeaveRequestResponse;
 import com.ewos.leave.api.dto.LeaveTypeResponse;
 import com.ewos.leave.api.dto.SelfLeaveRequestRequest;
-import com.ewos.leave.api.dto.SubmitLeaveRequestRequest;
 import com.ewos.leave.application.LeaveSelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,6 +11,10 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -60,10 +63,12 @@ public class LeaveSelfServiceController {
     }
 
     @PostMapping("/requests/{id}/submit")
-    @Operation(summary = "Submit the caller's own DRAFT request for approval")
-    public LeaveRequestResponse submitMyRequest(
-            @PathVariable UUID id, @Valid @RequestBody SubmitLeaveRequestRequest request) {
-        return service.submitMyRequest(id, request);
+    @Operation(
+            summary =
+                    "Submit the caller's own DRAFT request for approval; the tenant's active"
+                            + " leave-approval workflow is resolved automatically")
+    public LeaveRequestResponse submitMyRequest(@PathVariable UUID id) {
+        return service.submitMyRequest(id);
     }
 
     @PostMapping("/requests/{id}/cancel")
@@ -76,5 +81,12 @@ public class LeaveSelfServiceController {
     @Operation(summary = "The caller's own leave balances for a year (defaults to current year)")
     public List<BalanceResponse> myBalances(@RequestParam(required = false) Integer year) {
         return service.myBalances(year);
+    }
+
+    @GetMapping("/reports/pending")
+    @Operation(summary = "SUBMITTED leave requests from the caller's own direct reports, paginated")
+    public Page<LeaveRequestResponse> pendingForMyReports(
+            @ParameterObject @PageableDefault(size = 20, sort = "startDate") Pageable pageable) {
+        return service.pendingForMyReports(pageable);
     }
 }

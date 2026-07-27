@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,5 +18,7 @@ public record CreateWorkflowDefinitionRequest(
         @Size(max = 2048) String description,
         @NotBlank @Size(max = 128) String subjectType,
         @Positive Integer definitionVersion,
+        Instant effectiveFrom,
+        Instant effectiveTo,
         @NotEmpty @Valid List<StateDefinitionSpec> states,
         @Valid List<TransitionDefinitionSpec> transitions) {}

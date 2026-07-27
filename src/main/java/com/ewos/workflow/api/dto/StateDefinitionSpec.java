@@ -1,6 +1,7 @@
 package com.ewos.workflow.api.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
@@ -11,4 +12,6 @@ public record StateDefinitionSpec(
         boolean initial,
         boolean terminal,
         @PositiveOrZero Integer sortOrder,
-        @Positive Integer slaHours) {}
+        @Positive Integer slaHours,
+        @Pattern(regexp = "^(SINGLE|ANY|ALL)$") String approvalMode,
+        @Size(max = 64) String defaultApproverRole) {}

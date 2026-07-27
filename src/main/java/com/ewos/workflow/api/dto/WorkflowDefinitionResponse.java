@@ -15,6 +15,8 @@ public record WorkflowDefinitionResponse(
         String subjectType,
         int definitionVersion,
         boolean active,
+        Instant effectiveFrom,
+        Instant effectiveTo,
         List<StateResponse> states,
         List<TransitionResponse> transitions,
         Instant createdAt,

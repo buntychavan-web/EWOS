@@ -11,4 +11,6 @@ public record StateResponse(
         boolean initial,
         boolean terminal,
         int sortOrder,
-        Integer slaHours) {}
+        Integer slaHours,
+        String approvalMode,
+        String defaultApproverRole) {}

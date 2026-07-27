@@ -6,6 +6,7 @@ import com.ewos.workflow.api.dto.CreateWorkflowDefinitionRequest;
 import com.ewos.workflow.api.dto.StateDefinitionSpec;
 import com.ewos.workflow.api.dto.TransitionDefinitionSpec;
 import com.ewos.workflow.api.dto.WorkflowDefinitionResponse;
+import com.ewos.workflow.domain.WorkflowApprovalMode;
 import com.ewos.workflow.domain.WorkflowDefinition;
 import com.ewos.workflow.domain.WorkflowState;
 import com.ewos.workflow.domain.WorkflowTransition;
@@ -70,6 +71,8 @@ public class WorkflowDefinitionService {
         def.setSubjectType(request.subjectType());
         def.setDefinitionVersion(version);
         def.setActive(true);
+        def.setEffectiveFrom(request.effectiveFrom());
+        def.setEffectiveTo(request.effectiveTo());
 
         Map<String, WorkflowState> statesByCode = new HashMap<>();
         for (StateDefinitionSpec spec : request.states()) {
@@ -83,6 +86,10 @@ public class WorkflowDefinitionService {
                 state.setSortOrder(spec.sortOrder());
             }
             state.setSlaHours(spec.slaHours());
+            if (spec.approvalMode() != null) {
+                state.setApprovalMode(WorkflowApprovalMode.valueOf(spec.approvalMode()));
+            }
+            state.setDefaultApproverRole(spec.defaultApproverRole());
             def.getStates().add(state);
             statesByCode.put(spec.code().toLowerCase(Locale.ROOT), state);
         }
@@ -138,6 +145,28 @@ public class WorkflowDefinitionService {
     @Transactional(readOnly = true)
     public WorkflowDefinitionResponse getById(UUID tenantId, UUID id) {
         return mapper.toResponse(require(tenantId, id));
+    }
+
+    /**
+     * Resolves the single active, currently-effective definition for a subject type — the
+     * self-service lookup path (Sprint 4): callers no longer need to know a concrete definition
+     * id. Picks the highest {@code definitionVersion} among active definitions whose effective
+     * window (if any) covers now; 404s if none match, so the caller can surface "no approval
+     * workflow configured yet" rather than fail silently.
+     */
+    @Transactional(readOnly = true)
+    public WorkflowDefinition findEffective(UUID tenantId, String subjectType) {
+        Instant now = Instant.now();
+        return repository.findActiveByTenantAndSubjectType(tenantId, subjectType).stream()
+                .filter(d -> d.isEffectiveAt(now))
+                .findFirst()
+                .orElseThrow(
+                        () ->
+                                new ApiException(
+                                        HttpStatus.CONFLICT,
+                                        "No active workflow definition is configured for '"
+                                                + subjectType
+                                                + "' yet — contact an administrator"));
     }
 
     @Transactional(readOnly = true)

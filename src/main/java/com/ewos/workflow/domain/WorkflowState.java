@@ -3,6 +3,8 @@ package com.ewos.workflow.domain;
 import com.ewos.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -39,6 +41,18 @@ public class WorkflowState extends AuditableEntity {
 
     @Column(name = "sla_hours")
     private Integer slaHours;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_mode", nullable = false, length = 16)
+    private WorkflowApprovalMode approvalMode = WorkflowApprovalMode.SINGLE;
+
+    /**
+     * Dynamic approver role for tasks auto-assigned at this state (e.g. {@code MANAGER}, {@code
+     * HR}, {@code CUSTOM:PROCUREMENT_LEAD}). Resolved at assignment time by {@code
+     * ApproverResolver}; {@code null} means the caller must always supply an explicit actor.
+     */
+    @Column(name = "default_approver_role", length = 64)
+    private String defaultApproverRole;
 
     @Version
     @Column(name = "version_no", nullable = false)
@@ -102,5 +116,21 @@ public class WorkflowState extends AuditableEntity {
 
     public long getVersionNo() {
         return versionNo;
+    }
+
+    public WorkflowApprovalMode getApprovalMode() {
+        return approvalMode;
+    }
+
+    public void setApprovalMode(WorkflowApprovalMode approvalMode) {
+        this.approvalMode = approvalMode;
+    }
+
+    public String getDefaultApproverRole() {
+        return defaultApproverRole;
+    }
+
+    public void setDefaultApproverRole(String defaultApproverRole) {
+        this.defaultApproverRole = defaultApproverRole;
     }
 }

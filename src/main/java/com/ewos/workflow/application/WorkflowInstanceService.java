@@ -19,6 +19,7 @@ import com.ewos.workflow.infrastructure.persistence.WorkflowHistoryRepository;
 import com.ewos.workflow.infrastructure.persistence.WorkflowInstanceRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,7 +44,10 @@ public class WorkflowInstanceService {
     private final WorkflowMapper mapper;
     private final ApplicationEventPublisher events;
     private final ClientAccessGuard guard;
+    private final WorkflowGuardEvaluator guardEvaluator;
+    private final WorkflowVariableResolverRegistry variableResolvers;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public WorkflowInstanceService(
             WorkflowInstanceRepository instances,
             WorkflowHistoryRepository history,
@@ -51,7 +55,9 @@ public class WorkflowInstanceService {
             WorkflowTransitionPolicy policy,
             WorkflowMapper mapper,
             ApplicationEventPublisher events,
-            ClientAccessGuard guard) {
+            ClientAccessGuard guard,
+            WorkflowGuardEvaluator guardEvaluator,
+            WorkflowVariableResolverRegistry variableResolvers) {
         this.instances = instances;
         this.history = history;
         this.definitions = definitions;
@@ -59,6 +65,8 @@ public class WorkflowInstanceService {
         this.mapper = mapper;
         this.events = events;
         this.guard = guard;
+        this.guardEvaluator = guardEvaluator;
+        this.variableResolvers = variableResolvers;
     }
 
     public WorkflowInstanceResponse start(StartInstanceRequest request) {
@@ -206,8 +214,7 @@ public class WorkflowInstanceService {
             if (instance.getStatus() != WorkflowInstanceStatus.RUNNING) {
                 return;
             }
-            Optional<WorkflowTransition> auto =
-                    policy.findAutoTransition(instance.getDefinition(), instance.getCurrentState());
+            Optional<WorkflowTransition> auto = firstMatchingAutoTransition(instance);
             if (auto.isEmpty()) {
                 return;
             }
@@ -240,6 +247,27 @@ public class WorkflowInstanceService {
                 instance.getCurrentState(),
                 "AUTO_LOOP",
                 null);
+    }
+
+    /**
+     * First auto transition from the instance's current state whose guard expression passes
+     * (Sprint 4 auto-approval/rejection rules). Variables come from whichever {@link
+     * WorkflowVariableResolver} is registered for the instance's subject type; if none is
+     * registered, every guard sees an empty variable map, so any non-blank guard fails closed and
+     * only ungated transitions are eligible — matching the pre-Sprint-4 fallback for subject types
+     * the workflow engine has no visibility into.
+     */
+    private Optional<WorkflowTransition> firstMatchingAutoTransition(WorkflowInstance instance) {
+        List<WorkflowTransition> candidates =
+                policy.findAutoTransitions(instance.getDefinition(), instance.getCurrentState());
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, Object> variables =
+                variableResolvers.resolve(instance.getSubjectType(), instance.getSubjectId());
+        return candidates.stream()
+                .filter(t -> guardEvaluator.evaluate(t.getGuardExpression(), variables))
+                .findFirst();
     }
 
     private void recordHistory(

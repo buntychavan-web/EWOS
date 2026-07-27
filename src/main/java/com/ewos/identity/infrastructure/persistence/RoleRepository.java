@@ -38,4 +38,14 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
 
     @Query("select r from Role r where r.id = :id and r.tenantId is null")
     Optional<Role> findSystemRoleById(@Param("id") UUID id);
+
+    /**
+     * Tenant's own custom role by name, falling back to a system role of the same name — the
+     * dynamic-approver-role lookup ({@code ApproverResolver}) does not know in advance whether a
+     * given code (e.g. {@code HR}) is a tenant-custom role or a platform system role.
+     */
+    @Query(
+            "select r from Role r where lower(r.name) = lower(:name) and (r.tenantId = :tenantId or"
+                    + " r.tenantId is null) order by r.tenantId nulls last")
+    List<Role> findVisibleByName(@Param("tenantId") UUID tenantId, @Param("name") String name);
 }

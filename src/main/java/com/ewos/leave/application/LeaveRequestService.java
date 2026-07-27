@@ -28,6 +28,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -37,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class LeaveRequestService {
 
-    private static final String SUBJECT_TYPE = "leave.request";
+    public static final String SUBJECT_TYPE = "leave.request";
 
     private final LeaveRequestRepository requests;
     private final EmployeeRepository employees;
@@ -175,6 +178,7 @@ public class LeaveRequestService {
         guard.requireAccessForCompany(r.getCompanyId());
         policy.assertDecidable(r);
         UUID actor = requireActor();
+        requireManagerAuthorityUnlessAdmin(tenantId, r, actor);
 
         LeaveBalance balance =
                 balances.requireBalanceForType(
@@ -204,6 +208,7 @@ public class LeaveRequestService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Rejection reason is required");
         }
         UUID actor = requireActor();
+        requireManagerAuthorityUnlessAdmin(tenantId, r, actor);
 
         LeaveBalance balance =
                 balances.requireBalanceForType(
@@ -284,10 +289,58 @@ public class LeaveRequestService {
         return found.stream().map(mapper::toResponse).toList();
     }
 
+    /** SUBMITTED requests reporting up to {@code managerId}, server-side scoped and paginated. */
+    @Transactional(readOnly = true)
+    public Page<LeaveRequestResponse> pendingForManager(
+            UUID tenantId, UUID managerId, Pageable pageable) {
+        Page<LeaveRequest> found =
+                requests.findAllByTenantIdAndStatusAndManagerId(
+                        tenantId, LeaveRequestStatus.SUBMITTED, managerId, pageable);
+        guard.requireAccessForCompanies(
+                found.getContent().stream().map(LeaveRequest::getCompanyId).toList());
+        return found.map(mapper::toResponse);
+    }
+
     private LeaveRequest require(UUID tenantId, UUID id) {
         return requests.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(
                         () -> new ApiException(HttpStatus.NOT_FOUND, "Leave request not found"));
+    }
+
+    /**
+     * Sprint 4 audit fix: {@code LEAVE_APPROVE} was a flat platform permission with no server-side
+     * check that the approver is actually the target employee's manager — a holder could approve
+     * any request tenant-wide by calling this endpoint directly, bypassing the My Team screen's
+     * client-side filter. {@code LEAVE_ADMIN} holders (HR/tenant admins) are exempt, matching the
+     * existing admin-tier distinction the module already draws for cancelling APPROVED requests
+     * (see {@code LeaveRequestController}).
+     */
+    private void requireManagerAuthorityUnlessAdmin(UUID tenantId, LeaveRequest r, UUID actorUserId) {
+        if (hasAuthority("LEAVE_ADMIN")) {
+            return;
+        }
+        Employee manager = r.getEmployee().getManager();
+        if (manager == null) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "This request has no manager on record — an administrator must decide it");
+        }
+        boolean isManager =
+                employees.findAllByUserIdAndTenantId(actorUserId, tenantId).stream()
+                        .anyMatch(e -> e.getId().equals(manager.getId()));
+        if (!isManager) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You are not this employee's manager");
+        }
+    }
+
+    private static boolean hasAuthority(String authority) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(authority::equals);
     }
 
     private Employee requireEmployee(UUID tenantId, UUID employeeId) {

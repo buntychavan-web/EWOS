@@ -6,6 +6,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -24,6 +26,19 @@ public interface LeaveRequestRepository
 
     List<LeaveRequest> findAllByTenantIdAndStatusOrderByStartDateDesc(
             UUID tenantId, LeaveRequestStatus status);
+
+    /**
+     * Server-side scoped and paginated (Sprint 4 audit fix — replaces the tenant-wide, unpaginated
+     * {@code status=SUBMITTED} query the My Team screen previously filtered client-side).
+     */
+    @Query(
+            "select r from LeaveRequest r where r.tenantId = :tenantId and r.status = :status and"
+                    + " r.employee.manager.id = :managerId order by r.startDate asc")
+    Page<LeaveRequest> findAllByTenantIdAndStatusAndManagerId(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") LeaveRequestStatus status,
+            @Param("managerId") UUID managerId,
+            Pageable pageable);
 
     /**
      * Approved leave requests for a given employee that overlap a payroll period. Used by the

@@ -11,9 +11,13 @@ import com.ewos.leave.api.dto.SelfLeaveRequestRequest;
 import com.ewos.leave.api.dto.SubmitLeaveRequestRequest;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.TenantContext;
+import com.ewos.workflow.application.WorkflowDefinitionService;
+import com.ewos.workflow.domain.WorkflowDefinition;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -34,20 +38,24 @@ public class LeaveSelfService {
     private final EmployeeRepository employees;
     private final TenantContext tenantContext;
     private final EmployeeContext employeeContext;
+    private final WorkflowDefinitionService workflowDefinitions;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public LeaveSelfService(
             LeaveRequestService requests,
             LeaveBalanceService balances,
             LeaveTypeService leaveTypes,
             EmployeeRepository employees,
             TenantContext tenantContext,
-            EmployeeContext employeeContext) {
+            EmployeeContext employeeContext,
+            WorkflowDefinitionService workflowDefinitions) {
         this.requests = requests;
         this.balances = balances;
         this.leaveTypes = leaveTypes;
         this.employees = employees;
         this.tenantContext = tenantContext;
         this.employeeContext = employeeContext;
+        this.workflowDefinitions = workflowDefinitions;
     }
 
     public List<LeaveTypeResponse> leaveTypes() {
@@ -74,11 +82,19 @@ public class LeaveSelfService {
                         request.reason()));
     }
 
-    public LeaveRequestResponse submitMyRequest(UUID id, SubmitLeaveRequestRequest request) {
+    /**
+     * Submits the caller's own DRAFT request, resolving the tenant's active leave-approval workflow
+     * definition automatically (Sprint 4 audit fix — the caller no longer needs to already know a
+     * {@code workflowDefinitionId}; {@link WorkflowDefinitionService#findEffective} picks the
+     * highest-version active, currently-effective definition for {@code leave.request}).
+     */
+    public LeaveRequestResponse submitMyRequest(UUID id) {
         UUID tenantId = tenantContext.homeTenantId();
         UUID employeeId = requireEmployeeId();
         requireOwnRequest(tenantId, id, employeeId);
-        return requests.submit(tenantId, id, request);
+        WorkflowDefinition definition =
+                workflowDefinitions.findEffective(tenantId, LeaveRequestService.SUBJECT_TYPE);
+        return requests.submit(tenantId, id, new SubmitLeaveRequestRequest(definition.getId()));
     }
 
     public LeaveRequestResponse cancelMyRequest(UUID id) {
@@ -92,6 +108,16 @@ public class LeaveSelfService {
         UUID tenantId = tenantContext.homeTenantId();
         int effectiveYear = year != null ? year : LocalDate.now().getYear();
         return balances.balancesForEmployee(tenantId, requireEmployeeId(), effectiveYear);
+    }
+
+    /**
+     * SUBMITTED requests from the caller's own direct reports (Sprint 4 audit fix — server-side
+     * scoping + pagination, replacing the tenant-wide query the My Team screen previously filtered
+     * client-side).
+     */
+    public Page<LeaveRequestResponse> pendingForMyReports(Pageable pageable) {
+        UUID tenantId = tenantContext.homeTenantId();
+        return requests.pendingForManager(tenantId, requireEmployeeId(), pageable);
     }
 
     private void requireOwnRequest(UUID tenantId, UUID id, UUID employeeId) {

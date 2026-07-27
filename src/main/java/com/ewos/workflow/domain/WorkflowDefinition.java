@@ -48,6 +48,12 @@ public class WorkflowDefinition extends AuditableEntity {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    @Column(name = "effective_from")
+    private Instant effectiveFrom;
+
+    @Column(name = "effective_to")
+    private Instant effectiveTo;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -123,6 +129,30 @@ public class WorkflowDefinition extends AuditableEntity {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public Instant getEffectiveFrom() {
+        return effectiveFrom;
+    }
+
+    public void setEffectiveFrom(Instant effectiveFrom) {
+        this.effectiveFrom = effectiveFrom;
+    }
+
+    public Instant getEffectiveTo() {
+        return effectiveTo;
+    }
+
+    public void setEffectiveTo(Instant effectiveTo) {
+        this.effectiveTo = effectiveTo;
+    }
+
+    /** True when {@code at} falls within this definition's effective window (both ends optional). */
+    public boolean isEffectiveAt(Instant at) {
+        if (effectiveFrom != null && at.isBefore(effectiveFrom)) {
+            return false;
+        }
+        return effectiveTo == null || !at.isAfter(effectiveTo);
     }
 
     public Instant getDeletedAt() {

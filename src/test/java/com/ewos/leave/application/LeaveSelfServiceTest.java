@@ -19,6 +19,8 @@ import com.ewos.leave.api.dto.SubmitLeaveRequestRequest;
 import com.ewos.leave.domain.LeaveRequestStatus;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.TenantContext;
+import com.ewos.workflow.application.WorkflowDefinitionService;
+import com.ewos.workflow.domain.WorkflowDefinition;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -39,6 +41,7 @@ class LeaveSelfServiceTest {
     @Mock EmployeeRepository employees;
     @Mock TenantContext tenantContext;
     @Mock EmployeeContext employeeContext;
+    @Mock WorkflowDefinitionService workflowDefinitions;
 
     private LeaveSelfService service;
 
@@ -46,7 +49,13 @@ class LeaveSelfServiceTest {
     void setUp() {
         service =
                 new LeaveSelfService(
-                        requests, balances, leaveTypes, employees, tenantContext, employeeContext);
+                        requests,
+                        balances,
+                        leaveTypes,
+                        employees,
+                        tenantContext,
+                        employeeContext,
+                        workflowDefinitions);
     }
 
     private static LeaveRequestResponse response(UUID id, UUID employeeId) {
@@ -135,29 +144,33 @@ class LeaveSelfServiceTest {
         when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(employeeId));
         when(requests.getById(tenantId, requestId)).thenReturn(response(requestId, otherEmployeeId));
 
-        assertThatThrownBy(
-                        () ->
-                                service.submitMyRequest(
-                                        requestId, new SubmitLeaveRequestRequest(UUID.randomUUID())))
+        assertThatThrownBy(() -> service.submitMyRequest(requestId))
                 .isInstanceOf(ApiException.class)
                 .extracting("status")
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
-    void submitMyRequestDelegatesWhenOwnedByCaller() {
+    void submitMyRequestResolvesWorkflowDefinitionAndDelegatesWhenOwnedByCaller() {
         UUID tenantId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
         UUID requestId = UUID.randomUUID();
         UUID workflowDefinitionId = UUID.randomUUID();
+        WorkflowDefinition definition = new WorkflowDefinition();
+        definition.setId(workflowDefinitionId);
         when(tenantContext.homeTenantId()).thenReturn(tenantId);
         when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(employeeId));
         when(requests.getById(tenantId, requestId)).thenReturn(response(requestId, employeeId));
+        when(workflowDefinitions.findEffective(tenantId, LeaveRequestService.SUBJECT_TYPE))
+                .thenReturn(definition);
 
-        service.submitMyRequest(requestId, new SubmitLeaveRequestRequest(workflowDefinitionId));
+        service.submitMyRequest(requestId);
 
         verify(requests)
-                .submit(eq(tenantId), eq(requestId), eq(new SubmitLeaveRequestRequest(workflowDefinitionId)));
+                .submit(
+                        eq(tenantId),
+                        eq(requestId),
+                        eq(new SubmitLeaveRequestRequest(workflowDefinitionId)));
     }
 
     @Test

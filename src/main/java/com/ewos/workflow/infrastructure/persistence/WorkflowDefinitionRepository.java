@@ -24,6 +24,13 @@ public interface WorkflowDefinitionRepository extends JpaRepository<WorkflowDefi
     List<WorkflowDefinition> findActiveByTenantAndCode(
             @Param("tenantId") UUID tenantId, @Param("code") String code);
 
+    @Query(
+            "select d from WorkflowDefinition d where d.tenantId = :tenantId and lower(d.subjectType)"
+                    + " = lower(:subjectType) and d.active = true order by d.definitionVersion"
+                    + " desc")
+    List<WorkflowDefinition> findActiveByTenantAndSubjectType(
+            @Param("tenantId") UUID tenantId, @Param("subjectType") String subjectType);
+
     List<WorkflowDefinition> findAllByTenantIdOrderByCodeAscDefinitionVersionDesc(UUID tenantId);
 
     boolean existsByTenantIdAndCodeIgnoreCaseAndDefinitionVersion(

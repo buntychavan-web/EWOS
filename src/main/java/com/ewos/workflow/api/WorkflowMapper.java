@@ -31,7 +31,9 @@ public final class WorkflowMapper {
                 state.isInitial(),
                 state.isTerminal(),
                 state.getSortOrder(),
-                state.getSlaHours());
+                state.getSlaHours(),
+                state.getApprovalMode().name(),
+                state.getDefaultApproverRole());
     }
 
     public TransitionResponse toResponse(WorkflowTransition t) {
@@ -62,6 +64,8 @@ public final class WorkflowMapper {
                 definition.getSubjectType(),
                 definition.getDefinitionVersion(),
                 definition.isActive(),
+                definition.getEffectiveFrom(),
+                definition.getEffectiveTo(),
                 states,
                 transitions,
                 definition.getCreatedAt(),
@@ -114,6 +118,8 @@ public final class WorkflowMapper {
                 task.getCompletedBy(),
                 task.getOutcomeCode(),
                 task.getNotes(),
+                task.getEscalationLevel(),
+                task.getEscalatedAt(),
                 task.getCreatedAt(),
                 task.getUpdatedAt(),
                 task.getVersionNo());

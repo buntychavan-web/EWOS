@@ -22,6 +22,7 @@ import com.ewos.workflow.domain.events.WorkflowEvent;
 import com.ewos.workflow.domain.events.WorkflowEventType;
 import com.ewos.workflow.infrastructure.persistence.WorkflowHistoryRepository;
 import com.ewos.workflow.infrastructure.persistence.WorkflowInstanceRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,15 @@ class WorkflowInstanceServiceTest {
     void setUp() {
         service =
                 new WorkflowInstanceService(
-                        instances, history, definitions, policy, new WorkflowMapper(), events, guard);
+                        instances,
+                        history,
+                        definitions,
+                        policy,
+                        new WorkflowMapper(),
+                        events,
+                        guard,
+                        new WorkflowGuardEvaluator(),
+                        new WorkflowVariableResolverRegistry(List.of()));
         lenient()
                 .when(instances.save(any(WorkflowInstance.class)))
                 .thenAnswer(

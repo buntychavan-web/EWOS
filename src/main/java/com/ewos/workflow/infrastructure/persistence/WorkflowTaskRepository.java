@@ -2,6 +2,7 @@ package com.ewos.workflow.infrastructure.persistence;
 
 import com.ewos.workflow.domain.WorkflowTask;
 import com.ewos.workflow.domain.WorkflowTaskStatus;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,4 +33,10 @@ public interface WorkflowTaskRepository
     List<WorkflowTask> findAllOfInstanceInStatus(
             @Param("instanceId") UUID instanceId,
             @Param("statuses") List<WorkflowTaskStatus> statuses);
+
+    @Query(
+            "select t from WorkflowTask t where t.status in ('OPEN', 'CLAIMED') and t.dueAt is not"
+                    + " null and t.dueAt < :now and t.escalationLevel < :maxLevel")
+    List<WorkflowTask> findOverdueOpenTasks(
+            @Param("now") Instant now, @Param("maxLevel") int maxLevel);
 }

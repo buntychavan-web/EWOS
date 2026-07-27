@@ -78,8 +78,19 @@ public final class WorkflowTransitionPolicy {
 
     public Optional<WorkflowTransition> findAutoTransition(
             WorkflowDefinition definition, WorkflowState fromState) {
+        return findAutoTransitions(definition, fromState).stream().findFirst();
+    }
+
+    /**
+     * All auto transitions leaving {@code fromState}, ordered deterministically by action code.
+     * More than one is only meaningful when each carries a distinct {@code guardExpression} —
+     * see {@code WorkflowInstanceService#maybeAutoAdvance}, which evaluates them in this order and
+     * follows the first whose guard passes (Sprint 4 auto-approval/rejection rules).
+     */
+    public List<WorkflowTransition> findAutoTransitions(
+            WorkflowDefinition definition, WorkflowState fromState) {
         if (definition.getTransitions() == null) {
-            return Optional.empty();
+            return List.of();
         }
         return definition.getTransitions().stream()
                 .filter(WorkflowTransition::isAuto)
@@ -87,7 +98,8 @@ public final class WorkflowTransitionPolicy {
                         t ->
                                 t.getFromState() != null
                                         && t.getFromState().getId().equals(fromState.getId()))
-                .findFirst();
+                .sorted((a, b) -> a.getActionCode().compareToIgnoreCase(b.getActionCode()))
+                .toList();
     }
 
     public void assertInstanceRunning(WorkflowInstance instance) {
