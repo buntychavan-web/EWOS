@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -54,6 +55,11 @@ public class LeaveRequestService {
     private final Clock clock;
     private final ClientAccessGuard guard;
 
+    // Explicitly @Autowired: with a second (test-only) constructor present below, Spring can
+    // no longer fall back to its implicit single-constructor autowiring rule and needs to be
+    // told which one to use — see the CandidateNumberGenerator/CorsConfig fixes earlier in the
+    // same audit pass for the failure mode this closes.
+    @Autowired
     public LeaveRequestService(
             LeaveRequestRepository requests,
             EmployeeRepository employees,
