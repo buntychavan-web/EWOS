@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ewos.fullname" . }}
+spec:
+  selector:
+    {{- include "ewos.labels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      name: http
+  type: {{ .Values.service.type }}

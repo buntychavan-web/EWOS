@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ewos-backend
+  namespace: ewos
+  labels:
+    app: ewos-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ewos-backend
+  template:
+    metadata:
+      labels:
+        app: ewos-backend
+    spec:
+      # Matches the fixed UID/GID baked into the Dockerfile's runtime stage.
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+      containers:
+        - name: ewos-backend
+          image: ghcr.io/buntychavan-web/ewos:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: ewos-backend-config
+            - secretRef:
+                name: ewos-backend-secret
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]

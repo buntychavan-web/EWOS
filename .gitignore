@@ -20,3 +20,8 @@ logs/
 
 .env
 .env.local
+
+# Real secret manifests derived from the *.example.yaml templates — never commit these.
+k8s/secret.yaml
+helm/**/secrets.yaml
+helm/**/values-*.local.yaml
