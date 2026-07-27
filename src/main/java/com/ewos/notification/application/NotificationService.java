@@ -73,6 +73,9 @@ public class NotificationService {
         }
     }
 
+    // Used via method reference (this::toResponse above) — PMD's UnusedPrivateMethod
+    // doesn't resolve method-reference call sites in this version.
+    @SuppressWarnings("PMD.UnusedPrivateMethod")
     private NotificationResponse toResponse(Notification n) {
         return new NotificationResponse(
                 n.getId(),

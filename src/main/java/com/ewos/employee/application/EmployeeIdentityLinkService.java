@@ -117,6 +117,9 @@ public class EmployeeIdentityLinkService {
                 .toList();
     }
 
+    // Used via method reference (this::toHistoryResponse above) — PMD's UnusedPrivateMethod
+    // doesn't resolve method-reference call sites in this version.
+    @SuppressWarnings("PMD.UnusedPrivateMethod")
     private EmployeeIdentityHistoryResponse toHistoryResponse(EmployeeIdentityLinkHistory h) {
         return new EmployeeIdentityHistoryResponse(
                 h.getId(),

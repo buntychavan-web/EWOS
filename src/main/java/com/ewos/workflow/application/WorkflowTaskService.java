@@ -162,6 +162,10 @@ public class WorkflowTaskService {
         return mapper.toResponse(task);
     }
 
+    // The single-arg List.of(WorkflowTaskStatus.COMPLETED) call below binds to List's fixed-arity
+    // of(E) overload, not its varargs of(E...) — PMD's ConfusingArgumentToVarargsMethod doesn't
+    // distinguish the two here.
+    @SuppressWarnings("PMD.ConfusingArgumentToVarargsMethod")
     public WorkflowTaskResponse complete(UUID tenantId, UUID taskId, CompleteTaskRequest request) {
         WorkflowTask task = require(tenantId, taskId);
         policy.assertTaskOpen(task);
