@@ -179,7 +179,14 @@ Key environment variables:
 
 **Production** requires an externally provided `JWT_SECRET` of at least 256
 bits, plus an `ADMIN_PASSWORD` set explicitly at first boot. The default
-values are placeholders and must not be used outside local development.
+values are placeholders and must not be used outside local development —
+this is enforced, not just documented: `JwtSecretGuard` and
+`AdminPasswordGuard` refuse to start the application outside `dev`/`test`
+profiles if either is left at its placeholder value.
+
+See `.env.example` for the full variable reference and
+[`docs/operations/deployment.md`](./docs/operations/deployment.md) for
+Kubernetes/Helm deployment.
 
 ## Profiles
 

@@ -1,10 +1,51 @@
 # EWOS — Project Status
 
-_Last updated: 2026-07-09._
+_Last updated: 2026-07-27._
 
-Snapshot of the backend after Sprints 1, 2, 4, and 5 (hardening). This is
-the single source of truth for what is delivered, what quality gates are
-enforced, and what technical debt still exists.
+Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), the Sprint
+1.1–1.4/2.x/4 program (multi-tenancy, RBAC hardening, employee identity
+linking, workflow/approval engine), and the 2026-07-27 CTO Production
+Readiness Audit remediation. This is the single source of truth for what is
+delivered, what quality gates are enforced, and what technical debt still
+exists. §§ 1–10 below are the original Sprint 1–5 snapshot from 2026-07-09
+and are historical; §11 covers everything since.
+
+---
+
+## 0. CTO Production Readiness Audit — 2026-07-27
+
+A full pass across both repos to close production-readiness gaps found in
+a CTO-level audit. Commits on `ewos-main` (this repo) and `main`
+(`enterprise-core`, the frontend):
+
+- **CI**: the `ci.yml` branch trigger never matched `ewos-main` — the branch
+  every sprint since Sprint 1.1 actually developed on — so CI had not run on
+  real work for the entire Sprint 1–4 program. Fixed. Also reformatted 139
+  pre-existing files that had drifted out of Spotless compliance (cosmetic
+  only — verified against the full unit suite before/after).
+- **Security**: added `AdminPasswordGuard` (mirrors the existing
+  `JwtSecretGuard`) — refuses to boot outside dev/test if `ADMIN_PASSWORD`
+  is still the `ChangeMe!Admin123` placeholder. Flipped
+  `server.error.include-message` / `include-binding-errors` to
+  secure-by-default (`never`) in the base `application.yml`, with dev/test
+  opting back into verbose messages explicitly (prod already had this right,
+  but nothing stopped a profile-less or new deployment from leaking).
+- **Deployment**: added `k8s/`, `helm/ewos/`, `.env.example`, and
+  `docs/operations/deployment.md` — see that guide for the full picture.
+  None of this existed before.
+- **Frontend** (`enterprise-core`): added a CI workflow (it had none),
+  Vitest/RTL component tests (it had none) and a Playwright e2e smoke suite,
+  a React error boundary, a feature-flag framework, a `beforeLoad` route
+  guard replacing a `useEffect`-based one, global 401/session-expiry
+  handling, and a Dockerfile + deployment guide. See that repo's
+  `PROJECT_STATUS.md`/README for details.
+
+Known limitations carried forward, not fixed by this pass (see §11.4):
+GitHub's repository **default branch** could not be changed via any
+available tool/API in this environment — `main` was fast-forwarded to match
+`ewos-main`'s tip via a merged PR, but an operator with repo admin access
+still needs to flip the default-branch setting in GitHub's UI/API if
+`ewos-main` should stop being the branch developers push to.
 
 ---
 
@@ -170,9 +211,9 @@ Prioritized. None of these blocks moving into the next sprint, but each should b
 
 ### High priority
 1. ~~**`AbstractIntegrationTest` container reuse across classes**~~ ✅ **Resolved by PR #4.** `AbstractIntegrationTest` now uses the singleton-container pattern: one Postgres per JVM, started in a static initializer, terminated by Ryuk at JVM exit. See `CONTRIBUTING.md` § 6.4 and "Common pitfalls" below for the failure mode this closes.
-2. **No CORS bean is registered** — `SecurityConfig.cors(Customizer.withDefaults())` runs, but no `CorsConfigurationSource` bean exists, so cross-origin requests from a browser frontend will be blocked. Add a config-driven `CorsConfigurationSource` (planned in the login-API doc I published earlier — needs a follow-up commit).
-3. **Actuator scrape endpoints are unauthenticated for `/health` / `/health/**` / `/info` only** — but `/actuator/prometheus`, `/actuator/metrics`, `/actuator/env` etc. become reachable the moment those exposures are turned on. Add an explicit authenticated policy for anything beyond health/info before enabling the Prometheus endpoint.
-4. **`JWT_SECRET` default in `application.yml`** — dev-only placeholder. Production deployment should refuse to start if `JWT_SECRET` matches the placeholder. Add a `SmartLifecycle` check or `@PostConstruct` guard.
+2. ~~**No CORS bean is registered**~~ ✅ **Resolved.** `CorsConfig` registers a config-driven `CorsConfigurationSource` (`app.cors.*`), with a prod-profile fail-fast guard against wildcard origins — see ADR-0004.
+3. ~~**Actuator scrape endpoints are unauthenticated beyond health/info**~~ ✅ **Resolved.** `application-prod.yml` restricts `management.endpoints.web.exposure.include` to `health,info` only; nothing else is exposed in prod.
+4. ~~**`JWT_SECRET` default in `application.yml`**~~ ✅ **Resolved.** `JwtSecretGuard` refuses to boot outside dev/test with a placeholder or under-length secret. As of the 2026-07-27 audit, `AdminPasswordGuard` closes the equivalent gap for `ADMIN_PASSWORD`.
 
 ### Medium priority
 5. **Role / Permission admin API is missing** — entities support soft delete + versioning but there's no controller to CRUD them. Blocked by product scope decision (assign / mint permissions at runtime vs. seed-only).
@@ -277,7 +318,39 @@ docker compose up --build
 
 ---
 
-## 10. Change log for this document
+## 11. Remaining known risks (2026-07-27 audit)
+
+- **GitHub default branch** — still `main` at the GitHub settings level in
+  a way this environment's tools couldn't change (no repo-settings API
+  available). `main` has been fast-forwarded to `ewos-main`'s tip so there
+  is no code divergence, but a repo admin should still flip the default
+  branch in GitHub's UI if the intent is for `ewos-main` to stop being a
+  separate line developers push to.
+- **Backend↔frontend API routing in production** — the frontend's
+  `/api/v1/*` calls are same-origin relative paths with no production
+  reverse-proxy/rewrite configured (see `enterprise-core`'s
+  `docs/DEPLOYMENT.md`). An operator must wire this up per their actual
+  Cloudflare/ingress topology before both sides can talk to each other in a
+  real deployment.
+- **Kafka messaging is off by default** (`APP_MESSAGING_KAFKA_ENABLED=false`)
+  and untested against a real broker outside `docker-compose.yml`'s local
+  dev setup.
+- **`helm/ewos` charts were not run through `helm lint`/`helm template`** —
+  no Helm CLI was reachable in the sandbox this audit ran in (network
+  policy blocked `get.helm.sh`). Reviewed by hand against the raw `k8s/`
+  manifests they mirror; run `helm lint` before a first real install.
+- Items 5–16 in §7 above (Role/Permission admin API gaps notwithstanding —
+  much of that has since shipped in Sprint 1.4 — refresh-token device
+  binding, restore-from-soft-delete, JPA `ddl-auto=validate` in CI, request
+  access logging, Testcontainers reuse, optimistic-lock retry, OpenAPI
+  examples, refresh-token cleanup job, coverage exclusions) were not
+  re-verified in this audit pass and should be treated as still open unless
+  a later section of this document says otherwise.
+
+---
+
+## 12. Change log for this document
 
 - **2026-07-09** — Initial version. Reflects the tip of the `claude/quality-hardening` branch after the Sprint 5 hardening PR.
 - **2026-07-09** — Added § 8 "Common pitfalls" with the Testcontainers singleton-container writeup, soft-delete/UNIQUE, Flyway checksum, null auditor, log-hygiene, Checkstyle-vs-SLF4J-log, and gate-loosening. Marked tech-debt item #1 as resolved by PR #4. Renumbered § 8 → § 9 and § 9 → § 10.
+- **2026-07-27** — CTO Production Readiness Audit: added §0 summarizing the audit's changes, marked tech-debt items #2–#4 in §7 as resolved (CORS bean, actuator exposure, JWT secret guard — plus the new `AdminPasswordGuard`), added §11 "Remaining known risks" reflecting this pass's findings, and noted that this document's §§1–10 predate the Sprint 1.1–4/2.x program and were not rewritten wholesale in this pass — treat sprint-by-sprint detail past Sprint 5 as living in each sprint's own completion report rather than here.
