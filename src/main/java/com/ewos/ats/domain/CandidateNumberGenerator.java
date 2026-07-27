@@ -18,15 +18,10 @@ public class CandidateNumberGenerator {
     private static final int MAX_ATTEMPTS = 8;
 
     private final CandidateRepository candidates;
-    private final Clock clock;
+    private final Clock clock = Clock.systemUTC();
 
     public CandidateNumberGenerator(CandidateRepository candidates) {
-        this(candidates, Clock.systemUTC());
-    }
-
-    CandidateNumberGenerator(CandidateRepository candidates, Clock clock) {
         this.candidates = candidates;
-        this.clock = clock;
     }
 
     public String generate(UUID tenantId, UUID companyId) {
