@@ -30,8 +30,12 @@ server:
   compression:
     enabled: true
   error:
-    include-message: always
-    include-binding-errors: always
+    # Secure by default — Spring Boot's fallback /error handling (unhandled
+    # exceptions that bypass GlobalExceptionHandler) must not leak message or
+    # binding-error detail unless a profile explicitly opts in. dev/test opt
+    # back in below for local debugging convenience.
+    include-message: never
+    include-binding-errors: never
     include-stacktrace: never
 
 management:

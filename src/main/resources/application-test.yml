@@ -10,6 +10,11 @@ spring:
   flyway:
     enabled: true
 
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
+
 app:
   redis:
     enabled: false

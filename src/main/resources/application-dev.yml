@@ -13,6 +13,11 @@ spring:
       hibernate:
         format_sql: true
 
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
+
 app:
   cors:
     # Local dev origins — Vite (5173), Create-React-App (3000), and their 127.0.0.1 aliases.
