@@ -6,11 +6,29 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 class CorsConfigTest {
+
+    // Regression test for a real production bug: @Configuration's default CGLIB
+    // proxying (proxyBeanMethods=true) requires subclassing the class, which a
+    // `final class CorsConfig` blocked. Spring refused to boot with "Configuration
+    // class 'CorsConfig' may not be final" the moment a real ApplicationContext
+    // started — every other test in this suite constructs CorsConfig directly
+    // (new CorsConfig(...)), which bypasses CGLIB entirely and never caught it.
+    @Test
+    void loadsCleanlyInARealSpringApplicationContext() {
+        try (AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().setActiveProfiles("dev");
+            ctx.register(CorsConfig.class);
+            ctx.refresh();
+            assertThat(ctx.getBean(CorsConfig.class)).isNotNull();
+            assertThat(ctx.getBean("corsConfigurationSource")).isNotNull();
+        }
+    }
 
     @Test
     void wildcardOriginRejectedInProdProfile() {
@@ -19,7 +37,7 @@ class CorsConfigTest {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("prod");
 
-        assertThatThrownBy(() -> new CorsConfig(props, env))
+        assertThatThrownBy(() -> new CorsConfig(props, env).afterPropertiesSet())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("wildcard")
                 .hasMessageContaining("prod");
@@ -33,7 +51,7 @@ class CorsConfigTest {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("prod");
 
-        assertThatThrownBy(() -> new CorsConfig(props, env))
+        assertThatThrownBy(() -> new CorsConfig(props, env).afterPropertiesSet())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("wildcard")
                 .hasMessageContaining("prod");
@@ -47,7 +65,7 @@ class CorsConfigTest {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("dev");
 
-        assertThatThrownBy(() -> new CorsConfig(props, env))
+        assertThatThrownBy(() -> new CorsConfig(props, env).afterPropertiesSet())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("wildcard")
                 .hasMessageContaining("allowCredentials");
@@ -62,6 +80,7 @@ class CorsConfigTest {
         env.setActiveProfiles("dev");
 
         CorsConfig config = new CorsConfig(props, env);
+        config.afterPropertiesSet();
         assertThat(config.corsConfigurationSource())
                 .isInstanceOf(UrlBasedCorsConfigurationSource.class);
     }
@@ -73,9 +92,10 @@ class CorsConfigTest {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("dev");
 
+        CorsConfig config = new CorsConfig(props, env);
+        config.afterPropertiesSet();
         UrlBasedCorsConfigurationSource source =
-                (UrlBasedCorsConfigurationSource)
-                        new CorsConfig(props, env).corsConfigurationSource();
+                (UrlBasedCorsConfigurationSource) config.corsConfigurationSource();
 
         // We know we registered "/**" — read that pattern back out.
         CorsConfiguration cors = source.getCorsConfigurations().get("/**");
@@ -97,6 +117,7 @@ class CorsConfigTest {
 
         // No exception — deny-by-default is a valid production posture.
         CorsConfig config = new CorsConfig(props, env);
+        config.afterPropertiesSet();
         assertThat(config.corsConfigurationSource()).isNotNull();
     }
 

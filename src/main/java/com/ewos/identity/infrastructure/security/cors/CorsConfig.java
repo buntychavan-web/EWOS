@@ -3,6 +3,7 @@ package com.ewos.identity.infrastructure.security.cors;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,9 +29,21 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  *       developer explore quickly while making the smell visible.
  * </ul>
  */
+// Not final: @Configuration's default CGLIB proxying (proxyBeanMethods=true) requires
+// subclassing this class, which a final class blocks — Spring refuses to boot with
+// "Configuration class 'CorsConfig' may not be final" whenever the real container
+// starts (masked in sandboxes with no Docker, where AbstractIntegrationTest's
+// Testcontainers static initializer fails first and never reaches this point).
+//
+// validate() runs from afterPropertiesSet(), not the constructor: SpotBugs flags a
+// throwing constructor on a non-final class as a finalizer-attack vector
+// (CT_CONSTRUCTOR_THROW) — the object under construction could otherwise be
+// resurrected by a malicious subclass's finalize(). Deferring to
+// afterPropertiesSet() keeps the same fail-fast-at-boot behavior while leaving the
+// constructor itself unable to throw. Matches JwtSecretGuard/AdminPasswordGuard.
 @Configuration
 @EnableConfigurationProperties(CorsProperties.class)
-public final class CorsConfig {
+public class CorsConfig implements InitializingBean {
 
     private static final Logger log = LoggerFactory.getLogger(CorsConfig.class);
     private static final String WILDCARD = "*";
@@ -42,6 +55,10 @@ public final class CorsConfig {
     public CorsConfig(CorsProperties properties, Environment environment) {
         this.properties = properties;
         this.environment = environment;
+    }
+
+    @Override
+    public void afterPropertiesSet() {
         validate();
     }
 
