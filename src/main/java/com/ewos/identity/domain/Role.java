@@ -18,7 +18,8 @@ import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "roles")
-@SQLDelete(sql = "UPDATE roles SET deleted_at = NOW(), version = version + 1 WHERE id = ?")
+// See User.java for why the version bind parameter is required here.
+@SQLDelete(sql = "UPDATE roles SET deleted_at = NOW() WHERE id = ? AND version = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class Role extends AuditableEntity {
 

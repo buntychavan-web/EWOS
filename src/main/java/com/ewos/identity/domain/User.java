@@ -17,7 +17,12 @@ import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "users")
-@SQLDelete(sql = "UPDATE users SET deleted_at = NOW(), version = version + 1 WHERE id = ?")
+// Hibernate binds the entity's current @Version value as a second parameter for any
+// custom @SQLDelete SQL on a versioned entity, whether or not the SQL string itself
+// references it — omitting "AND version = ?" here made every delete fail with "column
+// index is out of range: 2, number of columns: 1" (invisible until this exact
+// integration test finally ran against real Postgres in CI for the first time).
+@SQLDelete(sql = "UPDATE users SET deleted_at = NOW() WHERE id = ? AND version = ?")
 @SQLRestriction("deleted_at IS NULL")
 public class User extends AuditableEntity {
 
