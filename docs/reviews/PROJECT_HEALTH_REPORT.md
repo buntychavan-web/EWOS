@@ -89,7 +89,10 @@ Every module besides `identity` is a stub. Delivery order per master arch:
 - **SBOM**: no SBOM emitted per release.
 - **API contract testing**: no OpenAPI diff / contract tests on the PR pipeline.
 - **Load / soak tests**: no k6 or Gatling suite; benchmark framework is unit-scoped only.
-- **DR / backup runbook**: not authored.
+- **DR / backup runbook**: authored and validated with a real restore drill in Sprint 17 — see
+  [`docs/operations/backup-disaster-recovery.md`](../operations/backup-disaster-recovery.md).
+  Production-scale RTO measurement and automated backup-verification remain open (see that
+  document's §7).
 - **Data classification catalogue**: not authored (needed before Payroll).
 
 ## 7. Technical debt log
