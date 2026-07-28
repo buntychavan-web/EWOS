@@ -110,6 +110,7 @@ public class StatutoryDeductionService {
                 d.setTotalAmount(line.getAmount());
                 d.setCurrency(slip.getCurrency());
                 repository.save(d);
+                existingByCode.put(codeKey, d);
                 inserted++;
             }
         }
