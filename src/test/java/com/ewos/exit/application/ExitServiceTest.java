@@ -1,0 +1,664 @@
+package com.ewos.exit.application;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.ewos.employee.domain.Employee;
+import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
+import com.ewos.exit.api.ExitMapper;
+import com.ewos.exit.api.dto.AcceptResignationRequest;
+import com.ewos.exit.api.dto.ApplyBuyoutRequest;
+import com.ewos.exit.api.dto.ClearanceResponse;
+import com.ewos.exit.api.dto.CompleteExitRequest;
+import com.ewos.exit.api.dto.CreateAlumniRequest;
+import com.ewos.exit.api.dto.CreateClearanceRequest;
+import com.ewos.exit.api.dto.CreateKtItemRequest;
+import com.ewos.exit.api.dto.CreateResignationRequest;
+import com.ewos.exit.api.dto.DocumentResponse;
+import com.ewos.exit.api.dto.ExitDashboardResponse;
+import com.ewos.exit.api.dto.InterviewResponse;
+import com.ewos.exit.api.dto.IssueDocumentRequest;
+import com.ewos.exit.api.dto.KtItemResponse;
+import com.ewos.exit.api.dto.RecordInterviewRequest;
+import com.ewos.exit.api.dto.ResignationResponse;
+import com.ewos.exit.api.dto.UpdateAlumniRequest;
+import com.ewos.exit.api.dto.UpdateClearanceRequest;
+import com.ewos.exit.domain.AlumniRecord;
+import com.ewos.exit.domain.ClearanceDepartment;
+import com.ewos.exit.domain.ClearanceStatus;
+import com.ewos.exit.domain.ExitClearance;
+import com.ewos.exit.domain.ExitDocument;
+import com.ewos.exit.domain.ExitDocumentType;
+import com.ewos.exit.domain.KnowledgeTransferItem;
+import com.ewos.exit.domain.RehireEligibility;
+import com.ewos.exit.domain.Resignation;
+import com.ewos.exit.domain.ResignationLifecyclePolicy;
+import com.ewos.exit.domain.ResignationStatus;
+import com.ewos.exit.infrastructure.persistence.AlumniRecordRepository;
+import com.ewos.exit.infrastructure.persistence.ExitClearanceRepository;
+import com.ewos.exit.infrastructure.persistence.ExitDocumentRepository;
+import com.ewos.exit.infrastructure.persistence.ExitInterviewRepository;
+import com.ewos.exit.infrastructure.persistence.KnowledgeTransferItemRepository;
+import com.ewos.exit.infrastructure.persistence.ResignationRepository;
+import com.ewos.shared.exception.ApiException;
+import com.ewos.tenancy.application.ClientAccessGuard;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+
+/**
+ * No test suite pre-existed for this service; these tests cover the primary success path and the
+ * main guard/conflict branches for each public method, exercised with real domain/mapper/policy
+ * objects and mocked repositories — not an exhaustive branch-by-branch spec.
+ */
+@ExtendWith(MockitoExtension.class)
+class ExitServiceTest {
+
+    @Mock ResignationRepository resignations;
+    @Mock ExitClearanceRepository clearances;
+    @Mock KnowledgeTransferItemRepository ktItems;
+    @Mock ExitInterviewRepository interviews;
+    @Mock ExitDocumentRepository documents;
+    @Mock AlumniRecordRepository alumni;
+    @Mock EmployeeRepository employees;
+    @Mock ApplicationEventPublisher events;
+    @Mock ClientAccessGuard guard;
+
+    private ExitService service;
+
+    private final UUID tenantId = UUID.randomUUID();
+    private final UUID companyId = UUID.randomUUID();
+    private final UUID employeeId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        service =
+                new ExitService(
+                        resignations,
+                        clearances,
+                        ktItems,
+                        interviews,
+                        documents,
+                        alumni,
+                        employees,
+                        new ResignationLifecyclePolicy(),
+                        new ExitMapper(),
+                        events,
+                        guard);
+    }
+
+    private Employee employee() {
+        Employee e = new Employee();
+        e.setId(employeeId);
+        e.setTenantId(tenantId);
+        e.setCompanyId(companyId);
+        return e;
+    }
+
+    private Resignation resignation(ResignationStatus status) {
+        Resignation r = new Resignation();
+        r.setId(UUID.randomUUID());
+        r.setTenantId(tenantId);
+        r.setCompanyId(companyId);
+        r.setEmployee(employee());
+        r.setStatus(status);
+        r.setNoticePeriodDays(30);
+        return r;
+    }
+
+    // Resignation --------------------------------------------------------
+
+    @Test
+    void submitCreatesAResignationWhenNoneIsOpen() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(resignations.findByTenantIdAndEmployeeIdAndStatusNot(
+                        tenantId, employeeId, ResignationStatus.WITHDRAWN))
+                .thenReturn(Optional.empty());
+        when(resignations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ResignationResponse resp =
+                service.submit(
+                        new CreateResignationRequest(
+                                tenantId, companyId, employeeId, LocalDate.now(), "career", 30));
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.SUBMITTED);
+        verify(guard).requireAccessForCompany(companyId);
+    }
+
+    @Test
+    void submitRejectsWhenEmployeeBelongsToADifferentCompany() {
+        Employee other = employee();
+        other.setCompanyId(UUID.randomUUID());
+        when(employees.findByIdAndTenantId(employeeId, tenantId)).thenReturn(Optional.of(other));
+
+        assertThatThrownBy(
+                        () ->
+                                service.submit(
+                                        new CreateResignationRequest(
+                                                tenantId,
+                                                companyId,
+                                                employeeId,
+                                                LocalDate.now(),
+                                                "career",
+                                                30)))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void submitRejectsASecondOpenResignation() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(resignations.findByTenantIdAndEmployeeIdAndStatusNot(
+                        tenantId, employeeId, ResignationStatus.WITHDRAWN))
+                .thenReturn(Optional.of(resignation(ResignationStatus.SUBMITTED)));
+
+        assertThatThrownBy(
+                        () ->
+                                service.submit(
+                                        new CreateResignationRequest(
+                                                tenantId,
+                                                companyId,
+                                                employeeId,
+                                                LocalDate.now(),
+                                                "career",
+                                                30)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("already has an open resignation");
+    }
+
+    @Test
+    void acceptTransitionsSubmittedToAccepted() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.accept(
+                        tenantId,
+                        r.getId(),
+                        new AcceptResignationRequest(LocalDate.now(), null, null));
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.ACCEPTED);
+    }
+
+    @Test
+    void startNoticeTransitionsAcceptedToInNotice() {
+        Resignation r = resignation(ResignationStatus.ACCEPTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp = service.startNotice(tenantId, r.getId());
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.IN_NOTICE);
+    }
+
+    @Test
+    void applyBuyoutRejectsMoreDaysThanNoticePeriod() {
+        Resignation r = resignation(ResignationStatus.ACCEPTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThatThrownBy(
+                        () ->
+                                service.applyBuyout(
+                                        tenantId, r.getId(), new ApplyBuyoutRequest(60, null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("cannot exceed");
+    }
+
+    @Test
+    void applyBuyoutAcceptsAValidRequest() {
+        Resignation r = resignation(ResignationStatus.ACCEPTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.applyBuyout(tenantId, r.getId(), new ApplyBuyoutRequest(5, null));
+
+        assertThat(resp.buyoutDays()).isEqualTo(5);
+    }
+
+    @Test
+    void withdrawTransitionsSubmittedToWithdrawn() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp = service.withdraw(tenantId, r.getId());
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.WITHDRAWN);
+    }
+
+    @Test
+    void cancelTransitionsAcceptedToCancelled() {
+        Resignation r = resignation(ResignationStatus.ACCEPTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp = service.cancel(tenantId, r.getId());
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.CANCELLED);
+    }
+
+    @Test
+    void completeExitBlocksOnOpenClearances() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.countByTenantIdAndResignationIdAndStatusNot(
+                        tenantId, r.getId(), ClearanceStatus.CLEARED))
+                .thenReturn(2L);
+
+        assertThatThrownBy(
+                        () ->
+                                service.completeExit(
+                                        tenantId,
+                                        r.getId(),
+                                        new CompleteExitRequest(
+                                                LocalDate.now(), RehireEligibility.YES, null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("clearance item(s) still open");
+    }
+
+    @Test
+    void completeExitSucceedsOnceClearancesAreClosed() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.countByTenantIdAndResignationIdAndStatusNot(
+                        tenantId, r.getId(), ClearanceStatus.CLEARED))
+                .thenReturn(0L);
+
+        ResignationResponse resp =
+                service.completeExit(
+                        tenantId,
+                        r.getId(),
+                        new CompleteExitRequest(LocalDate.now(), RehireEligibility.YES, "notes"));
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.EXITED);
+    }
+
+    @Test
+    void getResignationReturnsTheMappedResignation() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThat(service.getResignation(tenantId, r.getId()).id()).isEqualTo(r.getId());
+    }
+
+    @Test
+    void getResignationRejectsAnUnknownId() {
+        UUID id = UUID.randomUUID();
+        when(resignations.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getResignation(tenantId, id))
+                .isInstanceOf(ApiException.class);
+        verify(guard, never()).requireAccessForCompany(any());
+    }
+
+    @Test
+    void resignationsForEmployeeChecksGuardAcrossAllReturnedCompanies() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findAllByTenantIdAndEmployeeId(tenantId, employeeId))
+                .thenReturn(List.of(r));
+
+        List<ResignationResponse> resp = service.resignationsForEmployee(tenantId, employeeId);
+
+        assertThat(resp).hasSize(1);
+        verify(guard).requireAccessForCompanies(List.of(companyId));
+    }
+
+    // Clearance ------------------------------------------------------------
+
+    @Test
+    void addClearanceRejectsADuplicateDepartment() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.findByTenantIdAndResignationIdAndDepartment(
+                        tenantId, r.getId(), ClearanceDepartment.IT))
+                .thenReturn(Optional.of(new ExitClearance()));
+
+        assertThatThrownBy(
+                        () ->
+                                service.addClearance(
+                                        tenantId,
+                                        r.getId(),
+                                        new CreateClearanceRequest(
+                                                ClearanceDepartment.IT, null, null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void addClearanceCreatesAPendingClearance() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.findByTenantIdAndResignationIdAndDepartment(
+                        tenantId, r.getId(), ClearanceDepartment.FINANCE))
+                .thenReturn(Optional.empty());
+        when(clearances.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ClearanceResponse resp =
+                service.addClearance(
+                        tenantId,
+                        r.getId(),
+                        new CreateClearanceRequest(ClearanceDepartment.FINANCE, null, "n"));
+
+        assertThat(resp.status()).isEqualTo(ClearanceStatus.PENDING);
+    }
+
+    @Test
+    void updateClearanceStampsClearedAtOnceStatusBecomesCleared() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        ExitClearance c = new ExitClearance();
+        c.setId(UUID.randomUUID());
+        c.setResignation(r);
+        c.setDepartment(ClearanceDepartment.HR);
+        c.setStatus(ClearanceStatus.PENDING);
+        when(clearances.findByIdAndTenantId(c.getId(), tenantId)).thenReturn(Optional.of(c));
+
+        ClearanceResponse resp =
+                service.updateClearance(
+                        tenantId,
+                        c.getId(),
+                        new UpdateClearanceRequest(ClearanceStatus.CLEARED, null));
+
+        assertThat(resp.status()).isEqualTo(ClearanceStatus.CLEARED);
+        assertThat(c.getClearedAt()).isNotNull();
+    }
+
+    @Test
+    void updateClearanceHandlesTheBlockedBranch() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        ExitClearance c = new ExitClearance();
+        c.setId(UUID.randomUUID());
+        c.setResignation(r);
+        c.setDepartment(ClearanceDepartment.HR);
+        c.setStatus(ClearanceStatus.PENDING);
+        when(clearances.findByIdAndTenantId(c.getId(), tenantId)).thenReturn(Optional.of(c));
+
+        ClearanceResponse resp =
+                service.updateClearance(
+                        tenantId,
+                        c.getId(),
+                        new UpdateClearanceRequest(ClearanceStatus.BLOCKED, "why"));
+
+        assertThat(resp.status()).isEqualTo(ClearanceStatus.BLOCKED);
+        assertThat(resp.notes()).isEqualTo("why");
+    }
+
+    @Test
+    void listClearancesReturnsAllForTheResignation() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.findAllByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(List.of(new ExitClearance()));
+
+        assertThat(service.listClearances(tenantId, r.getId())).hasSize(1);
+    }
+
+    // Knowledge transfer -----------------------------------------------------
+
+    @Test
+    void addKtItemPersistsAnIncompleteItem() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(ktItems.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        KtItemResponse resp =
+                service.addKtItem(
+                        tenantId, r.getId(), new CreateKtItemRequest("topic", "desc", null, null));
+
+        assertThat(resp.completed()).isFalse();
+    }
+
+    @Test
+    void completeKtItemIsIdempotent() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        KnowledgeTransferItem k = new KnowledgeTransferItem();
+        k.setId(UUID.randomUUID());
+        k.setResignation(r);
+        k.setCompleted(true);
+        when(ktItems.findByIdAndTenantId(k.getId(), tenantId)).thenReturn(Optional.of(k));
+
+        KtItemResponse resp = service.completeKtItem(tenantId, k.getId());
+
+        assertThat(resp.completed()).isTrue();
+        verify(events, never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void completeKtItemMarksAPendingItemDone() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        KnowledgeTransferItem k = new KnowledgeTransferItem();
+        k.setId(UUID.randomUUID());
+        k.setResignation(r);
+        k.setCompleted(false);
+        when(ktItems.findByIdAndTenantId(k.getId(), tenantId)).thenReturn(Optional.of(k));
+
+        KtItemResponse resp = service.completeKtItem(tenantId, k.getId());
+
+        assertThat(resp.completed()).isTrue();
+        assertThat(k.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void listKtItemsReturnsAllForTheResignation() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(ktItems.findAllByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(List.of(new KnowledgeTransferItem()));
+
+        assertThat(service.listKtItems(tenantId, r.getId())).hasSize(1);
+    }
+
+    // Exit interview -----------------------------------------------------
+
+    @Test
+    void recordInterviewCreatesANewInterviewWhenNoneExists() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(interviews.findByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(Optional.empty());
+        when(interviews.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        InterviewResponse resp =
+                service.recordInterview(
+                        tenantId,
+                        r.getId(),
+                        new RecordInterviewRequest("Jane", null, true, null, "good"));
+
+        assertThat(resp.interviewerName()).isEqualTo("Jane");
+    }
+
+    @Test
+    void getInterviewRejectsWhenNoneRecorded() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(interviews.findByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getInterview(tenantId, r.getId()))
+                .isInstanceOf(ApiException.class);
+    }
+
+    // Documents ------------------------------------------------------------
+
+    @Test
+    void issueDocumentRejectsADuplicateDocumentType() {
+        Resignation r = resignation(ResignationStatus.EXITED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(documents.findByTenantIdAndResignationIdAndDocumentType(
+                        tenantId, r.getId(), ExitDocumentType.RELIEVING_LETTER))
+                .thenReturn(Optional.of(new ExitDocument()));
+
+        assertThatThrownBy(
+                        () ->
+                                service.issueDocument(
+                                        tenantId,
+                                        r.getId(),
+                                        new IssueDocumentRequest(
+                                                ExitDocumentType.RELIEVING_LETTER,
+                                                "uri",
+                                                null,
+                                                null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("already issued");
+    }
+
+    @Test
+    void issueDocumentPersistsANewDocument() {
+        Resignation r = resignation(ResignationStatus.EXITED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(documents.findByTenantIdAndResignationIdAndDocumentType(
+                        tenantId, r.getId(), ExitDocumentType.EXPERIENCE_LETTER))
+                .thenReturn(Optional.empty());
+        when(documents.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        DocumentResponse resp =
+                service.issueDocument(
+                        tenantId,
+                        r.getId(),
+                        new IssueDocumentRequest(
+                                ExitDocumentType.EXPERIENCE_LETTER, "uri", "ref", null));
+
+        assertThat(resp.documentType()).isEqualTo(ExitDocumentType.EXPERIENCE_LETTER);
+    }
+
+    @Test
+    void listDocumentsReturnsAllForTheResignation() {
+        Resignation r = resignation(ResignationStatus.EXITED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(documents.findAllByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(List.of(new ExitDocument()));
+
+        assertThat(service.listDocuments(tenantId, r.getId())).hasSize(1);
+    }
+
+    // Alumni -----------------------------------------------------------------
+
+    @Test
+    void createAlumniRejectsAnEmployeeCompanyMismatch() {
+        Employee other = employee();
+        other.setCompanyId(UUID.randomUUID());
+        when(employees.findByIdAndTenantId(employeeId, tenantId)).thenReturn(Optional.of(other));
+
+        assertThatThrownBy(
+                        () ->
+                                service.createAlumni(
+                                        new CreateAlumniRequest(
+                                                tenantId,
+                                                companyId,
+                                                employeeId,
+                                                null,
+                                                LocalDate.now(),
+                                                null,
+                                                null,
+                                                null,
+                                                false,
+                                                RehireEligibility.YES,
+                                                null)))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void createAlumniRejectsADuplicateRecord() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(alumni.findByTenantIdAndEmployeeId(tenantId, employeeId))
+                .thenReturn(Optional.of(new AlumniRecord()));
+
+        assertThatThrownBy(
+                        () ->
+                                service.createAlumni(
+                                        new CreateAlumniRequest(
+                                                tenantId,
+                                                companyId,
+                                                employeeId,
+                                                null,
+                                                LocalDate.now(),
+                                                null,
+                                                null,
+                                                null,
+                                                false,
+                                                RehireEligibility.YES,
+                                                null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void createAlumniPersistsANewRecord() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(alumni.findByTenantIdAndEmployeeId(tenantId, employeeId)).thenReturn(Optional.empty());
+        when(alumni.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var resp =
+                service.createAlumni(
+                        new CreateAlumniRequest(
+                                tenantId,
+                                companyId,
+                                employeeId,
+                                null,
+                                LocalDate.now(),
+                                "a@b.com",
+                                null,
+                                null,
+                                true,
+                                RehireEligibility.YES,
+                                null));
+
+        assertThat(resp.alumniEmail()).isEqualTo("a@b.com");
+    }
+
+    @Test
+    void updateAlumniOnlyChangesSuppliedFields() {
+        AlumniRecord a = new AlumniRecord();
+        a.setId(UUID.randomUUID());
+        a.setCompanyId(companyId);
+        a.setAlumniEmail("old@b.com");
+        when(alumni.findByIdAndTenantId(a.getId(), tenantId)).thenReturn(Optional.of(a));
+
+        var resp =
+                service.updateAlumni(
+                        tenantId,
+                        a.getId(),
+                        new UpdateAlumniRequest("new@b.com", null, null, null, null, null));
+
+        assertThat(resp.alumniEmail()).isEqualTo("new@b.com");
+    }
+
+    @Test
+    void getAlumniRejectsAnUnknownId() {
+        UUID id = UUID.randomUUID();
+        when(alumni.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getAlumni(tenantId, id)).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void listAlumniChecksCompanyAccess() {
+        when(alumni.findAllByTenantIdAndCompanyId(tenantId, companyId))
+                .thenReturn(List.of(new AlumniRecord()));
+
+        assertThat(service.listAlumni(tenantId, companyId)).hasSize(1);
+        verify(guard).requireAccessForCompany(companyId);
+    }
+
+    // Dashboard --------------------------------------------------------------
+
+    @Test
+    void dashboardAggregatesAllCounters() {
+        when(alumni.findAllByTenantIdAndCompanyId(tenantId, companyId)).thenReturn(List.of());
+
+        ExitDashboardResponse resp = service.dashboard(tenantId, companyId);
+
+        assertThat(resp).isNotNull();
+        verify(guard).requireAccessForCompany(companyId);
+    }
+}
