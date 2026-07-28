@@ -1,5 +1,62 @@
 # EWOS backend — release notes
 
+## 2026-07-28 — Sprint 15: Enterprise Quality & Reliability Sprint
+
+Quality-only sprint: no new features. Strengthened automated testing across
+payroll, statutory compliance, employee lifecycle, and organization
+modules; reviewed and confirmed security test coverage; added a permanent
+regression suite for two of the P9 audit's findings; found and fixed one
+new bug while writing tests. See `PROJECT_STATUS.md` §13 for the full
+writeup and the new `TESTING.md` for how the suite is organized.
+
+### Added
+- 16 new test files / 149 new test methods (986 total backend tests, up
+  from 837), covering: `EmployeeCompensationService`, `PayComponentService`,
+  `PayrollArrearService`, `FinalSettlementService`, supplementary-run and
+  finalize/freeze transitions on `PayrollRunService`,
+  `PayrollJournalGenerator`, `PayrollValidator`/`PayrollValidationService`,
+  `EmployeeCostAllocationService`, `StatutoryDeductionService`,
+  `StatutoryChallanService`, `StatutorySettingService`, `ProbationService`,
+  `LeaveBalanceService`, `GlConfigService`.
+- `SoftDeleteRegressionTest` — exercises Role/Permission soft-delete against
+  real Postgres (User already had equivalent coverage).
+- `ConstructorAmbiguityRegressionTest` — permanent reflection-based CI check
+  scanning all `@Component`/`@Service`/`@Controller` classes for the
+  ambiguous-constructor bug class found in the P9 audit.
+- `TESTING.md` — new guide to test organization, conventions, and how to
+  run the suite with/without Docker.
+
+### Fixed
+- `StatutoryDeductionService.extractForRun`'s in-memory idempotency check
+  only saw deductions already persisted from *prior* calls, not ones
+  inserted earlier in the *same* call — two differently-coded components
+  resolving to the same statutory code on one payslip (e.g. `PF` and
+  `PROVIDENT_FUND`) would double-insert and rely on the database's unique
+  constraint to catch it at runtime instead of skipping gracefully. Fixed
+  by updating the in-memory set as each row is inserted.
+
+### Reviewed, no changes needed
+- Security test coverage (JWT, auth rate limiting, account lockout,
+  refresh-token rotation/revocation, `ClientAccessGuard` tenant isolation,
+  CORS) was already comprehensive from earlier sprints.
+- Code quality: no dead code, commented-out code, debug prints, or
+  TODO/FIXME comments found. One duplicate-logic finding (18 services share
+  an identical `currentActor()` helper) documented as a low-risk future
+  cleanup rather than executed this sprint — see `PROJECT_STATUS.md` §13.
+
+### Known gaps carried forward
+- Attendance and Onboarding application-service layers remain untested at
+  the orchestration level (their domain policy layers already had
+  coverage) — recommended as the next sprint's target.
+- Bonus, Leave Encashment, and Loans are not implemented as distinct
+  domain concepts in this codebase; no tests were written for features
+  that don't exist.
+- JaCoCo coverage floor left at `0.35` — real coverage rose with this
+  sprint's additions, but the gate itself wasn't moved pending a precise
+  measurement next sprint (see `PROJECT_STATUS.md` §8.7/§11).
+
+---
+
 ## 2026-07-27 — CTO Production Readiness Audit
 
 A cross-cutting remediation pass across CI, security, and deployment

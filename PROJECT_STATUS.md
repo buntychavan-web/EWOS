@@ -4,11 +4,100 @@ _Last updated: 2026-07-27._
 
 Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), the Sprint
 1.1–1.4/2.x/4 program (multi-tenancy, RBAC hardening, employee identity
-linking, workflow/approval engine), and the 2026-07-27 CTO Production
-Readiness Audit remediation. This is the single source of truth for what is
+linking, workflow/approval engine), the 2026-07-27 CTO Production
+Readiness Audit remediation, and Sprint 15 (Enterprise Quality & Reliability
+Sprint, 2026-07-28). This is the single source of truth for what is
 delivered, what quality gates are enforced, and what technical debt still
 exists. §§ 1–10 below are the original Sprint 1–5 snapshot from 2026-07-09
-and are historical; §11 covers everything since.
+and are historical; §11 covers the 2026-07-27 audit; §13 covers Sprint 15.
+
+---
+
+## 13. Sprint 15 — Enterprise Quality & Reliability Sprint (2026-07-28)
+
+Quality-only sprint: no new features, focused entirely on strengthening
+automated testing, correctness, and reliability of existing functionality
+across payroll, statutory compliance, employee lifecycle, organization
+structure, security, and regression coverage. See `TESTING.md` for the
+test-writing conventions this sprint established and how to run the suite.
+
+**Scope covered** (16 new test files, 149 new test methods, all against
+real business logic — no placeholder/tautological tests):
+
+- **Payroll**: `EmployeeCompensationService`, `PayComponentService`,
+  `PayrollArrearService`, `FinalSettlementService` (full DRAFT→APPROVED→
+  SETTLED/CANCELLED lifecycle and its arrear-queuing side effect),
+  supplementary-run path and finalize/freeze transitions on
+  `PayrollRunService`, `PayrollJournalGenerator` (double-entry GL balancing,
+  missing-mapping failures, cost-centre proportional splitting),
+  `PayrollValidator`/`PayrollValidationService` (pre-flight blockers vs.
+  warnings), `EmployeeCostAllocationService`.
+- **Statutory compliance**: `StatutoryDeductionService` (payslip extraction,
+  idempotency, jurisdiction/period-month derivation — the effective PF/ESI/
+  PT/TDS/Social Security/Medicare/FIT engine per `StatutoryClassifier`),
+  `StatutoryChallanService` (roll-up aggregation, unique-employee counting,
+  DRAFT→FILED→PAID lifecycle), `StatutorySettingService` (the effective-
+  dated rate/slab lookup used for statutory limits).
+- **Employee lifecycle**: `ProbationService` (confirmation lifecycle
+  orchestration — open/duplicate/cross-company guards, default period-end,
+  extend, submit→approve/reject workflow gate, confirm, terminate, cancel),
+  `LeaveBalanceService` (allocation upsert + balance mirroring, adjustment
+  accumulation).
+- **Organization**: `GlConfigService` (cost-centre/business-unit code
+  uniqueness per company, GL mapping creation) — `OrganizationUnit` CRUD
+  (Company/Department/Designation/Location/Grade as configurable unit
+  types) already had solid coverage from earlier sprints.
+- **Security**: reviewed — already comprehensive (JWT filter/service/secret
+  guard, auth rate limiting + account lockout, refresh-token rotation +
+  revocation + expiry, logout idempotency, `ClientAccessGuard` tenant
+  isolation, CORS). No gaps found requiring new tests beyond the regression
+  suite below.
+- **Regression suite**: `SoftDeleteRegressionTest` (Role/Permission
+  soft-delete against real Postgres — User already had this), and
+  `ConstructorAmbiguityRegressionTest` (permanent reflection-based CI check
+  across all 336+ `@Component`/`@Service`/`@Controller` classes for the
+  ambiguous-constructor bug class found in the P9 audit — supersedes the ad
+  hoc one-off scan mentioned in §0).
+- **Code quality**: reviewed for dead code, commented-out code, debug
+  prints, and TODO/FIXME comments — none found. One duplicate-logic finding
+  documented, not executed this sprint (see below).
+- **Bug found and fixed while writing tests**: `StatutoryDeductionService
+  .extractForRun`'s in-memory duplicate-code check only saw deductions
+  already persisted from *prior* calls, not ones inserted earlier in the
+  *same* call — two differently-coded components resolving to the same
+  statutory code on one payslip (e.g. `PF` and `PROVIDENT_FUND`) would
+  double-insert and rely on the database's unique constraint to catch it at
+  runtime instead of skipping gracefully. Fixed by updating the in-memory
+  set as each row is inserted.
+
+**Not done this sprint, and why:**
+- Bonus, Leave Encashment, and Loans are not implemented as distinct
+  domain concepts in this codebase (no `BonusService`/`LoanService` etc.
+  exist) — Full & Final Settlement handles encashment/gratuity/notice-pay
+  as generic amount fields. No tests were written for features that don't
+  exist.
+- Attendance (`TimesheetService`/`TimeEntryService`/`AttendancePolicyService`)
+  and Onboarding (`OnboardingPlanService`/`CandidateConversionService`/etc.)
+  application-layer services remain untested at the service-orchestration
+  level, though their domain policy layers (`TimesheetCalculator`,
+  `OnboardingPolicy`) already had coverage. Time-boxed out of this sprint;
+  recommended as Sprint 16's next target — see the coverage roadmap in §11.
+- A code-quality finding: 18 services each define an identical private
+  `currentActor()` helper (parse `SecurityContextHolder`'s authentication
+  name as a UUID). Several modules (`probation`, `exit`, `onboarding`)
+  already extract this into a package-local `XxxSecurity` helper class —
+  that's the codebase's established de-duplication convention, applied
+  inconsistently. Consolidating all 18 into a single shared utility would
+  touch many files for marginal benefit and wasn't attempted this sprint
+  given its testing focus; flagged here for a future low-risk cleanup pass,
+  done with full regression coverage rather than a rushed mechanical edit.
+
+**Result**: 986 backend tests (837 baseline + 149 new), 0 failures, all
+quality gates green, JaCoCo coverage floor (`0.35`) still comfortably
+cleared — real coverage rose meaningfully with this sprint's additions, but
+the floor itself was deliberately left unmoved pending a precise
+next-sprint measurement (§8.7's rule: never move the gate ahead of the
+tests that justify it).
 
 ---
 
@@ -431,3 +520,4 @@ docker compose up --build
 - **2026-07-09** — Added § 8 "Common pitfalls" with the Testcontainers singleton-container writeup, soft-delete/UNIQUE, Flyway checksum, null auditor, log-hygiene, Checkstyle-vs-SLF4J-log, and gate-loosening. Marked tech-debt item #1 as resolved by PR #4. Renumbered § 8 → § 9 and § 9 → § 10.
 - **2026-07-27** — CTO Production Readiness Audit: added §0 summarizing the audit's changes, marked tech-debt items #2–#4 in §7 as resolved (CORS bean, actuator exposure, JWT secret guard — plus the new `AdminPasswordGuard`), added §11 "Remaining known risks" reflecting this pass's findings, and noted that this document's §§1–10 predate the Sprint 1.1–4/2.x program and were not rewritten wholesale in this pass — treat sprint-by-sprint detail past Sprint 5 as living in each sprint's own completion report rather than here.
 - **2026-07-27 (P9 validation)** — Fixing the CI trigger only got CI *running*; getting it to actually complete uncovered six previously-invisible bugs (three PMD false positives, a non-proxyable `final @Configuration` class, two ambiguous-Spring-constructor bugs, one dead derived-query method, and a Hibernate `@SQLDelete`/`@Version` bug that meant `User`/`Role`/`Permission` soft-delete had never worked) — see §0's new subsection for detail. Clearing all six let `mvn verify` reach `jacoco-check` for the first time ever, which is how the real ~33%-vs-80%-claimed coverage gap in §4 was found. Rather than discount the gate, added `ExitServiceTest`/`SuccessionServiceTest` (the two largest of 206 zero-coverage service classes) to genuinely clear a new `0.35` floor, and documented a staged `35% → 50% → 65% → 80%` roadmap tied to Beta/RC/GA in §11.
+- **2026-07-28 (Sprint 15 — Enterprise Quality & Reliability)** — Quality-only sprint, no new features: 16 new test files / 149 new test methods across payroll, statutory compliance, employee lifecycle, organization, and a permanent regression suite for two of the P9 findings. Found and fixed one new bug while writing tests (`StatutoryDeductionService`'s in-run duplicate-code check). Backend now at 986 tests, 0 failures, CI still green. Added §13 with full detail and a new `TESTING.md` guide.
