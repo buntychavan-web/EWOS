@@ -175,6 +175,73 @@ class StatutoryDeductionServiceTest {
     }
 
     @Test
+    void extractForRunClassifiesEsiAsIndianEsi() {
+        // Sprint 16 certification flagged ESI as covered only via the shared PF/PT code path, with
+        // no test asserting it by name. This closes that gap the same way PF is certified above.
+        when(runs.findByIdAndTenantId(runId, tenantId)).thenReturn(Optional.of(runIn(companyId)));
+        Payslip slip = payslip();
+        slip.addLine(line(PayComponentKind.DEDUCTION, "ESI", "750"));
+        when(payslips.findAllForRun(tenantId, runId)).thenReturn(List.of(slip));
+        when(repository.findAllForPayslip(tenantId, slip.getId())).thenReturn(List.of());
+
+        service.extractForRun(tenantId, runId);
+
+        org.mockito.ArgumentCaptor<StatutoryDeduction> captor =
+                org.mockito.ArgumentCaptor.forClass(StatutoryDeduction.class);
+        verify(repository).save(captor.capture());
+        StatutoryDeduction saved = captor.getValue();
+        assertThat(saved.getJurisdiction()).isEqualTo("IN");
+        assertThat(saved.getCode()).isEqualTo("ESI");
+        assertThat(saved.getEmployeeContribution()).isEqualByComparingTo("750");
+        assertThat(saved.getTotalAmount()).isEqualByComparingTo("750");
+    }
+
+    @Test
+    void extractForRunClassifiesTdsAsIndianTds() {
+        // Same Sprint 16 gap as ESI above, for TDS.
+        when(runs.findByIdAndTenantId(runId, tenantId)).thenReturn(Optional.of(runIn(companyId)));
+        Payslip slip = payslip();
+        slip.addLine(line(PayComponentKind.DEDUCTION, "TDS", "3200"));
+        when(payslips.findAllForRun(tenantId, runId)).thenReturn(List.of(slip));
+        when(repository.findAllForPayslip(tenantId, slip.getId())).thenReturn(List.of());
+
+        service.extractForRun(tenantId, runId);
+
+        org.mockito.ArgumentCaptor<StatutoryDeduction> captor =
+                org.mockito.ArgumentCaptor.forClass(StatutoryDeduction.class);
+        verify(repository).save(captor.capture());
+        StatutoryDeduction saved = captor.getValue();
+        assertThat(saved.getJurisdiction()).isEqualTo("IN");
+        assertThat(saved.getCode()).isEqualTo("TDS");
+        assertThat(saved.getEmployeeContribution()).isEqualByComparingTo("3200");
+        assertThat(saved.getTotalAmount()).isEqualByComparingTo("3200");
+    }
+
+    @Test
+    void extractForRunClassifiesProfessionalTaxAsIndianPt() {
+        // PT was exercised (mixed in with PF) by
+        // extractForRunMaterialisesOneRowPerRecognisedStatutoryDeduction
+        // above but never asserted by name on its own — added for symmetry with the PF/ESI/TDS
+        // certification tests.
+        when(runs.findByIdAndTenantId(runId, tenantId)).thenReturn(Optional.of(runIn(companyId)));
+        Payslip slip = payslip();
+        slip.addLine(line(PayComponentKind.DEDUCTION, "PROFESSIONAL_TAX", "200"));
+        when(payslips.findAllForRun(tenantId, runId)).thenReturn(List.of(slip));
+        when(repository.findAllForPayslip(tenantId, slip.getId())).thenReturn(List.of());
+
+        service.extractForRun(tenantId, runId);
+
+        org.mockito.ArgumentCaptor<StatutoryDeduction> captor =
+                org.mockito.ArgumentCaptor.forClass(StatutoryDeduction.class);
+        verify(repository).save(captor.capture());
+        StatutoryDeduction saved = captor.getValue();
+        assertThat(saved.getJurisdiction()).isEqualTo("IN");
+        assertThat(saved.getCode()).isEqualTo("PT");
+        assertThat(saved.getEmployeeContribution()).isEqualByComparingTo("200");
+        assertThat(saved.getTotalAmount()).isEqualByComparingTo("200");
+    }
+
+    @Test
     void extractForRunIsIdempotentAndSkipsCodesAlreadyExtractedForThatPayslip() {
         when(runs.findByIdAndTenantId(runId, tenantId)).thenReturn(Optional.of(runIn(companyId)));
         Payslip slip = payslip();

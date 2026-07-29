@@ -276,6 +276,20 @@ class FinalSettlementServiceTest {
         verify(arrears).save(argThatKindIs(PayComponentKind.DEDUCTION, "FFS_NOTICE_RECOVERY"));
     }
 
+    @Test
+    void approveQueuesGratuityAsAnEarningArrearWithTheGratuityReasonCode() {
+        // Gratuity has no statutory formula in this codebase (it's an operator-entered amount on
+        // the settlement, not a 15/26-of-basic calculation) — what's certifiable here is that once
+        // entered, it flows through approval as an EARNING-kind "FFS_GRATUITY" arrear, the same way
+        // notice-pay recovery's DEDUCTION/FFS_NOTICE_RECOVERY pairing is certified above.
+        FinalSettlement s = draftSettlement();
+        when(repository.findByIdAndTenantId(s.getId(), tenantId)).thenReturn(Optional.of(s));
+
+        service.approve(tenantId, s.getId());
+
+        verify(arrears).save(argThatKindIs(PayComponentKind.EARNING, "FFS_GRATUITY"));
+    }
+
     private static PayrollArrear argThatKindIs(PayComponentKind kind, String reasonCode) {
         return org.mockito.ArgumentMatchers.argThat(
                 a -> a.getKind() == kind && reasonCode.equals(a.getReasonCode()));

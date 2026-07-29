@@ -23,25 +23,41 @@ report for the green run backing this).
 | 11 | Bank File | `BankAdviceServiceTest` (Sprint 16: SKIPPED rules for zero-net/no-account, PENDING instruction generation, settlement roll-up), `BankAdviceCsvExporterTest` | One payment instruction per payslip; instructions materialize as CSV with the documented column set | PASS |
 | 12 | GL Posting | `PayrollJournalServiceTest` (Sprint 16: balance enforcement, lifecycle guards, reconciliation), `PayrollJournalGeneratorTest`, `PayrollJournalCsvExporterTest` | Journal must balance (total debit = total credit) before approval; reconciliation flags the debit/credit delta and the expense-vs-run-gross delta | PASS |
 | 13 | PF | `StatutoryClassifierTest.classifiesIndiaPf`, `StatutoryDeductionServiceTest.extractForRunTreatsPfAndProvidentFundCodesAsTheSameStatutoryObligation`, `extractForRunDerivesJurisdictionAndPeriodMonthFromTheClassifierAndPayslip` | `PF`/`PROVIDENT_FUND` codes both classify to jurisdiction `IN`, code `PF`; extraction derives period month and total from the payslip line | PASS |
-| 14 | ESI | Classified via the same `StatutoryClassifier` defaults table and `StatutoryDeductionService.extractForRun` code path certified above for PF/PT (component code `ESI` → jurisdiction `IN`) | Same generic extraction logic; not separately exercised by a test method named for ESI | PASS (via shared code path) — **gap noted below** |
-| 15 | PT | `StatutoryDeductionServiceTest.extractForRunMaterialisesOneRowPerRecognisedStatutoryDeduction` (uses `PROFESSIONAL_TAX` as one of its two recognised codes) | `PROFESSIONAL_TAX` classifies to jurisdiction `IN`, code `PT`, and is extracted alongside PF in the same run | PASS |
-| 16 | TDS | Classified via the same `StatutoryClassifier` defaults table (component code `TDS` → jurisdiction `IN`); extraction path identical to the certified PF/PT cases | Same generic extraction logic; not separately exercised by a test method named for TDS | PASS (via shared code path) — **gap noted below** |
-| 17 | Gratuity | `FinalSettlementLifecycleTest.amountsDefaultToZero`, `FinalSettlementServiceTest.createStartsInDraftStatusWithZeroedOptionalAmounts` — gratuity is a first-class amount field on `FinalSettlement` | Gratuity amount defaults to zero and is explicitly settable per settlement, included in the settlement total | PASS |
+| 14 | ESI | `StatutoryDeductionServiceTest.extractForRunClassifiesEsiAsIndianEsi` (Sprint 18 — closes the gap noted below) | `ESI` classifies to jurisdiction `IN`, code `ESI`; extraction carries the employee contribution and total amount through unchanged | PASS |
+| 15 | PT | `StatutoryDeductionServiceTest.extractForRunClassifiesProfessionalTaxAsIndianPt` (Sprint 18 — named test added for symmetry with PF/ESI/TDS; previously only exercised mixed in with PF) | `PROFESSIONAL_TAX` classifies to jurisdiction `IN`, code `PT`, and is extracted alongside PF in the same run | PASS |
+| 16 | TDS | `StatutoryDeductionServiceTest.extractForRunClassifiesTdsAsIndianTds` (Sprint 18 — closes the gap noted below) | `TDS` classifies to jurisdiction `IN`, code `TDS`; extraction carries the employee contribution and total amount through unchanged | PASS |
+| 17 | Gratuity | `FinalSettlementLifecycleTest.amountsDefaultToZero`, `FinalSettlementServiceTest.createStartsInDraftStatusWithZeroedOptionalAmounts`, `approveQueuesGratuityAsAnEarningArrearWithTheGratuityReasonCode` (Sprint 18) | Gratuity amount defaults to zero and is explicitly settable per settlement; on approval it queues as an `EARNING`-kind `FFS_GRATUITY` arrear with the exact entered amount, included in the settlement total. **No statutory gratuity formula (e.g. 15/26 × last-drawn basic × years of service) exists in this codebase** — the amount is operator-entered, consistent with the "no new business functionality" constraint on this sprint; certifying an unwritten formula would be fabricating a requirement, not validating one | PASS |
 
 ## Fresh run confirming all of the above
 
 ```
 mvn -o test -Dtest="com.ewos.payroll.**,com.ewos.exit.**,com.ewos.onboarding.**"
-Tests run: 373, Failures: 0, Errors: 0
+Tests run: 377, Failures: 0, Errors: 0     (Sprint 18 — was 373; +4 named certification tests below)
 ```
+
+## Sprint 18 update — named certification tests added for PF/ESI/PT/TDS/Gratuity
+
+Per Sprint 18's explicit remediation scope, the ESI/TDS gap flagged below was closed and PT/Gratuity
+were given the same dedicated-by-name treatment PF already had, rather than leaving them certified
+only "via shared code path":
+
+- `StatutoryDeductionServiceTest.extractForRunClassifiesEsiAsIndianEsi` — closes the ESI gap.
+- `StatutoryDeductionServiceTest.extractForRunClassifiesTdsAsIndianTds` — closes the TDS gap.
+- `StatutoryDeductionServiceTest.extractForRunClassifiesProfessionalTaxAsIndianPt` — PT was
+  previously only exercised mixed in with PF in one test; now has its own.
+- `FinalSettlementServiceTest.approveQueuesGratuityAsAnEarningArrearWithTheGratuityReasonCode` —
+  asserts gratuity queues as `EARNING`/`FFS_GRATUITY` on approval, mirroring the existing
+  `DEDUCTION`/`FFS_NOTICE_RECOVERY` assertion for notice-pay recovery.
+
+All four were run fresh as part of this sprint (see above) and pass. No statutory gratuity
+*formula* (15/26 × last-drawn basic × years of service, or similar) exists anywhere in this
+codebase — gratuity is an operator-entered amount on `FinalSettlement`, not a computed one. Adding
+that formula would be new business functionality, out of scope for this sprint; what's certified
+above is that the entered amount flows through settlement math correctly, which is the actual
+behavior that exists to certify.
 
 ## Gaps identified (not fixed in this sprint — see Recommendation)
 
-- **ESI and TDS** share the exact same classification and extraction code path as PF and PT
-  (`StatutoryClassifier` → `StatutoryDeductionService.extractForRun`), which is fully certified
-  above. However, no test method asserts these two codes *by name* the way PF and PT are. The
-  residual risk is low (same code, same branch), but a named `extractForRunClassifiesEsi...` /
-  `...Tds...` test would close the gap completely. Recommended for the next sprint's test backlog.
 - **Loans and Reimbursements** are intentionally generic pay components (`DEDUCTION`/`EARNING`
   kind), not first-class domain modules — this is consistent with the "no new business modules"
   constraint for this sprint. Certification above rests on the generic `PayrollCalculatorTest`
