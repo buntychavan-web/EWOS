@@ -29,7 +29,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * End-to-end coverage for {@code POST /api/v1/payroll/runs} against a real database — the one gap
@@ -60,7 +59,6 @@ class PayrollRunControllerIntegrationTest extends AbstractIntegrationTest {
     @Autowired PayrollPeriodRepository periods;
 
     @Test
-    @Transactional
     void startProcessesAnEmployeeWithNoExplicitBasicPayComponent() throws Exception {
         // No PayComponent lines at all on this compensation — PayrollCalculator falls back to its
         // implicit BASIC line, the exact path that used to violate the NOT NULL constraint.
