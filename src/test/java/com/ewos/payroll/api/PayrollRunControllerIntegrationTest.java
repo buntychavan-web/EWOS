@@ -94,6 +94,9 @@ class PayrollRunControllerIntegrationTest extends AbstractIntegrationTest {
         period.setPeriodEnd(LocalDate.of(2026, 1, 31));
         period.setPayDate(LocalDate.of(2026, 2, 1));
         period.setStatus(PayrollPeriodStatus.LOCKED);
+        // ck_payroll_periods_locked_pair requires both set together whenever status != OPEN.
+        period.setLockedAt(java.time.Instant.now());
+        period.setLockedBy(DEFAULT_TENANT_ID);
         period = periods.save(period);
 
         String token = adminAccessToken();
