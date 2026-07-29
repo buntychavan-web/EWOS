@@ -2,6 +2,7 @@ package com.ewos.identity.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -39,6 +40,30 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.expiresIn").isNumber());
+    }
+
+    @Test
+    void loginResponseCarriesSecurityHeaders() throws Exception {
+        // Sprint 18 — CSP and Referrer-Policy are the two headers Spring Security does not set by
+        // default (X-Content-Type-Options/X-Frame-Options/HSTS/Cache-Control already are, and are
+        // deliberately not re-asserted here since SecurityConfig never touches those defaults).
+        LoginRequest body =
+                new LoginRequest(bootstrapProperties.username(), bootstrapProperties.password());
+
+        mockMvc.perform(
+                        post("/api/v1/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsBytes(body)))
+                .andExpect(status().isOk())
+                .andExpect(
+                        header().string(
+                                        "Content-Security-Policy",
+                                        "default-src 'self'; "
+                                                + "script-src 'self' 'unsafe-inline'; "
+                                                + "style-src 'self' 'unsafe-inline'; "
+                                                + "img-src 'self' data:; "
+                                                + "frame-ancestors 'none'"))
+                .andExpect(header().string("Referrer-Policy", "no-referrer"));
     }
 
     @Test

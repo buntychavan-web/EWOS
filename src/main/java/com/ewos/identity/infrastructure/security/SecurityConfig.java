@@ -18,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
@@ -52,6 +53,30 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint))
+                // Spring Security's defaults already cover X-Content-Type-Options, X-Frame-Options,
+                // Strict-Transport-Security (HTTPS requests), and Cache-Control — none of that is
+                // touched here. CSP and Referrer-Policy are the two headers Spring Security does
+                // not
+                // set out of the box, and this backend does serve one same-origin HTML surface
+                // (Swagger UI at /swagger-ui/**) where they matter; 'unsafe-inline' on script/style
+                // is required by springdoc's bundled Swagger UI bootstrap, not a broad exception —
+                // there is no other HTML rendered by this API.
+                .headers(
+                        headers ->
+                                headers.contentSecurityPolicy(
+                                                csp ->
+                                                        csp.policyDirectives(
+                                                                "default-src 'self'; "
+                                                                        + "script-src 'self' 'unsafe-inline'; "
+                                                                        + "style-src 'self' 'unsafe-inline'; "
+                                                                        + "img-src 'self' data:; "
+                                                                        + "frame-ancestors 'none'"))
+                                        .referrerPolicy(
+                                                referrer ->
+                                                        referrer.policy(
+                                                                ReferrerPolicyHeaderWriter
+                                                                        .ReferrerPolicy
+                                                                        .NO_REFERRER)))
                 .authorizeHttpRequests(
                         auth ->
                                 auth.requestMatchers(PUBLIC_ENDPOINTS)
