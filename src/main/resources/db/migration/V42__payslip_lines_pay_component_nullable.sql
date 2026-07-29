@@ -1,0 +1,16 @@
+-- PayrollCalculator.compute() deliberately emits an "implicit basic-salary
+-- earning" line (component_code_snapshot = 'BASIC') for any company that
+-- has not registered an explicit BASIC PayComponent in its catalogue — see
+-- the class Javadoc and implicitBasicLine(). That line has no backing
+-- PayComponent row by design, and PayrollMapper already null-guards
+-- getPayComponent() on the way out to the API for exactly this case.
+--
+-- The persistence layer never matched that intent: pay_component_id was
+-- NOT NULL, so every payroll run for a company without an explicit BASIC
+-- component failed with a constraint violation and rolled back the whole
+-- run. No integration test exercised PayrollRunService.start() against a
+-- real database, which is how this went uncaught (found via a Sprint 18
+-- performance benchmark that seeded a company without a BASIC component,
+-- the same way many production tenants configuring only HRA/PF-style
+-- add-on components would).
+ALTER TABLE payslip_lines ALTER COLUMN pay_component_id DROP NOT NULL;

@@ -29,8 +29,11 @@ public class PayslipLine extends AuditableEntity {
     @JoinColumn(name = "payslip_id", nullable = false, updatable = false)
     private Payslip payslip;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "pay_component_id", nullable = false, updatable = false)
+    // Nullable: PayrollCalculator.implicitBasicLine() deliberately emits a BASIC line with no
+    // backing catalogue entry for companies that haven't registered an explicit BASIC PayComponent
+    // (see that class's Javadoc). PayrollMapper already null-guards this on the way out to the API.
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "pay_component_id", nullable = true, updatable = false)
     private PayComponent payComponent;
 
     @Column(name = "component_code_snapshot", nullable = false, length = 64)
