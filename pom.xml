@@ -39,8 +39,17 @@
          coverage roadmap in PROJECT_STATUS.md §4/§11: 35% now, 50% before Beta, 65% before
          RC, 80% before GA. Per §8.7, raise this only as fast as real tests land; never move
          the number ahead of the tests that justify it.
+
+         Sprint 18 update: Sprint 16 measured overall line coverage at 50.91% (up from 46.96%)
+         with 0 Java source files changed since (only docs/reports, verified via a git diff
+         against that measurement commit before raising this), and itself recommended "raising
+         the gate to 0.45 is achievable without further work ... do not raise it to
+         overall-average (50.91%) or higher yet, that would leave no margin"
+         (SPRINT_16_AUDIT_READINESS_REPORT.md §5). That recommendation was never actually
+         applied to this file until now. Raised to 0.45, still comfortably below the measured
+         50.91%, backed by tests that already exist, not a discount.
     -->
-    <jacoco.line.coverage.min>0.35</jacoco.line.coverage.min>
+    <jacoco.line.coverage.min>0.45</jacoco.line.coverage.min>
   </properties>
 
   <dependencyManagement>
