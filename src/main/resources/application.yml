@@ -3,6 +3,10 @@ spring:
     name: ewos
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  lifecycle:
+    # Bounds how long "graceful" shutdown (below) waits for in-flight requests — including a
+    # payroll run — to finish before the JVM proceeds with shutdown anyway.
+    timeout-per-shutdown-phase: 30s
   jpa:
     open-in-view: false
     hibernate:
@@ -34,6 +38,12 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  # Sprint 20 — without this, Tomcat's default (IMMEDIATE) shutdown drops in-flight requests
+  # the instant SIGTERM arrives. GRACEFUL stops accepting new requests but lets in-flight ones
+  # (including a payroll run) finish, up to spring.lifecycle.timeout-per-shutdown-phase above.
+  # The Kubernetes side of this (terminationGracePeriodSeconds, preStop) lives in k8s/deployment.yaml
+  # and helm/ewos/templates/deployment.yaml.
+  shutdown: graceful
   compression:
     enabled: true
   error:

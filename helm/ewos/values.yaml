@@ -17,6 +17,10 @@ resources:
     cpu: "1"
     memory: 1Gi
 
+# Must exceed spring.lifecycle.timeout-per-shutdown-phase (30s, application.yml) plus the
+# deployment template's preStop sleep, so Kubernetes never SIGKILLs a still-draining pod.
+terminationGracePeriodSeconds: 45
+
 autoscaling:
   enabled: true
   minReplicas: 2
