@@ -376,6 +376,6 @@ class TimesheetServiceTest {
 
         service.forEmployee(tenantId, employeeId);
 
-        verify(guard).requireAccessForCompanies(List.of(companyId));
+        verify(guard).requireAccessForCompanies(List.of(companyId), employeeId);
     }
 }

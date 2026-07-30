@@ -8,8 +8,10 @@ import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.domain.Client;
 import com.ewos.tenancy.domain.ClientAssignment;
 import com.ewos.tenancy.domain.Company;
+import com.ewos.tenancy.domain.UserTenantMembership;
 import com.ewos.tenancy.infrastructure.persistence.ClientAssignmentRepository;
 import com.ewos.tenancy.infrastructure.persistence.CompanyRepository;
+import com.ewos.tenancy.infrastructure.persistence.UserTenantMembershipRepository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -19,15 +21,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @ExtendWith(MockitoExtension.class)
 class ClientAccessGuardTest {
 
     @Mock ClientAssignmentRepository repository;
     @Mock CompanyRepository companyRepository;
+    @Mock UserTenantMembershipRepository membershipRepository;
 
     private ClientAccessGuard guard;
 
@@ -39,14 +45,21 @@ class ClientAccessGuardTest {
                         new UsernamePasswordAuthenticationToken(userId.toString(), "n/a", granted));
     }
 
+    private void bindCurrentEmployeeId(UUID employeeId) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setAttribute("com.ewos.employee.currentEmployeeId", employeeId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+    }
+
     @AfterEach
     void clear() {
         SecurityContextHolder.clearContext();
+        RequestContextHolder.resetRequestAttributes();
     }
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
-        guard = new ClientAccessGuard(repository, companyRepository);
+        guard = new ClientAccessGuard(repository, companyRepository, membershipRepository);
     }
 
     @Test
@@ -156,6 +169,57 @@ class ClientAccessGuardTest {
     }
 
     @Test
+    void requireAccessForCompanyBypassedForMemberOfCompanysOwnTenant() {
+        // Sprint 21 UAT — an ordinary employee/manager/HR-admin of the company's own tenant is not
+        // a "provider" operator; ClientAssignment was never meant to gate them at all.
+        UUID userId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        authenticateAs(userId, "LEAVE_APPROVE");
+
+        Company company = new Company();
+        company.setId(companyId);
+        company.setTenantId(tenantId);
+        company.setClient(new Client());
+        when(companyRepository.findById(companyId)).thenReturn(Optional.of(company));
+
+        UserTenantMembership membership = new UserTenantMembership();
+        membership.setTenantId(tenantId);
+        when(membershipRepository.findByUserId(userId)).thenReturn(Optional.of(membership));
+
+        guard.requireAccessForCompany(companyId); // no throw, no ClientAssignment lookup needed
+
+        org.mockito.Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test
+    void requireAccessForCompanyNotBypassedForAnotherTenantsMember() {
+        UUID userId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        authenticateAs(userId, "LEAVE_APPROVE");
+
+        Client client = new Client();
+        client.setId(UUID.randomUUID());
+        Company company = new Company();
+        company.setId(companyId);
+        company.setTenantId(UUID.randomUUID());
+        company.setClient(client);
+        when(companyRepository.findById(companyId)).thenReturn(Optional.of(company));
+
+        UserTenantMembership membership = new UserTenantMembership();
+        membership.setTenantId(UUID.randomUUID());
+        when(membershipRepository.findByUserId(userId)).thenReturn(Optional.of(membership));
+        when(repository.findActiveForUser(
+                        org.mockito.ArgumentMatchers.eq(userId),
+                        org.mockito.ArgumentMatchers.any(LocalDate.class)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> guard.requireAccessForCompany(companyId))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Not authorized");
+    }
+
+    @Test
     void requireAccessForCompanyRejectsWhenCompanyUnknown() {
         UUID userId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
@@ -216,5 +280,52 @@ class ClientAccessGuardTest {
     void requireAccessForCompaniesNoOpForEmptyCollection() {
         authenticateAs(UUID.randomUUID(), "PAYROLL_READ");
         guard.requireAccessForCompanies(List.of()); // no throw, no repository calls
+    }
+
+    @Test
+    void requireAccessForCompanyBypassedWhenSubjectIsCallersOwnEmployee() {
+        UUID employeeId = UUID.randomUUID();
+        authenticateAs(UUID.randomUUID(), "LEAVE_READ");
+        bindCurrentEmployeeId(employeeId);
+
+        // no throw, no repository calls: the caller is viewing/acting on their own record
+        guard.requireAccessForCompany(UUID.randomUUID(), employeeId);
+    }
+
+    @Test
+    void requireAccessForCompanyNotBypassedForAnotherEmployeesRecord() {
+        UUID companyId = UUID.randomUUID();
+        authenticateAs(UUID.randomUUID(), "LEAVE_READ");
+        bindCurrentEmployeeId(UUID.randomUUID());
+        when(companyRepository.findById(companyId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> guard.requireAccessForCompany(companyId, UUID.randomUUID()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Not authorized");
+    }
+
+    @Test
+    void requireAccessForCompaniesBypassedWhenSubjectIsCallersOwnEmployee() {
+        UUID employeeId = UUID.randomUUID();
+        authenticateAs(UUID.randomUUID(), "ATT_READ");
+        bindCurrentEmployeeId(employeeId);
+
+        // no throw, no repository calls
+        guard.requireAccessForCompanies(List.of(UUID.randomUUID(), UUID.randomUUID()), employeeId);
+    }
+
+    @Test
+    void requireAccessForCompaniesNotBypassedForAnotherEmployeesRecords() {
+        UUID companyId = UUID.randomUUID();
+        authenticateAs(UUID.randomUUID(), "ATT_READ");
+        bindCurrentEmployeeId(UUID.randomUUID());
+        when(companyRepository.findById(companyId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(
+                        () ->
+                                guard.requireAccessForCompanies(
+                                        List.of(companyId), UUID.randomUUID()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Not authorized");
     }
 }

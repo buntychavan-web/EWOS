@@ -106,7 +106,8 @@ public class TimeEntryService {
     @Transactional(readOnly = true)
     public List<TimeEntryResponse> recentForEmployee(UUID tenantId, UUID employeeId) {
         List<TimeEntry> found = entries.findRecentForEmployee(tenantId, employeeId);
-        guard.requireAccessForCompanies(found.stream().map(TimeEntry::getCompanyId).toList());
+        guard.requireAccessForCompanies(
+                found.stream().map(TimeEntry::getCompanyId).toList(), employeeId);
         return found.stream().map(mapper::toResponse).toList();
     }
 

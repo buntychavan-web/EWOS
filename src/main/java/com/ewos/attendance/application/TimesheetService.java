@@ -196,7 +196,8 @@ public class TimesheetService {
     @Transactional(readOnly = true)
     public List<TimesheetResponse> forEmployee(UUID tenantId, UUID employeeId) {
         List<Timesheet> found = timesheets.findAllForEmployee(tenantId, employeeId);
-        guard.requireAccessForCompanies(found.stream().map(Timesheet::getCompanyId).toList());
+        guard.requireAccessForCompanies(
+                found.stream().map(Timesheet::getCompanyId).toList(), employeeId);
         return found.stream().map(mapper::toResponse).toList();
     }
 
