@@ -358,7 +358,7 @@ class PayrollRunServiceTest {
     // --- exception handling during processing ---
 
     @Test
-    void startMarksTheRunFailedAndRethrowsWhenProcessingThrowsMidLoop() {
+    void startMarksTheRunFailedAndRethrowsWhenProcessingThrows() {
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
         UUID periodId = UUID.randomUUID();
@@ -376,7 +376,11 @@ class PayrollRunServiceTest {
                 new com.ewos.payroll.domain.EmployeeCompensation();
         comp.setEmployee(employee);
         when(compensations.activeForCompany(tenantId, companyId)).thenReturn(List.of(comp));
-        when(leaves.findApprovedOverlapping(any(), any(), any(), any()))
+        // Sprint 19 — leave/arrear lookups are bulk-fetched once for the whole run rather than
+        // once per employee; this now fails during that bulk fetch instead of mid-loop, but the
+        // observable contract under test (processing failure -> run FAILED, exception rethrown)
+        // is unchanged.
+        when(leaves.findApprovedOverlappingForEmployees(any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("leave lookup exploded"));
 
         assertThatThrownBy(

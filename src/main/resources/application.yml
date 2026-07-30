@@ -11,6 +11,13 @@ spring:
       hibernate:
         jdbc.time_zone: UTC
         format_sql: false
+        # Sprint 19 — payroll runs insert one Payslip + several PayslipLines per employee inside
+        # a single transaction; without batching each was its own JDBC round trip. No entity here
+        # is @Version'd, so ordered inserts/updates plus a batch size are safe with no
+        # optimistic-lock/batch_versioned_data caveat to work around.
+        jdbc.batch_size: 50
+        order_inserts: true
+        order_updates: true
   flyway:
     enabled: true
     baseline-on-migrate: true

@@ -32,7 +32,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -178,6 +180,39 @@ public class PayrollRunService {
         int processed = 0;
 
         try {
+            // Bulk-fetch once for the whole run instead of once per employee — at 1,000+
+            // employees the per-employee queries this replaced were the dominant cost (see
+            // Sprint 18's performance benchmark). Grouping by employee id in memory is cheap;
+            // lr.getEmployee().getId() / a.getEmployee().getId() never hit the database even
+            // though the association isn't fetch-joined, because Hibernate's lazy proxy already
+            // knows its id from the foreign key column that was part of each bulk row.
+            List<UUID> employeeIds =
+                    active.stream()
+                            .map(EmployeeCompensation::getEmployee)
+                            .filter(java.util.Objects::nonNull)
+                            .map(Employee::getId)
+                            .toList();
+
+            Map<UUID, List<LeaveRequest>> leavesByEmployee =
+                    employeeIds.isEmpty()
+                            ? Map.of()
+                            : leaves
+                                    .findApprovedOverlappingForEmployees(
+                                            run.getTenantId(),
+                                            employeeIds,
+                                            period.getPeriodStart(),
+                                            period.getPeriodEnd())
+                                    .stream()
+                                    .collect(Collectors.groupingBy(lr -> lr.getEmployee().getId()));
+
+            Map<UUID, List<PayrollArrear>> arrearsByEmployee =
+                    employeeIds.isEmpty()
+                            ? Map.of()
+                            : arrears
+                                    .findPendingForEmployees(run.getTenantId(), employeeIds)
+                                    .stream()
+                                    .collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
+
             for (EmployeeCompensation comp : active) {
                 Employee emp = comp.getEmployee();
                 if (emp == null) {
@@ -185,11 +220,7 @@ public class PayrollRunService {
                 }
 
                 List<LeaveRequest> approvedInPeriod =
-                        leaves.findApprovedOverlapping(
-                                run.getTenantId(),
-                                emp.getId(),
-                                period.getPeriodStart(),
-                                period.getPeriodEnd());
+                        leavesByEmployee.getOrDefault(emp.getId(), List.of());
                 List<LeaveRequest> unpaidOnly =
                         approvedInPeriod.stream()
                                 .filter(
@@ -202,7 +233,7 @@ public class PayrollRunService {
                                 unpaidOnly, period.getPeriodStart(), period.getPeriodEnd());
 
                 List<PayrollArrear> pendingArrears =
-                        arrears.findPendingForEmployee(run.getTenantId(), emp.getId());
+                        arrearsByEmployee.getOrDefault(emp.getId(), List.of());
 
                 ComputedPayslip computed =
                         calculator.compute(comp, lopDays, workingDays, pendingArrears);

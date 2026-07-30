@@ -24,15 +24,21 @@ public interface EmployeeCompensationRepository extends JpaRepository<EmployeeCo
     Optional<EmployeeCompensation> findActiveForEmployee(
             @Param("tenantId") UUID tenantId, @Param("employeeId") UUID employeeId);
 
+    /**
+     * {@code join fetch c.employee} — the payroll run loop (see {@code PayrollRunService}) reads
+     * {@code comp.getEmployee()} for every result; without the fetch join that's one extra
+     * lazy-load SELECT per employee (N+1) on top of the run's already-heavy per-employee query
+     * load.
+     */
     @Query(
-            "select c from EmployeeCompensation c where c.tenantId = :tenantId and c.companyId ="
-                    + " :companyId and c.active = true")
+            "select c from EmployeeCompensation c join fetch c.employee where c.tenantId ="
+                    + " :tenantId and c.companyId = :companyId and c.active = true")
     List<EmployeeCompensation> findActiveForCompany(
             @Param("tenantId") UUID tenantId, @Param("companyId") UUID companyId);
 
     @Query(
-            "select c from EmployeeCompensation c where c.tenantId = :tenantId "
-                    + "and c.employee.id in :employeeIds and c.active = true")
+            "select c from EmployeeCompensation c join fetch c.employee where c.tenantId ="
+                    + " :tenantId and c.employee.id in :employeeIds and c.active = true")
     List<EmployeeCompensation> findActiveForEmployeeIds(
             @Param("tenantId") UUID tenantId,
             @Param("employeeIds") java.util.Collection<UUID> employeeIds);

@@ -53,4 +53,19 @@ public interface LeaveRequestRepository
             @Param("employeeId") UUID employeeId,
             @Param("periodStart") LocalDate periodStart,
             @Param("periodEnd") LocalDate periodEnd);
+
+    /**
+     * Bulk form of {@link #findApprovedOverlapping} for a whole payroll run: one query for every
+     * employee being processed instead of one query per employee. Callers group the result by
+     * {@code employee.id} themselves (see {@code PayrollRunService}).
+     */
+    @Query(
+            "select r from LeaveRequest r where r.tenantId = :tenantId "
+                    + "and r.employee.id in :employeeIds and r.status = 'APPROVED' "
+                    + "and r.startDate <= :periodEnd and r.endDate >= :periodStart")
+    List<LeaveRequest> findApprovedOverlappingForEmployees(
+            @Param("tenantId") UUID tenantId,
+            @Param("employeeIds") java.util.Collection<UUID> employeeIds,
+            @Param("periodStart") LocalDate periodStart,
+            @Param("periodEnd") LocalDate periodEnd);
 }

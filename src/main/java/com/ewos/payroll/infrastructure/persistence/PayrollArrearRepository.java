@@ -19,6 +19,21 @@ public interface PayrollArrearRepository extends JpaRepository<PayrollArrear, UU
     List<PayrollArrear> findPendingForEmployee(
             @Param("tenantId") UUID tenantId, @Param("employeeId") UUID employeeId);
 
+    /**
+     * Bulk form of {@link #findPendingForEmployee} for a whole payroll run: one query for every
+     * employee being processed instead of one query per employee. Ordered by {@code createdAt} only
+     * (not per-employee) — callers group the result by {@code employee.id}, and grouping preserves
+     * each group's relative order from this list, which is enough to keep each employee's arrears
+     * in creation order (see {@code PayrollRunService}).
+     */
+    @Query(
+            "select a from PayrollArrear a where a.tenantId = :tenantId "
+                    + "and a.employee.id in :employeeIds and a.applied = false "
+                    + "and a.payrollRun is null order by a.createdAt asc")
+    List<PayrollArrear> findPendingForEmployees(
+            @Param("tenantId") UUID tenantId,
+            @Param("employeeIds") java.util.Collection<UUID> employeeIds);
+
     @Query(
             "select a from PayrollArrear a where a.tenantId = :tenantId "
                     + "and a.payrollRun.id = :runId order by a.createdAt asc")
