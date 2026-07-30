@@ -185,6 +185,9 @@ class PayrollRunControllerIntegrationTest extends AbstractIntegrationTest {
         leave.setEndDate(LocalDate.of(2026, 2, 11));
         leave.setDaysRequested(new BigDecimal("3"));
         leave.setStatus(LeaveRequestStatus.APPROVED);
+        // ck_leave_requests_approved_pair requires both set together whenever status = APPROVED.
+        leave.setApprovedAt(Instant.now());
+        leave.setApprovedBy(DEFAULT_TENANT_ID);
         leaveRequests.save(leave);
 
         PayrollArrear arrear = new PayrollArrear();
