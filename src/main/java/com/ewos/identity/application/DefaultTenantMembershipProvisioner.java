@@ -20,4 +20,12 @@ public interface DefaultTenantMembershipProvisioner {
 
     /** No-op if the user already has an active membership. */
     void ensureDefaultMembership(UUID userId);
+
+    /**
+     * No-op if the user already has an active membership; otherwise assigns membership to the given
+     * tenant specifically, rather than the platform bootstrap tenant. For {@link
+     * com.ewos.identity.application.UserService#create}: a brand-new user created by an admin
+     * scoped to a real tenant must land in that tenant, not always the bootstrap one.
+     */
+    void ensureMembership(UUID userId, UUID tenantId);
 }

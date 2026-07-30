@@ -33,6 +33,7 @@ public class UserService {
     private final PasswordHistoryService passwordHistory;
     private final UserMapper userMapper;
     private final RequestTenantContext requestTenantContext;
+    private final DefaultTenantMembershipProvisioner tenantMembershipProvisioner;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public UserService(
@@ -42,7 +43,8 @@ public class UserService {
             PasswordPolicyValidator passwordPolicy,
             PasswordHistoryService passwordHistory,
             UserMapper userMapper,
-            RequestTenantContext requestTenantContext) {
+            RequestTenantContext requestTenantContext,
+            DefaultTenantMembershipProvisioner tenantMembershipProvisioner) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -50,6 +52,7 @@ public class UserService {
         this.passwordHistory = passwordHistory;
         this.userMapper = userMapper;
         this.requestTenantContext = requestTenantContext;
+        this.tenantMembershipProvisioner = tenantMembershipProvisioner;
     }
 
     public UserResponse create(CreateUserRequest request) {
@@ -72,6 +75,17 @@ public class UserService {
 
         User saved = userRepository.save(user);
         passwordHistory.record(saved, saved.getPasswordHash());
+        // Sprint 21 UAT — without this, a brand-new user (created directly here, or via
+        // EmployeeIdentityLinkService#provisionUser, which delegates to this method) had no
+        // tenant membership at all and could never resolve a tenant for any request afterward.
+        // Assign the creating admin's own tenant; fall back to the platform bootstrap tenant only
+        // if the caller somehow has none (defensive — every authenticated admin call has one).
+        UUID callerTenantId = requestTenantContext.currentTenantId().orElse(null);
+        if (callerTenantId != null) {
+            tenantMembershipProvisioner.ensureMembership(saved.getId(), callerTenantId);
+        } else {
+            tenantMembershipProvisioner.ensureDefaultMembership(saved.getId());
+        }
         return userMapper.toResponse(saved);
     }
 

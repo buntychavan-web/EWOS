@@ -43,6 +43,7 @@ class UserServiceTest {
     @Mock PasswordPolicyValidator passwordPolicy;
     @Mock PasswordHistoryService passwordHistory;
     @Mock RequestTenantContext requestTenantContext;
+    @Mock DefaultTenantMembershipProvisioner tenantMembershipProvisioner;
 
     private UserService service;
 
@@ -56,7 +57,8 @@ class UserServiceTest {
                         passwordPolicy,
                         passwordHistory,
                         new com.ewos.identity.api.UserMapper(),
-                        requestTenantContext);
+                        requestTenantContext,
+                        tenantMembershipProvisioner);
         lenient()
                 .when(userRepository.save(any(User.class)))
                 .thenAnswer(
@@ -99,6 +101,51 @@ class UserServiceTest {
         verify(passwordHistory).record(saved, saved.getPasswordHash());
         assertThat(response.username()).isEqualTo("jane");
         assertThat(response.roles()).hasSize(1);
+    }
+
+    @Test
+    void createAssignsNewUserToCallersTenant() {
+        // Sprint 21 UAT — a brand-new user must land in the creating admin's own tenant so it can
+        // resolve a tenant for its own requests afterward, not always the platform bootstrap
+        // tenant.
+        Role role = role("USER");
+        UUID callerTenant = UUID.randomUUID();
+        when(roleRepository.findAllById(Set.of(role.getId()))).thenReturn(List.of(role));
+        when(requestTenantContext.currentTenantId()).thenReturn(Optional.of(callerTenant));
+
+        UserResponse response =
+                service.create(
+                        new CreateUserRequest(
+                                "jane",
+                                "jane@ewos.local",
+                                "Str0ng!Pass",
+                                Set.of(role.getId()),
+                                null));
+
+        ArgumentCaptor<UUID> userIdCaptor = ArgumentCaptor.forClass(UUID.class);
+        verify(tenantMembershipProvisioner)
+                .ensureMembership(userIdCaptor.capture(), eq(callerTenant));
+        assertThat(userIdCaptor.getValue()).isEqualTo(response.id());
+        verify(tenantMembershipProvisioner, never()).ensureDefaultMembership(any());
+    }
+
+    @Test
+    void createFallsBackToDefaultMembershipWhenCallerHasNoTenant() {
+        Role role = role("USER");
+        when(roleRepository.findAllById(Set.of(role.getId()))).thenReturn(List.of(role));
+        when(requestTenantContext.currentTenantId()).thenReturn(Optional.empty());
+
+        UserResponse response =
+                service.create(
+                        new CreateUserRequest(
+                                "jane",
+                                "jane@ewos.local",
+                                "Str0ng!Pass",
+                                Set.of(role.getId()),
+                                null));
+
+        verify(tenantMembershipProvisioner).ensureDefaultMembership(response.id());
+        verify(tenantMembershipProvisioner, never()).ensureMembership(any(), any());
     }
 
     @Test
