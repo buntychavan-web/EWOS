@@ -32,8 +32,8 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(
         name = "ATS Applications",
         description =
-                "Job applications tying candidates to requisitions. Subject-type"
-                        + " 'ats.application'.")
+                "Job applications tying candidates to requisitions. Stage progression is RBAC-gated"
+                        + " directly; not yet wired to the workflow engine.")
 public class JobApplicationController {
 
     private final JobApplicationService applications;

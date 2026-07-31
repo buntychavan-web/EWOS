@@ -18,10 +18,13 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * Ties a {@link Candidate} to a {@link JobRequisition}. Drives the hiring pipeline via the workflow
- * engine (subject-type {@code "ats.application"}). Uniqueness is enforced by a partial index on
- * (tenant, company, candidate, requisition) so re-applying to the same requisition after a
- * soft-deleted attempt is legal.
+ * Ties a {@link Candidate} to a {@link JobRequisition}. Stage progression (screening → interview →
+ * offer → hired, or rejected/withdrawn at any point) is a direct state-machine transition in {@link
+ * com.ewos.ats.application.JobApplicationService}, gated by RBAC — not by the generic workflow
+ * engine. {@code workflowInstanceId} is reserved for a future sprint that wires this stage machine
+ * to the workflow engine the way requisition and offer approval already are; it is not populated
+ * today. Uniqueness is enforced by a partial index on (tenant, company, candidate, requisition) so
+ * re-applying to the same requisition after a soft-deleted attempt is legal.
  */
 @Entity
 @Table(name = "job_applications")

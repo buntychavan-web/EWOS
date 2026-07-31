@@ -5,6 +5,7 @@ import com.ewos.ats.api.dto.ChangeCandidateStatusRequest;
 import com.ewos.ats.api.dto.CreateCandidateRequest;
 import com.ewos.ats.api.dto.CreateCandidateResult;
 import com.ewos.ats.api.dto.DuplicateCandidateMatchResponse;
+import com.ewos.ats.api.dto.RecordCandidateConsentRequest;
 import com.ewos.ats.api.dto.UpdateCandidateRequest;
 import com.ewos.ats.application.CandidateService;
 import com.ewos.ats.domain.CandidateStatus;
@@ -71,6 +72,16 @@ public class CandidateController {
             @PathVariable UUID id,
             @Valid @RequestBody ChangeCandidateStatusRequest req) {
         return candidates.changeStatus(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/consent")
+    @PreAuthorize("hasAuthority('ATS_WRITE')")
+    @Operation(summary = "Record a candidate's consent decision and retention basis")
+    public CandidateResponse recordConsent(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody RecordCandidateConsentRequest req) {
+        return candidates.recordConsent(tenantId, id, req);
     }
 
     @GetMapping("/{id}")
