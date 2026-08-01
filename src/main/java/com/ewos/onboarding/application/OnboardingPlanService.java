@@ -8,6 +8,7 @@ import com.ewos.onboarding.api.dto.AssignPlanRolesRequest;
 import com.ewos.onboarding.api.dto.CreateOnboardingPlanRequest;
 import com.ewos.onboarding.api.dto.OnboardingPlanResponse;
 import com.ewos.onboarding.api.dto.OnboardingTaskInstanceResponse;
+import com.ewos.onboarding.api.dto.ReassignOnboardingTaskRequest;
 import com.ewos.onboarding.api.dto.UpdateOnboardingTaskStatusRequest;
 import com.ewos.onboarding.domain.OnboardingPlan;
 import com.ewos.onboarding.domain.OnboardingPlanStatus;
@@ -254,6 +255,27 @@ public class OnboardingPlanService {
         return mapper.toResponse(t);
     }
 
+    /**
+     * Reassigns the employee responsible for a task (e.g. HR hands an IT-provisioning task to a
+     * different IT staff member after the plan was created). Distinct from {@link
+     * #updateTaskStatus}, which changes progress but never the owner; gated by the same {@link
+     * OnboardingPolicy#assertTaskEditable} terminal-state guard.
+     */
+    public OnboardingTaskInstanceResponse reassignTask(
+            UUID tenantId, UUID taskId, ReassignOnboardingTaskRequest req) {
+        OnboardingTaskInstance t =
+                tasks.findByIdAndTenantId(taskId, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Onboarding task not found"));
+        guard.requireAccessForCompany(t.getPlan().getCompanyId());
+        policy.assertTaskEditable(t);
+        t.setAssignedEmployee(resolveEmployee(tenantId, req.assignedEmployeeId()));
+        publish(OnboardingEventType.TASK_ASSIGNED, t.getPlan(), t.getId(), null, null);
+        return mapper.toResponse(t);
+    }
+
     @Transactional(readOnly = true)
     public OnboardingPlanResponse getById(UUID tenantId, UUID id) {
         return mapper.toResponse(require(tenantId, id));
@@ -261,15 +283,19 @@ public class OnboardingPlanService {
 
     @Transactional(readOnly = true)
     public OnboardingPlanResponse forEmployee(UUID tenantId, UUID employeeId) {
-        OnboardingPlan p =
-                plans.findByTenantIdAndEmployeeId(tenantId, employeeId)
-                        .orElseThrow(
-                                () ->
-                                        new ApiException(
-                                                HttpStatus.NOT_FOUND,
-                                                "No onboarding plan for this employee"));
-        guard.requireAccessForCompany(p.getCompanyId());
-        return mapper.toResponse(p);
+        return mapper.toResponse(requireForEmployee(tenantId, employeeId));
+    }
+
+    /**
+     * The tasks on an employee's own onboarding plan — the self-service counterpart of {@link
+     * #tasksFor}, which takes an HR/manager-known {@code planId} the employee never sees.
+     */
+    @Transactional(readOnly = true)
+    public List<OnboardingTaskInstanceResponse> tasksForEmployee(UUID tenantId, UUID employeeId) {
+        OnboardingPlan p = requireForEmployee(tenantId, employeeId);
+        return tasks.findAllByTenantIdAndPlanIdOrderBySortOrderAsc(tenantId, p.getId()).stream()
+                .map(mapper::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -302,6 +328,25 @@ public class OnboardingPlanService {
                                         new ApiException(
                                                 HttpStatus.NOT_FOUND, "Onboarding plan not found"));
         guard.requireAccessForCompany(p.getCompanyId());
+        return p;
+    }
+
+    /**
+     * Same lookup as {@link #require}, keyed by employee rather than plan id, and guarded with the
+     * self-service-aware {@link ClientAccessGuard#requireAccessForCompany(UUID, UUID)} overload so
+     * the employee this plan belongs to can always read their own plan/tasks without needing a
+     * {@code ClientAssignment} row — mirrors {@code LeaveRequestService#forEmployee} (Sprint 21
+     * UAT).
+     */
+    private OnboardingPlan requireForEmployee(UUID tenantId, UUID employeeId) {
+        OnboardingPlan p =
+                plans.findByTenantIdAndEmployeeId(tenantId, employeeId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "No onboarding plan for this employee"));
+        guard.requireAccessForCompany(p.getCompanyId(), employeeId);
         return p;
     }
 
