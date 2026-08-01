@@ -18,4 +18,7 @@ public interface DevelopmentPlanRepository extends JpaRepository<DevelopmentPlan
 
     long countByTenantIdAndCompanyIdAndStatus(
             UUID tenantId, UUID companyId, DevelopmentPlanStatus status);
+
+    /** Sprint 24E — full company plan list, backing CSV export. */
+    List<DevelopmentPlan> findAllByTenantIdAndCompanyId(UUID tenantId, UUID companyId);
 }

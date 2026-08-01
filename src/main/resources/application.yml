@@ -125,6 +125,15 @@ app:
     allow-credentials: ${APP_CORS_ALLOW_CREDENTIALS:true}
     max-age: ${APP_CORS_MAX_AGE:1h}
     path-patterns: /**
+  notifications:
+    email:
+      # Sprint 24E — off by default: EmailNotificationSender's @ConditionalOnProperty means the
+      # bean simply doesn't exist unless this is true, so no spring.mail.* config is required for
+      # a normal deployment. To turn email on, also set spring.mail.host (and username/password if
+      # your SMTP provider needs auth) — Spring Boot only creates the JavaMailSender bean once
+      # spring.mail.host is set.
+      enabled: ${APP_NOTIFICATIONS_EMAIL_ENABLED:false}
+      from: ${APP_NOTIFICATIONS_EMAIL_FROM:no-reply@ewos.local}
 
 springdoc:
   api-docs:

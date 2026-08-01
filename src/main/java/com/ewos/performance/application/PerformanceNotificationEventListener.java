@@ -2,9 +2,11 @@ package com.ewos.performance.application;
 
 import com.ewos.notification.application.NotificationService;
 import com.ewos.notification.domain.NotificationType;
+import com.ewos.performance.domain.CalibrationSession;
 import com.ewos.performance.domain.events.PerformanceEvent;
 import com.ewos.performance.infrastructure.persistence.AppraisalRepository;
 import com.ewos.performance.infrastructure.persistence.AppraisalRepository.AppraisalParticipantUserIds;
+import com.ewos.performance.infrastructure.persistence.CalibrationSessionRepository;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -31,11 +33,15 @@ public class PerformanceNotificationEventListener {
 
     private final NotificationService notifications;
     private final AppraisalRepository appraisals;
+    private final CalibrationSessionRepository calibrationSessions;
 
     public PerformanceNotificationEventListener(
-            NotificationService notifications, AppraisalRepository appraisals) {
+            NotificationService notifications,
+            AppraisalRepository appraisals,
+            CalibrationSessionRepository calibrationSessions) {
         this.notifications = notifications;
         this.appraisals = appraisals;
+        this.calibrationSessions = calibrationSessions;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -91,14 +97,46 @@ public class PerformanceNotificationEventListener {
                             "Bulk appraisal launch completed",
                             event.detail(),
                             null);
+            case CALIBRATION_SESSION_CREATED ->
+                    notifyFacilitator(
+                            event,
+                            NotificationType.CALIBRATION_SESSION_OPENED,
+                            "Calibration session scheduled",
+                            "A calibration session you're facilitating has been scheduled");
+            case CALIBRATION_SESSION_COMPLETED ->
+                    notifyFacilitator(
+                            event,
+                            NotificationType.CALIBRATION_COMPLETED,
+                            "Calibration session completed",
+                            "A calibration session you're facilitating has been completed");
             default -> {
                 // CYCLE_CREATED/OPENED/ADVANCED/RELEASED/CLOSED/CANCELLED, TEMPLATE_*,
-                // REVIEWER_ASSESSMENT_SUBMITTED, CALIBRATION_*, APPRAISAL_SUBMITTED_FOR_APPROVAL/
-                // APPROVED/REJECTED/CANCELLED, INCREMENT_/PROMOTION_RECOMMENDED: no single
-                // unambiguous individual recipient at this layer (cycle-wide, or an HR/committee
-                // concern rather than one employee's).
+                // REVIEWER_ASSESSMENT_SUBMITTED, CALIBRATION_RECORDED,
+                // APPRAISAL_SUBMITTED_FOR_APPROVAL/APPROVED/REJECTED/CANCELLED,
+                // INCREMENT_/PROMOTION_RECOMMENDED: no single unambiguous individual recipient at
+                // this layer (cycle-wide, or an HR/committee concern rather than one employee's).
             }
         }
+    }
+
+    /**
+     * {@code CalibrationSession.facilitatorId} is a bare {@code UUID} with no FK/naming hint of its
+     * own; treated as a User id here for consistency with every other "who acted" UUID in this
+     * codebase ({@code *Security.currentActor()}, {@code PerformanceEvent.actorId()}), all of which
+     * come from the JWT {@code sub} claim.
+     */
+    private void notifyFacilitator(
+            PerformanceEvent event, NotificationType type, String title, String body) {
+        if (event.sessionId() == null) {
+            return;
+        }
+        calibrationSessions
+                .findByIdAndTenantId(event.sessionId(), event.tenantId())
+                .map(CalibrationSession::getFacilitatorId)
+                .ifPresent(
+                        facilitatorId ->
+                                notifications.send(
+                                        event.tenantId(), facilitatorId, type, title, body, null));
     }
 
     private void notifyEmployee(

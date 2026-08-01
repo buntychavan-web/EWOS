@@ -18,5 +18,29 @@ public enum NotificationType {
     PERF_REVIEWER_REVIEW_PENDING,
     PERF_REVIEW_REMINDER,
     PERF_FINAL_RATING_RELEASED,
-    PERF_BULK_LAUNCH_COMPLETED
+    PERF_BULK_LAUNCH_COMPLETED,
+
+    // Sprint 24E — Calibration. See PerformanceNotificationEventListener; previously
+    // CALIBRATION_SESSION_CREATED/COMPLETED were deliberately dropped (no single unambiguous
+    // recipient among appraisal participants) — the calibration session's own facilitatorId is
+    // the recipient here, not an appraisal participant.
+    CALIBRATION_SESSION_OPENED,
+    CALIBRATION_COMPLETED,
+
+    // Sprint 24E — Goals. See com.ewos.goals.application.GoalNotificationEventListener.
+    GOAL_ASSIGNED,
+    GOAL_REVIEW_PENDING,
+    GOAL_REVIEWED,
+    GOAL_COMPLETED,
+    GOAL_CANCELLED,
+    GOAL_DUE_REMINDER,
+    GOAL_OVERDUE,
+
+    // Sprint 24E — Competency & Development Plans. See
+    // com.ewos.competency.application.CompetencyNotificationEventListener.
+    COMPETENCY_ASSESSED,
+    DEVPLAN_ACTIVATED,
+    DEVPLAN_COMPLETED,
+    DEVPLAN_ACTION_DUE,
+    DEVPLAN_ACTION_OVERDUE
 }

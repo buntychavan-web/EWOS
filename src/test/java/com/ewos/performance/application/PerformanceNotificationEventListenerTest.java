@@ -9,10 +9,12 @@ import static org.mockito.Mockito.when;
 
 import com.ewos.notification.application.NotificationService;
 import com.ewos.notification.domain.NotificationType;
+import com.ewos.performance.domain.CalibrationSession;
 import com.ewos.performance.domain.events.PerformanceEvent;
 import com.ewos.performance.domain.events.PerformanceEventType;
 import com.ewos.performance.infrastructure.persistence.AppraisalRepository;
 import com.ewos.performance.infrastructure.persistence.AppraisalRepository.AppraisalParticipantUserIds;
+import com.ewos.performance.infrastructure.persistence.CalibrationSessionRepository;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +29,7 @@ class PerformanceNotificationEventListenerTest {
 
     @Mock NotificationService notifications;
     @Mock AppraisalRepository appraisals;
+    @Mock CalibrationSessionRepository calibrationSessions;
 
     private PerformanceNotificationEventListener listener;
     private UUID tenantId;
@@ -37,7 +40,9 @@ class PerformanceNotificationEventListenerTest {
 
     @BeforeEach
     void setUp() {
-        listener = new PerformanceNotificationEventListener(notifications, appraisals);
+        listener =
+                new PerformanceNotificationEventListener(
+                        notifications, appraisals, calibrationSessions);
         tenantId = UUID.randomUUID();
         appraisalId = UUID.randomUUID();
         employeeUserId = UUID.randomUUID();
@@ -184,6 +189,76 @@ class PerformanceNotificationEventListenerTest {
 
         verify(notifications, never()).send(any(), any(), any(), any(), any(), any());
         verify(appraisals, never()).findParticipantUserIds(any(), any());
+    }
+
+    @Test
+    void calibrationSessionCreatedNotifiesTheFacilitator() {
+        UUID sessionId = UUID.randomUUID();
+        UUID facilitatorId = UUID.randomUUID();
+        CalibrationSession session = new CalibrationSession();
+        session.setFacilitatorId(facilitatorId);
+        when(calibrationSessions.findByIdAndTenantId(sessionId, tenantId))
+                .thenReturn(Optional.of(session));
+        PerformanceEvent sessionEvent =
+                new PerformanceEvent(
+                        PerformanceEventType.CALIBRATION_SESSION_CREATED,
+                        tenantId,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        sessionId,
+                        null,
+                        null,
+                        UUID.randomUUID(),
+                        Instant.now());
+
+        listener.onPerformanceEvent(sessionEvent);
+
+        verify(notifications)
+                .send(
+                        eq(tenantId),
+                        eq(facilitatorId),
+                        eq(NotificationType.CALIBRATION_SESSION_OPENED),
+                        any(),
+                        any(),
+                        isNull());
+    }
+
+    @Test
+    void calibrationSessionCompletedNotifiesTheFacilitator() {
+        UUID sessionId = UUID.randomUUID();
+        UUID facilitatorId = UUID.randomUUID();
+        CalibrationSession session = new CalibrationSession();
+        session.setFacilitatorId(facilitatorId);
+        when(calibrationSessions.findByIdAndTenantId(sessionId, tenantId))
+                .thenReturn(Optional.of(session));
+        PerformanceEvent sessionEvent =
+                new PerformanceEvent(
+                        PerformanceEventType.CALIBRATION_SESSION_COMPLETED,
+                        tenantId,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        null,
+                        sessionId,
+                        null,
+                        null,
+                        UUID.randomUUID(),
+                        Instant.now());
+
+        listener.onPerformanceEvent(sessionEvent);
+
+        verify(notifications)
+                .send(
+                        eq(tenantId),
+                        eq(facilitatorId),
+                        eq(NotificationType.CALIBRATION_COMPLETED),
+                        any(),
+                        any(),
+                        isNull());
     }
 
     @Test

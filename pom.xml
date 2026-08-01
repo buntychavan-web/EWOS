@@ -81,6 +81,13 @@
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
 
+    <!-- Email (Sprint 24E — optional notification channel, gated by
+         app.notifications.email.enabled) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+
     <!-- Persistence -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

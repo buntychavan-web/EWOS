@@ -19,6 +19,10 @@ public interface EmployeeRepository
     boolean existsByTenantIdAndCompanyIdAndEmployeeNumberIgnoreCase(
             UUID tenantId, UUID companyId, String employeeNumber);
 
+    /** Sprint 24E — resolves an employee-number cell from an import CSV row to its employee id. */
+    Optional<Employee> findByTenantIdAndCompanyIdAndEmployeeNumberIgnoreCase(
+            UUID tenantId, UUID companyId, String employeeNumber);
+
     boolean existsByTenantIdAndCompanyIdAndWorkEmailIgnoreCase(
             UUID tenantId, UUID companyId, String workEmail);
 

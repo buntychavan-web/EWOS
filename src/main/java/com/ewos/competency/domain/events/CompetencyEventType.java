@@ -13,5 +13,9 @@ public enum CompetencyEventType {
     PLAN_COMPLETED,
     PLAN_CANCELLED,
     ACTION_ADDED,
-    ACTION_COMPLETED
+    ACTION_COMPLETED,
+
+    // Sprint 24E — published by DevelopmentActionReminderJob, not by DevelopmentPlanService.
+    ACTION_DUE_REMINDER,
+    ACTION_OVERDUE
 }
