@@ -22,6 +22,15 @@ public interface AppraisalRepository extends JpaRepository<Appraisal, UUID> {
     List<Appraisal> findAllByTenantIdAndCompanyIdAndStatus(
             UUID tenantId, UUID companyId, AppraisalStatus status);
 
+    List<Appraisal> findAllByTenantIdAndEmployeeIdOrderByCreatedAtDesc(
+            UUID tenantId, UUID employeeId);
+
+    List<Appraisal> findAllByTenantIdAndManagerEmployeeIdAndStatus(
+            UUID tenantId, UUID managerEmployeeId, AppraisalStatus status);
+
+    List<Appraisal> findAllByTenantIdAndReviewerEmployeeIdAndStatus(
+            UUID tenantId, UUID reviewerEmployeeId, AppraisalStatus status);
+
     long countByTenantIdAndCycleIdAndStatus(UUID tenantId, UUID cycleId, AppraisalStatus status);
 
     long countByTenantIdAndCompanyIdAndStatus(
