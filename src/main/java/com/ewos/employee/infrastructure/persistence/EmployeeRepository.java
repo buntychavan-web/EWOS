@@ -1,6 +1,7 @@
 package com.ewos.employee.infrastructure.persistence;
 
 import com.ewos.employee.domain.Employee;
+import com.ewos.employee.domain.EmployeeStatus;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -35,4 +36,26 @@ public interface EmployeeRepository
      */
     @Query("select e from Employee e left join fetch e.primaryOrgUnit where e.userId in :userIds")
     List<Employee> findAllByUserIdIn(@Param("userIds") Collection<UUID> userIds);
+
+    /**
+     * Sprint 24B — id-only projection (no column beyond the key is ever needed by the bulk-launch
+     * caller) backing {@code AppraisalCycleLaunchService}'s eligibility resolution. {@code
+     * orgUnitIds} must be either {@code null} (no org-unit filter — matches every company employee)
+     * or a non-empty list; an empty list is never passed in by the caller, since {@code IN ()}
+     * against an always-false set would silently match nobody rather than "no filter", the opposite
+     * of what a caller would expect. {@code orgUnitIds} is expected to already be the
+     * fully-expanded self-and-descendant set from {@code OrganizationUnitRepository
+     * .findSelfAndDescendantIds} — this query does no hierarchy traversal itself.
+     */
+    @Query(
+            "select e.id from Employee e where e.tenantId = :tenantId and e.companyId ="
+                    + " :companyId and e.status = :status and (:orgUnitIds is null or"
+                    + " e.primaryOrgUnit.id in :orgUnitIds) and (:employmentTypeId is null or"
+                    + " e.employmentType.id = :employmentTypeId)")
+    List<UUID> findEligibleEmployeeIds(
+            @Param("tenantId") UUID tenantId,
+            @Param("companyId") UUID companyId,
+            @Param("status") EmployeeStatus status,
+            @Param("orgUnitIds") List<UUID> orgUnitIds,
+            @Param("employmentTypeId") UUID employmentTypeId);
 }

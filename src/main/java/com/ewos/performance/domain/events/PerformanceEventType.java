@@ -1,12 +1,19 @@
 package com.ewos.performance.domain.events;
 
-/** Performance lifecycle event codes published on {@code ewos.performance.event}. */
+/**
+ * Performance lifecycle event codes published on {@code ewos.performance.event}. {@link
+ * com.ewos.performance.application.PerformanceNotificationEventListener} (Sprint 24B) maps a subset
+ * of these to in-app notifications; see its class javadoc for exactly which ones and why the rest
+ * are deliberately not notification-worthy at scale.
+ */
 public enum PerformanceEventType {
     CYCLE_CREATED,
     CYCLE_OPENED,
     CYCLE_ADVANCED,
+    CYCLE_RELEASED,
     CYCLE_CLOSED,
     CYCLE_CANCELLED,
+    CYCLE_LAUNCH_COMPLETED,
     TEMPLATE_CREATED,
     TEMPLATE_UPDATED,
     TEMPLATE_DEACTIVATED,
@@ -23,5 +30,8 @@ public enum PerformanceEventType {
     INCREMENT_RECOMMENDED,
     PROMOTION_RECOMMENDED,
     CALIBRATION_SESSION_CREATED,
-    CALIBRATION_SESSION_COMPLETED
+    CALIBRATION_SESSION_COMPLETED,
+    SELF_REVIEW_REMINDER,
+    MANAGER_REVIEW_REMINDER,
+    REVIEWER_REVIEW_REMINDER
 }

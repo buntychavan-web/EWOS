@@ -51,4 +51,25 @@ public interface OrganizationUnitRepository
     /** Non-soft-deleted units referencing a given unit type; used to block type deletion. */
     @Query("select count(u) from OrganizationUnit u where u.unitType.id = :unitTypeId")
     long countByUnitTypeId(@Param("unitTypeId") UUID unitTypeId);
+
+    /**
+     * Sprint 24B — every id in {@code rootIds} plus all of their descendants at any depth, via a
+     * recursive CTE. Backs bulk appraisal-cycle-launch filtering ("everyone under this Business
+     * Unit / Department / Location / Cost Centre node") and the org-unit progress report, where
+     * "under" always means the whole subtree, not just direct children. {@code
+     * ix_org_units_tenant_parent} makes each recursion step an index lookup rather than a scan.
+     */
+    @Query(
+            value =
+                    "WITH RECURSIVE descendants AS ("
+                            + "  SELECT id FROM organization_units"
+                            + "  WHERE tenant_id = :tenantId AND deleted_at IS NULL AND id IN (:rootIds)"
+                            + "  UNION ALL"
+                            + "  SELECT ou.id FROM organization_units ou"
+                            + "  INNER JOIN descendants d ON ou.parent_id = d.id"
+                            + "  WHERE ou.tenant_id = :tenantId AND ou.deleted_at IS NULL"
+                            + ") SELECT id FROM descendants",
+            nativeQuery = true)
+    List<UUID> findSelfAndDescendantIds(
+            @Param("tenantId") UUID tenantId, @Param("rootIds") List<UUID> rootIds);
 }

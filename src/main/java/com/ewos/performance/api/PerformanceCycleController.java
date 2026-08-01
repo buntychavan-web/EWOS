@@ -2,6 +2,7 @@ package com.ewos.performance.api;
 
 import com.ewos.performance.api.dto.CreatePerformanceCycleRequest;
 import com.ewos.performance.api.dto.PerformanceCycleResponse;
+import com.ewos.performance.api.dto.PerformanceCycleTransitionResponse;
 import com.ewos.performance.api.dto.UpdatePerformanceCycleRequest;
 import com.ewos.performance.application.PerformanceCycleService;
 import com.ewos.performance.domain.PerformanceCycleStatus;
@@ -54,12 +55,34 @@ public class PerformanceCycleController {
 
     @PostMapping("/{id}/transition")
     @PreAuthorize("hasAuthority('PERF_WRITE')")
-    @Operation(summary = "Transition a cycle to a new status")
+    @Operation(
+            summary =
+                    "Transition a cycle to a new status (validated against the legal transition graph)")
     public PerformanceCycleResponse transition(
             @RequestHeader("X-Tenant-Id") UUID tenantId,
             @PathVariable UUID id,
-            @RequestParam PerformanceCycleStatus target) {
-        return cycles.transition(tenantId, id, target);
+            @RequestParam PerformanceCycleStatus target,
+            @RequestParam(required = false) String notes) {
+        return cycles.transition(tenantId, id, target, notes);
+    }
+
+    @GetMapping("/{id}/transitions")
+    @PreAuthorize("hasAuthority('PERF_READ')")
+    @Operation(summary = "Full status-transition audit trail for a cycle")
+    public List<PerformanceCycleTransitionResponse> transitions(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return cycles.transitionHistory(tenantId, id).stream()
+                .map(
+                        t ->
+                                new PerformanceCycleTransitionResponse(
+                                        t.getId(),
+                                        t.getCycleId(),
+                                        t.getFromStatus(),
+                                        t.getToStatus(),
+                                        t.getNotes(),
+                                        t.getTransitionedBy(),
+                                        t.getTransitionedAt()))
+                .toList();
     }
 
     @GetMapping("/{id}")
