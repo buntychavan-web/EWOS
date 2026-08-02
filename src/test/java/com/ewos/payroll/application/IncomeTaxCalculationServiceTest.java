@@ -109,6 +109,43 @@ class IncomeTaxCalculationServiceTest {
     }
 
     @Test
+    void newRegimeJustAboveRebateThresholdGetsSection87AMarginalRelief() {
+        // Annual taxable income 1,210,000 is only 10,000 above the 1,200,000 rebate threshold.
+        // Slab tax alone would be 61,500 (a cliff far bigger than the 10,000 overage), so marginal
+        // relief caps the pre-cess tax at the 10,000 excess itself.
+        TdsInput input =
+                new TdsInput(
+                        new BigDecimal("107083.33"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+        TdsResult r =
+                service.calculate(
+                        TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
+
+        assertThat(r.taxableIncome()).isEqualByComparingTo("1209999.96");
+        // Marginal relief: capped tax (before cess) equals the excess over the threshold.
+        BigDecimal expectedPreCessTax = new BigDecimal("9999.96");
+        BigDecimal expectedCess = expectedPreCessTax.multiply(new BigDecimal("0.04"));
+        assertThat(r.annualTaxLiability())
+                .isEqualByComparingTo(
+                        expectedPreCessTax
+                                .add(expectedCess)
+                                .setScale(2, java.math.RoundingMode.HALF_UP));
+    }
+
+    @Test
+    void newRegimeFarAboveRebateThresholdIsUnaffectedByMarginalRelief() {
+        // Once slab tax is smaller than the excess over the threshold, marginal relief never
+        // triggers and ordinary slab tax applies — same as before this fix.
+        TdsInput input =
+                new TdsInput(new BigDecimal("150000"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+        TdsResult r =
+                service.calculate(
+                        TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
+
+        assertThat(r.taxableIncome()).isEqualByComparingTo("1725000.00");
+        assertThat(r.annualTaxLiability()).isEqualByComparingTo("150800.00");
+    }
+
+    @Test
     void newRegimeHighIncomeAppliesSurchargeWithNoMarginalRelief() {
         TdsInput input =
                 new TdsInput(new BigDecimal("600000"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);

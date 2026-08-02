@@ -75,8 +75,12 @@ public class EsiCalculationService {
             enrollment = existingEnrollment.get();
             isNew = false;
         } else {
-            LocalDate periodStart = contributionPeriodStart(payPeriodDate);
-            LocalDate periodEnd = contributionPeriodEnd(periodStart);
+            LocalDate calendarPeriodStart = contributionPeriodStart(payPeriodDate);
+            LocalDate periodStart =
+                    hireDate != null && hireDate.isAfter(calendarPeriodStart)
+                            ? hireDate
+                            : calendarPeriodStart;
+            LocalDate periodEnd = contributionPeriodEnd(calendarPeriodStart);
             boolean eligibleAtStart = currentGrossWage.compareTo(config.getWageThreshold()) <= 0;
 
             enrollment = new EmployeeEsiEnrollment();

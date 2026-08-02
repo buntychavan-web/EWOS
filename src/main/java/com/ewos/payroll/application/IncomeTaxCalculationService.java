@@ -115,11 +115,19 @@ public class IncomeTaxCalculationService {
 
         BigDecimal slabTax = computeSlabTax(slabs, taxableIncome);
 
-        BigDecimal rebate = BigDecimal.ZERO;
+        BigDecimal taxAfterRebate;
         if (taxableIncome.compareTo(policy.getRebateIncomeThreshold()) <= 0) {
-            rebate = slabTax.min(policy.getRebateMaxAmount());
+            BigDecimal rebate = slabTax.min(policy.getRebateMaxAmount());
+            taxAfterRebate = slabTax.subtract(rebate).max(BigDecimal.ZERO);
+        } else {
+            // Section 87A marginal relief: just above the rebate threshold, tax payable is capped
+            // to the amount income exceeds the threshold by, so crossing it by a rupee can never
+            // cost more than that rupee (and never less than the ordinary slab tax would).
+            BigDecimal excessOverThreshold =
+                    taxableIncome.subtract(policy.getRebateIncomeThreshold());
+            taxAfterRebate =
+                    slabTax.compareTo(excessOverThreshold) > 0 ? excessOverThreshold : slabTax;
         }
-        BigDecimal taxAfterRebate = slabTax.subtract(rebate).max(BigDecimal.ZERO);
 
         BigDecimal surchargeRate = findSurchargeRate(surchargeSlabs, taxableIncome);
         BigDecimal surcharge = pct(taxAfterRebate, surchargeRate);

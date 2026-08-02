@@ -34,15 +34,15 @@ class PfCalculationServiceTest {
     }
 
     @Test
-    void internationalWorkerHasNoWageCeiling() {
+    void internationalWorkerHasNoWageCeilingForEitherPfOrEps() {
         PfResult r =
                 service.calculate(
                         standardConfig(), new BigDecimal("20000"), true, false, BigDecimal.ZERO);
 
         assertThat(r.pfWageUsed()).isEqualByComparingTo("20000.00");
         assertThat(r.employeeContribution()).isEqualByComparingTo("2400.00");
-        assertThat(r.epsContribution()).isEqualByComparingTo("1249.50");
-        assertThat(r.employerPfContribution()).isEqualByComparingTo("1150.50");
+        assertThat(r.epsContribution()).isEqualByComparingTo("1666.00");
+        assertThat(r.employerPfContribution()).isEqualByComparingTo("734.00");
     }
 
     @Test

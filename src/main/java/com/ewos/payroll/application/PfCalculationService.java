@@ -52,7 +52,9 @@ public class PfCalculationService {
                         : BigDecimal.ZERO;
         BigDecimal employeeContribution = scale(employeePf.add(vpf));
 
-        BigDecimal epsWage = pfWage.min(config.getEpsWageCeiling());
+        // International Workers under the EPF & MP Act have no wage ceiling for EPS either — only
+        // domestic-scheme members have the EPS-carve-out wage capped.
+        BigDecimal epsWage = internationalWorker ? pfWage : pfWage.min(config.getEpsWageCeiling());
         BigDecimal eps = pct(epsWage, config.getEpsRatePct());
         BigDecimal employerTotal = pct(pfWage, config.getEmployerPfRatePct());
         BigDecimal employerPf = scale(employerTotal.subtract(eps)).max(BigDecimal.ZERO);
