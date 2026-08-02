@@ -5,6 +5,8 @@ import com.ewos.identity.domain.LoginEventType;
 import com.ewos.identity.domain.Permission;
 import com.ewos.identity.domain.RefreshToken;
 import com.ewos.identity.domain.User;
+import com.ewos.identity.domain.events.IdentityEvent;
+import com.ewos.identity.domain.events.IdentityEventType;
 import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.identity.infrastructure.security.jwt.JwtProperties;
@@ -46,6 +48,7 @@ public class AuthenticationService {
     private final AccountLockoutService accountLockoutService;
     private final TenantClaimResolver tenantClaimResolver;
     private final EmployeeClaimResolver employeeClaimResolver;
+    private final IdentityEventPublisher events;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
@@ -58,7 +61,8 @@ public class AuthenticationService {
             LoginHistoryRecorder loginHistoryRecorder,
             AccountLockoutService accountLockoutService,
             TenantClaimResolver tenantClaimResolver,
-            EmployeeClaimResolver employeeClaimResolver) {
+            EmployeeClaimResolver employeeClaimResolver,
+            IdentityEventPublisher events) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
@@ -68,6 +72,7 @@ public class AuthenticationService {
         this.accountLockoutService = accountLockoutService;
         this.tenantClaimResolver = tenantClaimResolver;
         this.employeeClaimResolver = employeeClaimResolver;
+        this.events = events;
     }
 
     public TokenResponse login(
@@ -110,6 +115,23 @@ public class AuthenticationService {
                     ipAddress,
                     userAgent,
                     nowLocked ? "invalid password — account now locked" : "invalid password");
+            if (nowLocked) {
+                // Published through IdentityEventPublisher's own REQUIRES_NEW transaction, not
+                // inline here — this method always throws next, and the default rollback rule for
+                // that unchecked ApiException would otherwise take this event down with it before
+                // its AFTER_COMMIT listener ever saw it (see IdentityEventPublisher's javadoc).
+                tenantClaimResolver
+                        .resolveTenantId(user.getId())
+                        .ifPresent(
+                                tenantId ->
+                                        events.publish(
+                                                new IdentityEvent(
+                                                        IdentityEventType.ACCOUNT_LOCKED,
+                                                        tenantId,
+                                                        user.getId(),
+                                                        null,
+                                                        Instant.now())));
+            }
             throw new ApiException(HttpStatus.UNAUTHORIZED, INVALID_CREDENTIALS);
         }
         if (!user.isEnabled() || !user.isAccountNonLocked()) {

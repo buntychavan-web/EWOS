@@ -42,5 +42,52 @@ public enum NotificationType {
     DEVPLAN_ACTIVATED,
     DEVPLAN_COMPLETED,
     DEVPLAN_ACTION_DUE,
-    DEVPLAN_ACTION_OVERDUE
+    DEVPLAN_ACTION_OVERDUE,
+
+    // Sprint 24F — Recruitment. See
+    // com.ewos.recruitment.application.RecruitmentNotificationEventListener.
+    REQUISITION_APPROVED,
+    REQUISITION_REJECTED,
+    REQUISITION_FILLED,
+    REQUISITION_CLOSED,
+
+    // Sprint 24F — ATS. See com.ewos.ats.application.AtsNotificationEventListener.
+    APPLICATION_OFFER_ACCEPTED,
+    APPLICATION_OFFER_DECLINED,
+
+    // Sprint 24F — Interview. See
+    // com.ewos.interview.application.InterviewNotificationEventListener.
+    INTERVIEW_ROUND_SCHEDULED,
+    INTERVIEW_ROUND_RESCHEDULED,
+    INTERVIEW_ROUND_CANCELLED,
+    INTERVIEW_SCORECARD_SUBMITTED,
+    INTERVIEW_ROUND_DECIDED,
+
+    // Sprint 24F — Offer. See com.ewos.offer.application.OfferNotificationEventListener.
+    OFFER_ACCEPTED,
+    OFFER_DECLINED,
+    OFFER_EXPIRED,
+
+    // Sprint 24F — Onboarding. See
+    // com.ewos.onboarding.application.OnboardingNotificationEventListener.
+    ONBOARDING_TASK_ASSIGNED,
+    ONBOARDING_TASK_REASSIGNED,
+    ONBOARDING_TASK_OVERDUE,
+    ONBOARDING_PLAN_COMPLETED,
+
+    // Sprint 24F — Payroll. See com.ewos.payroll.application.PayrollNotificationEventListener.
+    PAYSLIP_READY,
+    PAYROLL_RUN_FINALIZED,
+    PAYROLL_RUN_FAILED,
+
+    // Sprint 24F — Identity. See
+    // com.ewos.identity.application.IdentityNotificationEventListener.
+    PASSWORD_RESET_BY_ADMIN,
+    ACCOUNT_LOCKED,
+    ACCOUNT_DISABLED,
+
+    // Sprint 24F — Tenancy. See
+    // com.ewos.tenancy.application.TenancyNotificationEventListener.
+    TENANT_ACCESS_GRANTED,
+    TENANT_ACCESS_REVOKED
 }

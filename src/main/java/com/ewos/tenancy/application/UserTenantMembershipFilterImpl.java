@@ -29,4 +29,11 @@ public class UserTenantMembershipFilterImpl implements TenantMembershipFilter {
                 .map(UserTenantMembership::getUserId)
                 .collect(Collectors.toSet());
     }
+
+    @Override
+    public Set<UUID> userIdsForTenant(UUID tenantId) {
+        return memberships.findAllByTenantId(tenantId).stream()
+                .map(UserTenantMembership::getUserId)
+                .collect(Collectors.toSet());
+    }
 }

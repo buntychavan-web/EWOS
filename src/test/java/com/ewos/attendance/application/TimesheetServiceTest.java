@@ -296,6 +296,7 @@ class TimesheetServiceTest {
         Timesheet ts = draftTimesheet();
         ts.setStatus(TimesheetStatus.SUBMITTED);
         when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        authenticateAsAttAdmin();
 
         var response = service.approve(tenantId, ts.getId(), new DecideTimesheetRequest(null));
 
@@ -323,6 +324,7 @@ class TimesheetServiceTest {
         Timesheet ts = draftTimesheet();
         ts.setStatus(TimesheetStatus.SUBMITTED);
         when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        authenticateAsAttAdmin();
 
         var response =
                 service.reject(
@@ -330,6 +332,118 @@ class TimesheetServiceTest {
 
         assertThat(response.status()).isEqualTo(TimesheetStatus.REJECTED);
         assertThat(response.rejectionReason()).isEqualTo("Missing break entries");
+    }
+
+    // --- Sprint 24F: manager-ownership authorization on approve/reject ---------
+
+    @Test
+    void approveRejectedWhenActorIsNotTheEmployeesManager() {
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        Timesheet ts = draftTimesheet();
+        ts.getEmployee().setManager(manager);
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        UUID actor = authenticateAs("ATT_APPROVE");
+        when(employees.findAllByUserIdAndTenantId(actor, tenantId)).thenReturn(List.of());
+
+        assertThatThrownBy(
+                        () ->
+                                service.approve(
+                                        tenantId, ts.getId(), new DecideTimesheetRequest(null)))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void approveRejectedWhenTimesheetHasNoManagerOnRecord() {
+        Timesheet ts = draftTimesheet();
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        authenticateAs("ATT_APPROVE");
+
+        assertThatThrownBy(
+                        () ->
+                                service.approve(
+                                        tenantId, ts.getId(), new DecideTimesheetRequest(null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("no manager on record")
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void approveSucceedsWhenActorIsTheEmployeesActualManager() {
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        Timesheet ts = draftTimesheet();
+        ts.getEmployee().setManager(manager);
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        UUID actor = authenticateAs("ATT_APPROVE");
+        when(employees.findAllByUserIdAndTenantId(actor, tenantId)).thenReturn(List.of(manager));
+
+        var response = service.approve(tenantId, ts.getId(), new DecideTimesheetRequest(null));
+
+        assertThat(response.status()).isEqualTo(TimesheetStatus.APPROVED);
+    }
+
+    @Test
+    void rejectRejectedWhenActorIsNotTheEmployeesManager() {
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        Timesheet ts = draftTimesheet();
+        ts.getEmployee().setManager(manager);
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        UUID actor = authenticateAs("ATT_APPROVE");
+        when(employees.findAllByUserIdAndTenantId(actor, tenantId)).thenReturn(List.of());
+
+        assertThatThrownBy(
+                        () ->
+                                service.reject(
+                                        tenantId,
+                                        ts.getId(),
+                                        new DecideTimesheetRequest("Missing entries")))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void rejectSucceedsWhenActorIsTheEmployeesActualManager() {
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        Timesheet ts = draftTimesheet();
+        ts.getEmployee().setManager(manager);
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        UUID actor = authenticateAs("ATT_APPROVE");
+        when(employees.findAllByUserIdAndTenantId(actor, tenantId)).thenReturn(List.of(manager));
+
+        var response =
+                service.reject(tenantId, ts.getId(), new DecideTimesheetRequest("Missing entries"));
+
+        assertThat(response.status()).isEqualTo(TimesheetStatus.REJECTED);
+    }
+
+    private void authenticateAsAttAdmin() {
+        authenticateAs("ATT_ADMIN");
+    }
+
+    /** Re-authenticates with the given authority and returns the new actor's id. */
+    private UUID authenticateAs(String authority) {
+        UUID actor = UUID.randomUUID();
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                actor.toString(),
+                                "n/a",
+                                List.of(
+                                        new org.springframework.security.core.authority
+                                                .SimpleGrantedAuthority(authority))));
+        return actor;
     }
 
     // --- cancel ---

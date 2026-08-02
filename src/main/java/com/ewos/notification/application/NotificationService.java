@@ -65,15 +65,15 @@ public class NotificationService {
      * NotificationTemplate} is configured for {@code type}.
      *
      * <p>{@code REQUIRES_NEW} is deliberate, not decorative: every caller of {@code send} is a
-     * {@code @TransactionalEventListener(phase = AFTER_COMMIT)} handler (Goal/Competency/Performance
-     * notification listeners) invoked after the triggering transaction has already committed but
-     * before Spring has unbound that transaction's resources from the thread. Under the class's
-     * previous default propagation ({@code REQUIRED}), that stale-but-still-bound resource caused
-     * this method to "participate" in the already-finished transaction instead of opening a real
-     * one — the {@link Notification} got persisted into a persistence context that was never
-     * flushed, so the insert silently never reached the database (no exception, no log, just a
-     * missing row). {@code REQUIRES_NEW} forces a genuinely fresh transaction every time, so the
-     * insert is guaranteed to flush and commit for real.
+     * {@code @TransactionalEventListener(phase = AFTER_COMMIT)} handler
+     * (Goal/Competency/Performance notification listeners) invoked after the triggering transaction
+     * has already committed but before Spring has unbound that transaction's resources from the
+     * thread. Under the class's previous default propagation ({@code REQUIRED}), that
+     * stale-but-still-bound resource caused this method to "participate" in the already-finished
+     * transaction instead of opening a real one — the {@link Notification} got persisted into a
+     * persistence context that was never flushed, so the insert silently never reached the database
+     * (no exception, no log, just a missing row). {@code REQUIRES_NEW} forces a genuinely fresh
+     * transaction every time, so the insert is guaranteed to flush and commit for real.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void send(

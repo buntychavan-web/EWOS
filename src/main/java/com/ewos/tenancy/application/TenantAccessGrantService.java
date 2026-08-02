@@ -5,11 +5,14 @@ import com.ewos.tenancy.api.TenancyMapper;
 import com.ewos.tenancy.api.dto.CreateTenantAccessGrantRequest;
 import com.ewos.tenancy.api.dto.TenantAccessGrantResponse;
 import com.ewos.tenancy.domain.TenantAccessGrant;
+import com.ewos.tenancy.domain.events.TenancyEvent;
+import com.ewos.tenancy.domain.events.TenancyEventType;
 import com.ewos.tenancy.infrastructure.persistence.TenantAccessGrantRepository;
 import com.ewos.tenancy.infrastructure.persistence.TenantRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,16 +32,19 @@ public class TenantAccessGrantService {
     private final TenantRepository tenantRepository;
     private final TenantContext tenantContext;
     private final TenancyMapper mapper;
+    private final ApplicationEventPublisher events;
 
     public TenantAccessGrantService(
             TenantAccessGrantRepository repository,
             TenantRepository tenantRepository,
             TenantContext tenantContext,
-            TenancyMapper mapper) {
+            TenancyMapper mapper,
+            ApplicationEventPublisher events) {
         this.repository = repository;
         this.tenantRepository = tenantRepository;
         this.tenantContext = tenantContext;
         this.mapper = mapper;
+        this.events = events;
     }
 
     public TenantAccessGrantResponse grant(CreateTenantAccessGrantRequest request) {
@@ -51,7 +57,15 @@ public class TenantAccessGrantService {
         grant.setGrantedBy(tenantContext.currentUserId().orElse(null));
         grant.setReason(request.reason());
         grant.setExpiresAt(request.expiresAt());
-        return mapper.toResponse(repository.save(grant));
+        TenantAccessGrant saved = repository.save(grant);
+        events.publishEvent(
+                new TenancyEvent(
+                        TenancyEventType.ACCESS_GRANTED,
+                        saved.getUserId(),
+                        saved.getTenantId(),
+                        saved.getGrantedBy(),
+                        Instant.now()));
+        return mapper.toResponse(saved);
     }
 
     public TenantAccessGrantResponse revoke(UUID id) {
@@ -61,6 +75,13 @@ public class TenantAccessGrantService {
         }
         grant.setRevokedAt(Instant.now());
         grant.setRevokedBy(tenantContext.currentUserId().orElse(null));
+        events.publishEvent(
+                new TenancyEvent(
+                        TenancyEventType.ACCESS_REVOKED,
+                        grant.getUserId(),
+                        grant.getTenantId(),
+                        grant.getRevokedBy(),
+                        Instant.now()));
         return mapper.toResponse(grant);
     }
 

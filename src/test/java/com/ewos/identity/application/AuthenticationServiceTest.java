@@ -62,6 +62,8 @@ class AuthenticationServiceTest {
 
     @Mock EmployeeClaimResolver employeeClaimResolver;
 
+    @Mock IdentityEventPublisher identityEventPublisher;
+
     private final JwtProperties jwtProperties =
             new JwtProperties(
                     "unit-test-secret-key-that-is-definitely-long-enough-for-hs256-signing",
@@ -86,7 +88,8 @@ class AuthenticationServiceTest {
                         loginHistoryRecorder,
                         lockout,
                         tenantClaimResolver,
-                        employeeClaimResolver);
+                        employeeClaimResolver,
+                        identityEventPublisher);
         lenient().when(jwtService.generateAccessToken(any(), any())).thenReturn("stub-jwt");
         lenient().when(tenantClaimResolver.resolveTenantId(any())).thenReturn(Optional.empty());
         lenient()
@@ -259,6 +262,47 @@ class AuthenticationServiceTest {
                         eq(IP),
                         eq(UA),
                         eq("invalid password"));
+    }
+
+    @Test
+    void loginPublishesAccountLockedEventOnceThresholdTripped() {
+        User user = adminUser();
+        user.setFailedLoginAttempts(4); // one more failure hits the configured max of 5
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("bad", user.getPasswordHash())).thenReturn(false);
+        UUID tenantId = UUID.randomUUID();
+        when(tenantClaimResolver.resolveTenantId(user.getId())).thenReturn(Optional.of(tenantId));
+
+        assertThatThrownBy(() -> service.login("admin", "bad", IP, UA))
+                .isInstanceOf(ApiException.class);
+
+        verify(loginHistoryRecorder)
+                .record(
+                        eq(LoginEventType.LOGIN_FAILURE),
+                        eq(user),
+                        eq("admin"),
+                        eq(IP),
+                        eq(UA),
+                        eq("invalid password — account now locked"));
+        ArgumentCaptor<com.ewos.identity.domain.events.IdentityEvent> captor =
+                ArgumentCaptor.forClass(com.ewos.identity.domain.events.IdentityEvent.class);
+        verify(identityEventPublisher).publish(captor.capture());
+        assertThat(captor.getValue().eventType())
+                .isEqualTo(com.ewos.identity.domain.events.IdentityEventType.ACCOUNT_LOCKED);
+        assertThat(captor.getValue().userId()).isEqualTo(user.getId());
+        assertThat(captor.getValue().tenantId()).isEqualTo(tenantId);
+    }
+
+    @Test
+    void loginDoesNotPublishAccountLockedEventBelowThreshold() {
+        User user = adminUser();
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("bad", user.getPasswordHash())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.login("admin", "bad", IP, UA))
+                .isInstanceOf(ApiException.class);
+
+        verify(identityEventPublisher, never()).publish(any());
     }
 
     @Test

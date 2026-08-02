@@ -17,4 +17,6 @@ public interface UserTenantMembershipRepository extends JpaRepository<UserTenant
 
     List<UserTenantMembership> findAllByUserIdInAndTenantId(
             Collection<UUID> userIds, UUID tenantId);
+
+    List<UserTenantMembership> findAllByTenantId(UUID tenantId);
 }
