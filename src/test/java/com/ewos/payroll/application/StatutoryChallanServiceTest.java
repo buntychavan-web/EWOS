@@ -3,21 +3,28 @@ package com.ewos.payroll.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ewos.employee.domain.Employee;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.RollUpChallanRequest;
+import com.ewos.payroll.domain.EmployeePayrollProfile;
+import com.ewos.payroll.domain.PfConfiguration;
+import com.ewos.payroll.domain.PfEcrFileExporter;
 import com.ewos.payroll.domain.StatutoryChallan;
 import com.ewos.payroll.domain.StatutoryChallanStatus;
 import com.ewos.payroll.domain.StatutoryDeduction;
+import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryChallanRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryDeductionRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +46,9 @@ class StatutoryChallanServiceTest {
 
     @Mock StatutoryChallanRepository challans;
     @Mock StatutoryDeductionRepository deductions;
+    @Mock EmployeePayrollProfileRepository employeePayrollProfiles;
+    @Mock StatutoryConfigResolver statutoryConfigResolver;
+    private final PfEcrFileExporter pfEcrFileExporter = new PfEcrFileExporter();
     @Mock ClientAccessGuard guard;
 
     private StatutoryChallanService service;
@@ -47,7 +57,15 @@ class StatutoryChallanServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StatutoryChallanService(challans, deductions, new PayrollMapper(), guard);
+        service =
+                new StatutoryChallanService(
+                        challans,
+                        deductions,
+                        employeePayrollProfiles,
+                        statutoryConfigResolver,
+                        pfEcrFileExporter,
+                        new PayrollMapper(),
+                        guard);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -240,6 +258,108 @@ class StatutoryChallanServiceTest {
         var response = service.cancel(tenantId, id);
 
         assertThat(response.status()).isEqualTo(StatutoryChallanStatus.CANCELLED);
+    }
+
+    @Test
+    void generateReturnFileRejectsNonPfChallans() {
+        UUID id = UUID.randomUUID();
+        StatutoryChallan c = new StatutoryChallan();
+        c.setId(id);
+        c.setCompanyId(companyId);
+        c.setCode("ESI");
+        when(challans.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(c));
+
+        assertThatThrownBy(() -> service.generateReturnFile(tenantId, id))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void generateReturnFileEmitsOneEcrLinePerEmployeeWithCappedWagesAndUan() {
+        UUID id = UUID.randomUUID();
+        StatutoryChallan c = new StatutoryChallan();
+        c.setId(id);
+        c.setCompanyId(companyId);
+        c.setCode("PF");
+        c.setPeriodMonth(202603);
+        when(challans.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(c));
+
+        UUID employeeId = UUID.randomUUID();
+        Employee employee = new Employee();
+        employee.setId(employeeId);
+        employee.setFirstName("Asha");
+        employee.setLastName("Rao");
+        StatutoryDeduction d = new StatutoryDeduction();
+        d.setEmployee(employee);
+        d.setTaxableBase(new BigDecimal("50000"));
+        d.setEmployeeContribution(new BigDecimal("1800"));
+        d.setEmployerContribution(new BigDecimal("1800"));
+        d.setEpsContribution(new BigDecimal("1250"));
+        when(deductions.findAllForChallan(tenantId, id)).thenReturn(List.of(d));
+
+        EmployeePayrollProfile profile = new EmployeePayrollProfile();
+        profile.setEmployee(employee);
+        profile.setStatutoryIdentifiersJson("{\"UAN\":\"100200300400\"}");
+        when(employeePayrollProfiles.findAllActiveForEmployees(eq(tenantId), anyList()))
+                .thenReturn(List.of(profile));
+
+        PfConfiguration pfConfig = new PfConfiguration();
+        pfConfig.setWageCeiling(new BigDecimal("15000"));
+        pfConfig.setEpsWageCeiling(new BigDecimal("15000"));
+        when(statutoryConfigResolver.resolve(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(companyId),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                        new StatutoryConfigResolver.ConfigSnapshot(
+                                pfConfig, null, null, Map.of(), Map.of(), Map.of(), Map.of(),
+                                Map.of(), Map.of()));
+
+        String file = service.generateReturnFile(tenantId, id);
+
+        assertThat(file).contains("100200300400#~#Asha Rao#~#50000#~#15000#~#15000#~#15000");
+        // EPF contribution remitted = employer total (1800) minus EPS carve-out (1250) = 550.
+        assertThat(file).contains("#~#550#~#1250#~#1800#~#0#~#0");
+    }
+
+    @Test
+    void generateReturnFileBlanksUanWhenNoActivePayrollProfileExists() {
+        UUID id = UUID.randomUUID();
+        StatutoryChallan c = new StatutoryChallan();
+        c.setId(id);
+        c.setCompanyId(companyId);
+        c.setCode("PF");
+        c.setPeriodMonth(202603);
+        when(challans.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(c));
+
+        Employee employee = new Employee();
+        employee.setId(UUID.randomUUID());
+        StatutoryDeduction d = new StatutoryDeduction();
+        d.setEmployee(employee);
+        d.setTaxableBase(new BigDecimal("10000"));
+        d.setEmployeeContribution(new BigDecimal("1200"));
+        d.setEmployerContribution(new BigDecimal("1200"));
+        d.setEpsContribution(BigDecimal.ZERO);
+        when(deductions.findAllForChallan(tenantId, id)).thenReturn(List.of(d));
+        when(employeePayrollProfiles.findAllActiveForEmployees(eq(tenantId), anyList()))
+                .thenReturn(List.of());
+        when(statutoryConfigResolver.resolve(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(companyId),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(
+                        new StatutoryConfigResolver.ConfigSnapshot(
+                                null, null, null, Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+                                Map.of()));
+
+        String file = service.generateReturnFile(tenantId, id);
+
+        assertThat(file).startsWith("#~#");
     }
 
     @Test

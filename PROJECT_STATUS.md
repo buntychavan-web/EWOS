@@ -1,15 +1,21 @@
 # EWOS — Project Status
 
-_Last updated: 2026-07-27._
+_Last updated: 2026-08-02 (Sprint 24I)._
 
 Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), the Sprint
 1.1–1.4/2.x/4 program (multi-tenancy, RBAC hardening, employee identity
 linking, workflow/approval engine), the 2026-07-27 CTO Production
-Readiness Audit remediation, and Sprint 15 (Enterprise Quality & Reliability
-Sprint, 2026-07-28). This is the single source of truth for what is
-delivered, what quality gates are enforced, and what technical debt still
-exists. §§ 1–10 below are the original Sprint 1–5 snapshot from 2026-07-09
-and are historical; §11 covers the 2026-07-27 audit; §13 covers Sprint 15.
+Readiness Audit remediation, Sprint 15 (Enterprise Quality & Reliability
+Sprint, 2026-07-28), and now Sprints 16 through 24H-2 plus the in-flight
+Sprint 24I (Payroll V1 completion + repository housekeeping, 2026-08-02).
+This is the single source of truth for what is delivered, what quality
+gates are enforced, and what technical debt still exists. §§ 1–10 below are
+the original Sprint 1–5 snapshot from 2026-07-09 and are historical; §11
+covers the 2026-07-27 audit; §13 covers Sprint 15; **§14 (new) backfills
+every sprint from 16 through 24H-2** — the T1–T12 Talent/Recruitment/Exit
+suite, the WP-001–009 foundation/payroll build-out, and the Payroll
+Statutory Calculation Engine — none of which had ever been recorded here
+before this update, and §15 (new) covers Sprint 24I itself.
 
 ---
 
@@ -98,6 +104,152 @@ cleared — real coverage rose meaningfully with this sprint's additions, but
 the floor itself was deliberately left unmoved pending a precise
 next-sprint measurement (§8.7's rule: never move the gate ahead of the
 tests that justify it).
+
+---
+
+## 14. Sprints 16 through 24H-2 — backfilled 2026-08-02
+
+**This section did not exist before Sprint 24I.** A live repository review on
+2026-08-02 found that this document's §1 "Delivered by sprint" was never
+updated past Sprint 5, and no later section captured the large amount of
+work that shipped afterward — including modules that predate even Sprint 15
+(§13) but were still never recorded here. This section closes that gap in
+summary form; it does not replace or restate the sprint-by-sprint detail
+that already lives in commit messages, ADRs, and business-rules docs.
+
+### Modules delivered (headline commits, oldest first)
+
+- **Platform foundation** — WP-003 (package restructure to master
+  architecture v1.0), WP-004 Organization Engine, WP-005 Employee module,
+  WP-006 Workflow engine (metadata-driven state machine), WP-007 Attendance,
+  WP-008 Leave, WP-009 Payroll (periods, components, compensation, runs,
+  payslips).
+- **Payroll** — M1 (configuration + employee payroll assignment) through M7
+  (accounting, ERP export, reports, dashboards), a v1.0 freeze declaration,
+  then continued anyway: N+1/JDBC-batching performance fix, a critical
+  no-BASIC-component run-failure fix, and Sprint 24H-1/24H-2's Statutory
+  Calculation Engine (PF/ESI/Professional Tax/LWF/TDS/Gratuity — see §15 for
+  24H-2 detail).
+- **Talent/Recruitment/Exit suite (T1–T12)** — Recruitment (job positions +
+  requisitions with workflow approval), ATS (candidates/applications/
+  pipeline), Interview Management, Offer Management & Pre-Boarding, Employee
+  Onboarding (plans/tasks/surveys), Probation & Confirmation, Performance
+  Management, Goals/OKR/KPI, Learning & Development, Competency Management,
+  Career & Succession Planning, Employee Exit & Alumni.
+- **Multi-tenancy / client-provider platform** — Sprint 14.1–14.4: tenant/
+  client/company/service-catalogue/provider foundation, payroll
+  collaboration + client-scoped authorization, data-exchange framework,
+  generic integration adapter framework, provider operations dashboard.
+- **Tenant resolution and access control** — Sprint 1.1 (`user_tenant_
+  memberships` + `tenant_access_grants`), Sprint 1.2 (1/4–4/4) `ClientAccessGuard`
+  rollout across every module, Sprint 1.3 Employee↔User identity link,
+  Sprint 1.4 Role & Permission Management + Role Usage Impact Analysis.
+- **Sprint 13** — CI static-analysis gate fix (PMD `UnusedPrivateMethod`
+  false positives).
+- **Sprint 16** — zero-coverage service tests across Payroll, Attendance,
+  and Onboarding; payroll certification evidence report; Final Audit
+  Readiness Report.
+- **Sprint 17** — Release Candidate Report; Backup & Disaster Recovery
+  Runbook (RC1).
+- **Sprint 18–20** — payroll run performance fix (N+1 elimination + JDBC
+  batching), CSP/Referrer-Policy security headers + gitleaks secret
+  scanning + Dependabot, JaCoCo floor raised to `0.45`, graceful shutdown
+  (SIGTERM drain) for v1.0 readiness.
+- **Sprint 21 UAT** — seeded Leave/Timesheet approval workflows for new
+  tenants; fixed `ClientAccessGuard` incorrectly blocking Leave/Attendance
+  for ordinary (non-client-managed) tenant users.
+- **Sprint 22A** — Recruitment backend stabilization.
+- **Sprint 23A** — closed Onboarding backend gaps (self-service + task
+  reassignment).
+- **Sprint 24A/24B/24D/24E** — Performance Management P0 gap closure, bulk
+  launch + cycle state machine + reports + notifications, Goals/Competency/
+  Development Plan self-service gap closure, PMS notification framework +
+  bulk import/export. (Sprint 24C does not appear in the commit history
+  under any code or docs; either skipped or never separately labeled —
+  flagged here rather than silently omitted.)
+- **Sprint 24F** — Platform Stabilization: tenant isolation, authorization,
+  notifications.
+- **Sprint 24G** — Authentication hardening: fixed failed-login
+  persistence, closed refresh-token reuse and password-change session gaps.
+
+### Current module inventory
+
+25 active modules under `com.ewos.*` (identity, tenancy, employee,
+organization, recruitment, ats, interview, offer, onboarding, probation,
+performance, goals, competency, learning, succession, exit, talent,
+attendance, leave, payroll, workflow, notification, dataexchange,
+integration, importexport), plus `ai`/`governance`/`analytics` explicitly
+reserved (`package-info.java` only, `Status: RESERVED`) per the master
+architecture's later milestones. 53 Flyway migrations (V1–V53) as of Sprint
+24H-2.
+
+---
+
+## 15. Sprint 24I — Payroll V1 completion + repository housekeeping (2026-08-02)
+
+Two-track sprint per CTO direction: continue Payroll toward V1 completion
+(primary) without spending the whole sprint on documentation, and bring this
+document and the branch history current (secondary), in parallel.
+
+### Payroll: PF ECR statutory return file generation
+
+**Gap found:** `StatutoryChallanService.file()` only ever recorded a
+manually-typed filing reference string — the system tracked that a filing
+happened but never produced the file a company actually needs to upload to
+the EPFO unified portal. Every other "government compliance output" bullet
+either already existed (bank advice generation, payroll reports, variance/
+cost-centre dashboards) or reduces to this same gap.
+
+**What shipped:**
+
+- `PfEcrFileExporter` (`com.ewos.payroll.domain`) — writes the EPFO
+  Electronic Challan-cum-Return (ECR) v2.0 text file, `#~#`-delimited, one
+  line per member: UAN, member name, gross/EPF/EPS/EDLI wages, EPF
+  contribution remitted, EPS contribution remitted, employee's own EPF
+  contribution remitted, NCP days, refund of advances.
+- `StatutoryChallanService.generateReturnFile(tenantId, id)` — resolves the
+  effective `PfConfiguration` for the challan's period (reusing the existing
+  `StatutoryConfigResolver`, no new resolution logic), bulk-fetches active
+  `EmployeePayrollProfile` rows for UAN lookup (no N+1), and only accepts PF
+  challans (400 for any other code — no invented filing format for schemes
+  this engine doesn't yet model precisely enough).
+- `GET /api/v1/payroll/challans/{id}/return-file` on
+  `StatutoryComplianceController` — mirrors the existing `BankAdviceController`/
+  `PayrollJournalController` CSV-export pattern exactly (same
+  `Content-Disposition: attachment` header shape, same access guard). No new
+  architectural pattern introduced.
+- Available regardless of challan status: a filer needs the file's content
+  *before* calling `file()` with the resulting reference, so the corrected
+  flow is roll up → download return file → file it with EPFO → record the
+  reference → pay.
+
+**Known, documented limitation:** NCP (non-contributory period) days and
+refund-of-advances are emitted as `0` rather than guessed, because neither
+is tracked anywhere in the statutory engine yet — see §7 item 17.
+
+**Tests:** `PfEcrFileExporterTest` (3, pure formatting), plus 3 new
+`StatutoryChallanServiceTest` cases (non-PF rejection, capped-wage
+formatting, missing-profile UAN blanking). Full payroll suite (322 tests,
+excluding the handful of Testcontainers-backed integration tests that can't
+run without a Docker daemon in this sandbox) is green; checkstyle/PMD/
+SpotBugs clean; CI (which has Docker) confirmed green on the pushed commit.
+
+### Documentation: this document
+
+- Backfilled §14 (sprints 16 through 24H-2 never previously recorded here).
+- Corrected §7 item 16, which claimed Payroll/Employee/Leave/Attendance/
+  Organization were "not in scope for this repo" — all five have shipped.
+- Added §7 item 17 for the ECR NCP-days/refund-of-advances gap.
+
+### Branch reconciliation
+
+See the branch reconciliation report delivered alongside this sprint (not
+duplicated here to avoid this document going stale again the moment a
+branch is deleted). Summary: `claude/environment-selection-e607ds` →
+`claude/sprint-24h2-recovery-6q6u16` is the one canonical lineage (contains
+every sprint in §14/§15); `main`/`ewos-main` are stale ancestors stuck at
+Sprint 20; `claude/repository-selection-575dn9` is a divergent, abandoned
+10-commit fork from ~Sprint 5 with no relationship to current work.
 
 ---
 
@@ -369,7 +521,8 @@ Prioritized. None of these blocks moving into the next sprint, but each should b
 15. **Coverage exclusions could shrink** — `common/persistence/AuditorProvider` and `common/web/CorrelationIdFilter` deserve tests; currently the coverage exemption on `common/**` masks them.
 
 ### Not in scope for this repo
-16. Employee, Payroll, Leave, Attendance, and Organization modules — deferred to their respective sprints.
+16. ~~Employee, Payroll, Leave, Attendance, and Organization modules — deferred to their respective sprints.~~ ✅ **Resolved.** All five shipped (WP-005/007/008/009, plus Sprint 6/7 Company/Organization work referenced elsewhere) well before this correction — this line was simply never updated. See §14.
+17. **PF ECR return file doesn't track NCP days or refund of advances** (Sprint 24I) — both statutory-return columns are emitted as `0` because neither is threaded through `StatutoryDeductionService` yet. A filer must correct these two columns by hand until LOP/non-contributory days are tracked at the statutory-deduction level. Also: return-file generation only supports the PF scheme today — ESI/PT/LWF challans get a 400 from `generateReturnFile` rather than an invented file format.
 
 ---
 
@@ -521,3 +674,4 @@ docker compose up --build
 - **2026-07-27** — CTO Production Readiness Audit: added §0 summarizing the audit's changes, marked tech-debt items #2–#4 in §7 as resolved (CORS bean, actuator exposure, JWT secret guard — plus the new `AdminPasswordGuard`), added §11 "Remaining known risks" reflecting this pass's findings, and noted that this document's §§1–10 predate the Sprint 1.1–4/2.x program and were not rewritten wholesale in this pass — treat sprint-by-sprint detail past Sprint 5 as living in each sprint's own completion report rather than here.
 - **2026-07-27 (P9 validation)** — Fixing the CI trigger only got CI *running*; getting it to actually complete uncovered six previously-invisible bugs (three PMD false positives, a non-proxyable `final @Configuration` class, two ambiguous-Spring-constructor bugs, one dead derived-query method, and a Hibernate `@SQLDelete`/`@Version` bug that meant `User`/`Role`/`Permission` soft-delete had never worked) — see §0's new subsection for detail. Clearing all six let `mvn verify` reach `jacoco-check` for the first time ever, which is how the real ~33%-vs-80%-claimed coverage gap in §4 was found. Rather than discount the gate, added `ExitServiceTest`/`SuccessionServiceTest` (the two largest of 206 zero-coverage service classes) to genuinely clear a new `0.35` floor, and documented a staged `35% → 50% → 65% → 80%` roadmap tied to Beta/RC/GA in §11.
 - **2026-07-28 (Sprint 15 — Enterprise Quality & Reliability)** — Quality-only sprint, no new features: 16 new test files / 149 new test methods across payroll, statutory compliance, employee lifecycle, organization, and a permanent regression suite for two of the P9 findings. Found and fixed one new bug while writing tests (`StatutoryDeductionService`'s in-run duplicate-code check). Backend now at 986 tests, 0 failures, CI still green. Added §13 with full detail and a new `TESTING.md` guide.
+- **2026-08-02 (Sprint 24I — Payroll V1 completion + housekeeping)** — A live repository review found this document hadn't been updated since Sprint 15, despite the entire T1–T12 Talent/Recruitment/Exit suite, the WP-001–009 foundation/payroll build-out, and Sprints 16 through 24H-2 having shipped in the meantime (some of it, per git history, *before* Sprint 15). Added §14 to backfill all of it in summary form, and §15 documenting Sprint 24I itself: the PF ECR statutory return-file feature (closing the "government compliance output" gap identified in the CTO review that opened this sprint) and this document update. Corrected §7 item 16 (falsely claimed Payroll/Employee/Leave/Attendance/Organization were out of scope) and added item 17 for the ECR feature's known NCP-days/refund-of-advances limitation.

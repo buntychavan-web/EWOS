@@ -438,7 +438,7 @@ public final class PayrollMapper {
         }
     }
 
-    private static Map<String, String> readIdentifiers(String json) {
+    public static Map<String, String> readIdentifiers(String json) {
         if (json == null || json.isBlank()) {
             return Collections.emptyMap();
         }
