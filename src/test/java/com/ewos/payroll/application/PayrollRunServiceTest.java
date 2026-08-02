@@ -18,6 +18,9 @@ import com.ewos.payroll.domain.PayrollPeriodStatus;
 import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollRunStatus;
+import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
+import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
+import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
@@ -55,6 +58,15 @@ class PayrollRunServiceTest {
     @Mock LeaveRequestRepository leaves;
     @Mock ApplicationEventPublisher events;
     @Mock ClientAccessGuard guard;
+    @Mock StatutoryConfigResolver statutoryConfigResolver;
+    @Mock PfCalculationService pfCalculationService;
+    @Mock EsiCalculationService esiCalculationService;
+    @Mock ProfessionalTaxCalculationService professionalTaxCalculationService;
+    @Mock LwfCalculationService lwfCalculationService;
+    @Mock IncomeTaxCalculationService incomeTaxCalculationService;
+    @Mock EmployeePayrollProfileRepository payrollProfiles;
+    @Mock EmployeeEsiEnrollmentRepository esiEnrollments;
+    @Mock EmployeeTaxDeclarationRepository taxDeclarations;
 
     private PayrollRunService service;
 
@@ -73,7 +85,16 @@ class PayrollRunServiceTest {
                         new PayrollPolicy(),
                         new PayrollMapper(),
                         events,
-                        guard);
+                        guard,
+                        statutoryConfigResolver,
+                        pfCalculationService,
+                        esiCalculationService,
+                        professionalTaxCalculationService,
+                        lwfCalculationService,
+                        incomeTaxCalculationService,
+                        payrollProfiles,
+                        esiEnrollments,
+                        taxDeclarations);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(

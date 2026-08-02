@@ -59,6 +59,10 @@ public class StatutoryDeduction extends AuditableEntity {
     @Column(name = "employer_contribution", nullable = false, precision = 18, scale = 4)
     private BigDecimal employerContribution = BigDecimal.ZERO;
 
+    /** PF only — the carve-out of {@code employerContribution} routed to EPS (pension), not EPF. */
+    @Column(name = "eps_contribution", nullable = false, precision = 18, scale = 4)
+    private BigDecimal epsContribution = BigDecimal.ZERO;
+
     @Column(name = "total_amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
@@ -159,6 +163,14 @@ public class StatutoryDeduction extends AuditableEntity {
 
     public void setEmployerContribution(BigDecimal employerContribution) {
         this.employerContribution = employerContribution;
+    }
+
+    public BigDecimal getEpsContribution() {
+        return epsContribution;
+    }
+
+    public void setEpsContribution(BigDecimal epsContribution) {
+        this.epsContribution = epsContribution;
     }
 
     public BigDecimal getTotalAmount() {

@@ -48,6 +48,8 @@ class FinalSettlementServiceTest {
     @Mock PayrollArrearRepository arrears;
     @Mock PayrollRunService runs;
     @Mock ClientAccessGuard guard;
+    @Mock StatutoryConfigResolver statutoryConfigResolver;
+    @Mock EmployeeCompensationService compensations;
 
     private FinalSettlementService service;
     private final UUID tenantId = UUID.randomUUID();
@@ -58,7 +60,15 @@ class FinalSettlementServiceTest {
     void setUp() {
         service =
                 new FinalSettlementService(
-                        repository, employees, arrears, runs, new PayrollMapper(), guard);
+                        repository,
+                        employees,
+                        arrears,
+                        runs,
+                        new PayrollMapper(),
+                        guard,
+                        new GratuityCalculationService(),
+                        statutoryConfigResolver,
+                        compensations);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -97,6 +107,8 @@ class FinalSettlementServiceTest {
                 new BigDecimal("12"),
                 new BigDecimal("15000"),
                 new BigDecimal("50000"),
+                "No gratuity configuration/compensation on record in this test — manual entry",
+                null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
@@ -186,6 +198,8 @@ class FinalSettlementServiceTest {
                         null,
                         null,
                         null,
+                        null,
+                        null,
                         null);
 
         assertThatThrownBy(() -> service.update(tenantId, s.getId(), req))
@@ -204,6 +218,8 @@ class FinalSettlementServiceTest {
                         null,
                         null,
                         new BigDecimal("18000"),
+                        null,
+                        null,
                         null,
                         null,
                         null,

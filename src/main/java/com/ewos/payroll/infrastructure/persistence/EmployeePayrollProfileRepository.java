@@ -30,4 +30,10 @@ public interface EmployeePayrollProfileRepository
                     + "and p.payGroup.id = :payGroupId and p.active = true")
     List<EmployeePayrollProfile> findActiveByPayGroup(
             @Param("tenantId") UUID tenantId, @Param("payGroupId") UUID payGroupId);
+
+    @Query(
+            "select p from EmployeePayrollProfile p where p.tenantId = :tenantId "
+                    + "and p.employee.id in :employeeIds and p.active = true")
+    List<EmployeePayrollProfile> findAllActiveForEmployees(
+            @Param("tenantId") UUID tenantId, @Param("employeeIds") List<UUID> employeeIds);
 }

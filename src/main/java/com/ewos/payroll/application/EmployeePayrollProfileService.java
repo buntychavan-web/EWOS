@@ -83,6 +83,14 @@ public class EmployeePayrollProfileService {
         p.setPayGroup(group);
         p.setTaxRegime(request.taxRegime());
         p.setCountryCode(request.countryCode());
+        p.setStateCode(request.stateCode());
+        if (request.internationalWorker() != null) {
+            p.setInternationalWorker(request.internationalWorker());
+        }
+        if (request.vpfEnabled() != null) {
+            p.setVpfEnabled(request.vpfEnabled());
+        }
+        p.setVpfPercentage(request.vpfPercentage());
         p.setStatutoryIdentifiersJson(
                 PayrollMapper.writeIdentifiers(request.statutoryIdentifiers()));
         p.setEffectiveFrom(request.effectiveFrom());

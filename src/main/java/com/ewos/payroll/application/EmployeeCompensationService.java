@@ -151,6 +151,15 @@ public class EmployeeCompensationService {
                                         "No active compensation for employee " + employeeId));
     }
 
+    /**
+     * Same lookup as {@link #requireActiveForEmployee}, but empty instead of throwing when absent.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<EmployeeCompensation> activeForEmployeeOptional(
+            UUID tenantId, UUID employeeId) {
+        return repository.findActiveForEmployee(tenantId, employeeId);
+    }
+
     @Transactional(readOnly = true)
     public List<EmployeeCompensation> activeForCompany(UUID tenantId, UUID companyId) {
         return repository.findActiveForCompany(tenantId, companyId);

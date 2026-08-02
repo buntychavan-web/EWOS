@@ -16,6 +16,8 @@ import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.StatutoryClassifier;
 import com.ewos.payroll.domain.StatutoryDeduction;
+import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
+import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryDeductionRepository;
@@ -45,6 +47,12 @@ class StatutoryDeductionServiceTest {
     @Mock PayrollRunRepository runs;
     @Mock PayslipRepository payslips;
     @Mock ClientAccessGuard guard;
+    @Mock StatutoryConfigResolver statutoryConfigResolver;
+    @Mock PfCalculationService pfCalculationService;
+    @Mock EsiCalculationService esiCalculationService;
+    @Mock LwfCalculationService lwfCalculationService;
+    @Mock EmployeePayrollProfileRepository payrollProfiles;
+    @Mock EmployeeEsiEnrollmentRepository esiEnrollments;
 
     private StatutoryDeductionService service;
     private final UUID tenantId = UUID.randomUUID();
@@ -60,7 +68,13 @@ class StatutoryDeductionServiceTest {
                         payslips,
                         new StatutoryClassifier(),
                         new PayrollMapper(),
-                        guard);
+                        guard,
+                        statutoryConfigResolver,
+                        pfCalculationService,
+                        esiCalculationService,
+                        lwfCalculationService,
+                        payrollProfiles,
+                        esiEnrollments);
     }
 
     private PayrollRun runIn(UUID company) {

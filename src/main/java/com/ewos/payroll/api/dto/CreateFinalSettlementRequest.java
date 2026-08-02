@@ -17,6 +17,8 @@ public record CreateFinalSettlementRequest(
         @DecimalMin("0.00") BigDecimal unusedLeaveDays,
         @DecimalMin("0.0000") BigDecimal encashmentAmount,
         @DecimalMin("0.0000") BigDecimal gratuityAmount,
+        @Size(max = 512) String gratuityOverrideReason,
+        @Pattern(regexp = "^(DEATH|DISABLEMENT)$") String gratuityWaiverReason,
         @DecimalMin("0.0000") BigDecimal noticePayRecovery,
         @DecimalMin("0.0000") BigDecimal noticePayReceivable,
         @DecimalMin("0.0000") BigDecimal otherEarnings,

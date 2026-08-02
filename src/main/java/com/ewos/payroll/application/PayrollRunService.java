@@ -6,11 +6,21 @@ import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
+import com.ewos.payroll.application.EsiCalculationService.EsiResult;
+import com.ewos.payroll.application.IncomeTaxCalculationService.TdsInput;
+import com.ewos.payroll.application.IncomeTaxCalculationService.TdsResult;
+import com.ewos.payroll.application.LwfCalculationService.LwfResult;
+import com.ewos.payroll.application.PfCalculationService.PfResult;
+import com.ewos.payroll.application.StatutoryConfigResolver.ConfigSnapshot;
 import com.ewos.payroll.domain.EmployeeCompensation;
+import com.ewos.payroll.domain.EmployeeEsiEnrollment;
+import com.ewos.payroll.domain.EmployeePayrollProfile;
+import com.ewos.payroll.domain.EmployeeTaxDeclaration;
 import com.ewos.payroll.domain.LopCalculator;
 import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.domain.PayrollCalculator;
 import com.ewos.payroll.domain.PayrollCalculator.ComputedPayslip;
+import com.ewos.payroll.domain.PayrollCalculator.StatutoryAmounts;
 import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.PayrollRun;
@@ -20,8 +30,12 @@ import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.PayslipStatus;
+import com.ewos.payroll.domain.TaxRegime;
 import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
+import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
+import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
+import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
@@ -31,8 +45,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
@@ -72,6 +91,15 @@ public class PayrollRunService {
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
     private final ClientAccessGuard guard;
+    private final StatutoryConfigResolver statutoryConfigResolver;
+    private final PfCalculationService pfCalculationService;
+    private final EsiCalculationService esiCalculationService;
+    private final ProfessionalTaxCalculationService professionalTaxCalculationService;
+    private final LwfCalculationService lwfCalculationService;
+    private final IncomeTaxCalculationService incomeTaxCalculationService;
+    private final EmployeePayrollProfileRepository payrollProfiles;
+    private final EmployeeEsiEnrollmentRepository esiEnrollments;
+    private final EmployeeTaxDeclarationRepository taxDeclarations;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
@@ -86,7 +114,16 @@ public class PayrollRunService {
             PayrollPolicy policy,
             PayrollMapper mapper,
             ApplicationEventPublisher events,
-            ClientAccessGuard guard) {
+            ClientAccessGuard guard,
+            StatutoryConfigResolver statutoryConfigResolver,
+            PfCalculationService pfCalculationService,
+            EsiCalculationService esiCalculationService,
+            ProfessionalTaxCalculationService professionalTaxCalculationService,
+            LwfCalculationService lwfCalculationService,
+            IncomeTaxCalculationService incomeTaxCalculationService,
+            EmployeePayrollProfileRepository payrollProfiles,
+            EmployeeEsiEnrollmentRepository esiEnrollments,
+            EmployeeTaxDeclarationRepository taxDeclarations) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -99,6 +136,15 @@ public class PayrollRunService {
         this.mapper = mapper;
         this.events = events;
         this.guard = guard;
+        this.statutoryConfigResolver = statutoryConfigResolver;
+        this.pfCalculationService = pfCalculationService;
+        this.esiCalculationService = esiCalculationService;
+        this.professionalTaxCalculationService = professionalTaxCalculationService;
+        this.lwfCalculationService = lwfCalculationService;
+        this.incomeTaxCalculationService = incomeTaxCalculationService;
+        this.payrollProfiles = payrollProfiles;
+        this.esiEnrollments = esiEnrollments;
+        this.taxDeclarations = taxDeclarations;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
@@ -213,6 +259,61 @@ public class PayrollRunService {
                                     .stream()
                                     .collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
 
+            Map<UUID, EmployeePayrollProfile> profileByEmployee = new HashMap<>();
+            Map<UUID, EmployeeEsiEnrollment> esiEnrollmentByEmployee = new HashMap<>();
+            Map<UUID, EmployeeTaxDeclaration> taxDeclarationByEmployee = new HashMap<>();
+            String fiscalYear = null;
+            ConfigSnapshot statutoryConfig = null;
+            if (!employeeIds.isEmpty()) {
+                profileByEmployee.putAll(
+                        payrollProfiles
+                                .findAllActiveForEmployees(run.getTenantId(), employeeIds)
+                                .stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                p -> p.getEmployee().getId(),
+                                                p -> p,
+                                                (a, b) -> a)));
+
+                fiscalYear = com.ewos.payroll.domain.FiscalYear.labelFor(period.getPeriodStart());
+                LocalDate esiPeriodStart =
+                        esiCalculationService.contributionPeriodStart(period.getPeriodStart());
+                esiEnrollmentByEmployee.putAll(
+                        esiEnrollments
+                                .findAllByTenantIdAndEmployeeIdInAndContributionPeriodStart(
+                                        run.getTenantId(), employeeIds, esiPeriodStart)
+                                .stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                e -> e.getEmployee().getId(),
+                                                e -> e,
+                                                (a, b) -> a)));
+
+                taxDeclarationByEmployee.putAll(
+                        taxDeclarations
+                                .findAllByTenantIdAndEmployeeIdInAndFiscalYearAndActiveTrue(
+                                        run.getTenantId(), employeeIds, fiscalYear)
+                                .stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                d -> d.getEmployee().getId(),
+                                                d -> d,
+                                                (a, b) -> a)));
+
+                Set<String> stateCodes =
+                        profileByEmployee.values().stream()
+                                .map(EmployeePayrollProfile::getStateCode)
+                                .filter(java.util.Objects::nonNull)
+                                .collect(Collectors.toSet());
+                statutoryConfig =
+                        statutoryConfigResolver.resolve(
+                                run.getTenantId(),
+                                run.getCompanyId(),
+                                period.getPeriodStart(),
+                                fiscalYear,
+                                stateCodes);
+            }
+
             for (EmployeeCompensation comp : active) {
                 Employee emp = comp.getEmployee();
                 if (emp == null) {
@@ -235,8 +336,25 @@ public class PayrollRunService {
                 List<PayrollArrear> pendingArrears =
                         arrearsByEmployee.getOrDefault(emp.getId(), List.of());
 
+                EmployeePayrollProfile profile = profileByEmployee.get(emp.getId());
+                StatutoryAmounts statutoryAmounts =
+                        resolveStatutoryAmounts(
+                                run,
+                                period,
+                                comp,
+                                lopDays,
+                                workingDays,
+                                pendingArrears,
+                                emp,
+                                profile,
+                                statutoryConfig,
+                                esiEnrollmentByEmployee,
+                                taxDeclarationByEmployee,
+                                fiscalYear);
+
                 ComputedPayslip computed =
-                        calculator.compute(comp, lopDays, workingDays, pendingArrears);
+                        calculator.compute(
+                                comp, lopDays, workingDays, pendingArrears, statutoryAmounts);
 
                 Payslip payslip = new Payslip();
                 payslip.setTenantId(run.getTenantId());
@@ -349,6 +467,140 @@ public class PayrollRunService {
     private PayrollRun require(UUID tenantId, UUID id) {
         return runs.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Payroll run not found"));
+    }
+
+    /**
+     * Resolves this employee's employee-side PF/ESI/PT/LWF/TDS deduction amounts for the period.
+     * Runs a throwaway preview compute (no statutory amounts) purely to get the gross/basic/HRA the
+     * statutory calculation services need as their wage basis — the payslip actually persisted is
+     * built from a second, final {@link PayrollCalculator#compute} call once these amounts are
+     * known. Employees without an {@link EmployeePayrollProfile} get no statutory deductions: the
+     * profile is where a company opts an employee into the statutory engine, so its absence is a
+     * configuration gap for the company to close, not something to guess at here. Persists any
+     * newly-created ESI contribution-period enrollment and the updated tax-declaration YTD
+     * accumulators as a side effect, same as the rest of this method's bulk-resolved, per-run maps.
+     */
+    @SuppressWarnings("PMD.ExcessiveParameterList")
+    private StatutoryAmounts resolveStatutoryAmounts(
+            PayrollRun run,
+            PayrollPeriod period,
+            EmployeeCompensation comp,
+            BigDecimal lopDays,
+            BigDecimal workingDays,
+            List<PayrollArrear> pendingArrears,
+            Employee emp,
+            EmployeePayrollProfile profile,
+            ConfigSnapshot statutoryConfig,
+            Map<UUID, EmployeeEsiEnrollment> esiEnrollmentByEmployee,
+            Map<UUID, EmployeeTaxDeclaration> taxDeclarationByEmployee,
+            String fiscalYear) {
+        if (profile == null) {
+            return StatutoryAmounts.zero();
+        }
+
+        ComputedPayslip preview = calculator.compute(comp, lopDays, workingDays, pendingArrears);
+        BigDecimal grossWage = preview.gross();
+
+        PfResult pfResult =
+                pfCalculationService.calculate(
+                        statutoryConfig.pfConfiguration(),
+                        grossWage,
+                        profile.isInternationalWorker(),
+                        profile.isVpfEnabled(),
+                        profile.getVpfPercentage());
+
+        Optional<EmployeeEsiEnrollment> existingEnrollment =
+                Optional.ofNullable(esiEnrollmentByEmployee.get(emp.getId()));
+        EsiResult esiResult =
+                esiCalculationService.calculate(
+                        statutoryConfig.esiConfiguration(),
+                        existingEnrollment,
+                        period.getPeriodStart(),
+                        emp.getHireDate(),
+                        grossWage,
+                        emp,
+                        run.getTenantId(),
+                        run.getCompanyId());
+        if (esiResult.enrollmentIsNew() && esiResult.enrollment() != null) {
+            EmployeeEsiEnrollment saved = esiEnrollments.save(esiResult.enrollment());
+            esiEnrollmentByEmployee.put(emp.getId(), saved);
+        }
+
+        EmployeeTaxDeclaration declaration = taxDeclarationByEmployee.get(emp.getId());
+        if (declaration == null) {
+            declaration = new EmployeeTaxDeclaration();
+            declaration.setTenantId(run.getTenantId());
+            declaration.setCompanyId(run.getCompanyId());
+            declaration.setEmployee(emp);
+            declaration.setFiscalYear(fiscalYear);
+            declaration.setRegime(regimeFor(profile));
+        }
+
+        BigDecimal ptAmount =
+                professionalTaxCalculationService.calculate(
+                        statutoryConfig.professionalTaxSlabsFor(profile.getStateCode()),
+                        emp.getGenderCode(),
+                        grossWage,
+                        declaration.getYtdProfessionalTaxPaid());
+
+        LwfResult lwfResult =
+                lwfCalculationService.calculate(
+                        statutoryConfig.lwfConfigurationFor(profile.getStateCode()),
+                        period.getPeriodStart());
+
+        TaxRegime regime = regimeFor(profile);
+        BigDecimal monthlyHraReceived = findLineAmount(preview, "HRA");
+        int monthsRemaining =
+                com.ewos.payroll.domain.FiscalYear.monthsRemaining(period.getPeriodStart());
+        TdsInput tdsInput =
+                new TdsInput(
+                        grossWage,
+                        preview.basicApplied(),
+                        monthlyHraReceived,
+                        monthsRemaining,
+                        declaration);
+        TdsResult tdsResult =
+                incomeTaxCalculationService.calculate(
+                        regime,
+                        statutoryConfig.incomeTaxSlabsFor(regime),
+                        statutoryConfig.incomeTaxPolicyFor(regime),
+                        statutoryConfig.surchargeSlabsFor(regime),
+                        tdsInput);
+
+        declaration.setYtdTaxableSalary(declaration.getYtdTaxableSalary().add(grossWage));
+        declaration.setYtdHraReceived(declaration.getYtdHraReceived().add(monthlyHraReceived));
+        declaration.setYtdTdsDeducted(
+                declaration.getYtdTdsDeducted().add(tdsResult.monthlyTdsRecovery()));
+        declaration.setYtdProfessionalTaxPaid(
+                declaration.getYtdProfessionalTaxPaid().add(ptAmount));
+        EmployeeTaxDeclaration savedDeclaration = taxDeclarations.save(declaration);
+        taxDeclarationByEmployee.put(emp.getId(), savedDeclaration);
+
+        return new StatutoryAmounts(
+                pfResult.employeeContribution(),
+                esiResult.employeeContribution(),
+                ptAmount,
+                lwfResult.employeeContribution(),
+                tdsResult.monthlyTdsRecovery());
+    }
+
+    private static BigDecimal findLineAmount(ComputedPayslip payslip, String componentCode) {
+        return payslip.lines().stream()
+                .filter(l -> componentCode.equalsIgnoreCase(l.getComponentCodeSnapshot()))
+                .map(PayslipLine::getAmount)
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private static TaxRegime regimeFor(EmployeePayrollProfile profile) {
+        if (profile == null || profile.getTaxRegime() == null || profile.getTaxRegime().isBlank()) {
+            return TaxRegime.NEW;
+        }
+        try {
+            return TaxRegime.valueOf(profile.getTaxRegime().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return TaxRegime.NEW;
+        }
     }
 
     private static String nameFor(Employee e) {
