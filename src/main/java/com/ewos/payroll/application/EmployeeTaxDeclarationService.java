@@ -5,11 +5,16 @@ import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.CreateEmployeeTaxDeclarationRequest;
 import com.ewos.payroll.api.dto.EmployeeTaxDeclarationResponse;
+import com.ewos.payroll.api.dto.TaxDeclarationProofResponse;
 import com.ewos.payroll.api.dto.UpdateEmployeeTaxDeclarationRequest;
+import com.ewos.payroll.api.dto.UploadTaxDeclarationProofRequest;
 import com.ewos.payroll.domain.EmployeeTaxDeclaration;
+import com.ewos.payroll.domain.TaxDeclarationProof;
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
+import com.ewos.payroll.infrastructure.persistence.TaxDeclarationProofRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -27,16 +32,19 @@ public class EmployeeTaxDeclarationService {
 
     private final EmployeeTaxDeclarationRepository repository;
     private final EmployeeRepository employees;
+    private final TaxDeclarationProofRepository proofs;
     private final PayrollMapper mapper;
     private final ClientAccessGuard guard;
 
     public EmployeeTaxDeclarationService(
             EmployeeTaxDeclarationRepository repository,
             EmployeeRepository employees,
+            TaxDeclarationProofRepository proofs,
             PayrollMapper mapper,
             ClientAccessGuard guard) {
         this.repository = repository;
         this.employees = employees;
+        this.proofs = proofs;
         this.mapper = mapper;
         this.guard = guard;
     }
@@ -155,6 +163,39 @@ public class EmployeeTaxDeclarationService {
         EmployeeTaxDeclaration d = require(tenantId, id);
         guard.requireAccessForCompany(d.getCompanyId());
         repository.delete(d);
+    }
+
+    /**
+     * Records an investment-proof document against a declaration — metadata plus a {@code
+     * storageUri} only (see {@link TaxDeclarationProof}); this backend never handles the file bytes
+     * themselves.
+     */
+    public TaxDeclarationProofResponse uploadProof(
+            UUID tenantId, UUID declarationId, UploadTaxDeclarationProofRequest request) {
+        EmployeeTaxDeclaration declaration = require(tenantId, declarationId);
+        guard.requireAccessForCompany(declaration.getCompanyId());
+        TaxDeclarationProof p = new TaxDeclarationProof();
+        p.setTenantId(tenantId);
+        p.setCompanyId(declaration.getCompanyId());
+        p.setEmployeeTaxDeclaration(declaration);
+        p.setProofType(request.proofType());
+        p.setFilename(request.filename());
+        p.setMimeType(request.mimeType());
+        p.setSizeBytes(request.sizeBytes());
+        p.setStorageUri(request.storageUri());
+        p.setNotes(request.notes());
+        p.setUploadedAt(Instant.now());
+        return mapper.toResponse(proofs.save(p));
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxDeclarationProofResponse> proofsForDeclaration(
+            UUID tenantId, UUID declarationId) {
+        EmployeeTaxDeclaration declaration = require(tenantId, declarationId);
+        guard.requireAccessForCompany(declaration.getCompanyId());
+        return proofs.findAllForDeclaration(tenantId, declarationId).stream()
+                .map(mapper::toResponse)
+                .toList();
     }
 
     private EmployeeTaxDeclaration require(UUID tenantId, UUID id) {

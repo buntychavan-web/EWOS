@@ -49,4 +49,21 @@ public class PayslipService {
         guard.requireAccessForCompanies(slips.stream().map(Payslip::getCompanyId).toList());
         return slips.stream().map(mapper::toResponse).toList();
     }
+
+    /**
+     * Self-service payslip detail: an ownership check (is this the caller's own payslip?) rather
+     * than {@link ClientAccessGuard}'s company-access check — an employee reading their own record
+     * needs no company-level payroll authority at all.
+     */
+    public PayslipResponse getOwnPayslip(UUID tenantId, UUID employeeId, UUID id) {
+        Payslip payslip =
+                repository
+                        .findByIdAndTenantId(id, tenantId)
+                        .orElseThrow(
+                                () -> new ApiException(HttpStatus.NOT_FOUND, "Payslip not found"));
+        if (payslip.getEmployee() == null || !employeeId.equals(payslip.getEmployee().getId())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Payslip not found");
+        }
+        return mapper.toResponse(payslip);
+    }
 }

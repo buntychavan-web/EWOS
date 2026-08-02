@@ -1,9 +1,11 @@
 package com.ewos.payroll.api;
 
 import com.ewos.payroll.api.dto.PayrollRunResponse;
+import com.ewos.payroll.api.dto.PayrollRunTimelineEventResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
 import com.ewos.payroll.api.dto.StartSupplementaryRunRequest;
 import com.ewos.payroll.application.PayrollRunService;
+import com.ewos.payroll.domain.PayrollRunStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -86,5 +89,23 @@ public class PayrollRunController {
     public List<PayrollRunResponse> forPeriod(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID periodId) {
         return service.forPeriod(tenantId, periodId);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "Run history for a company across every period, optionally by status")
+    public List<PayrollRunResponse> forCompany(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @RequestParam UUID companyId,
+            @RequestParam(required = false) PayrollRunStatus status) {
+        return service.forCompany(tenantId, companyId, status);
+    }
+
+    @GetMapping("/{id}/timeline")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "This run's activity timeline: created/started/completed/finalized/frozen")
+    public List<PayrollRunTimelineEventResponse> timeline(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return service.timeline(tenantId, id);
     }
 }

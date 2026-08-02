@@ -5,6 +5,7 @@ import com.ewos.leave.domain.LeaveRequest;
 import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
+import com.ewos.payroll.api.dto.PayrollRunTimelineEventResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
 import com.ewos.payroll.application.EsiCalculationService.EsiResult;
 import com.ewos.payroll.application.IncomeTaxCalculationService.TdsInput;
@@ -27,6 +28,7 @@ import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollRunStatus;
 import com.ewos.payroll.domain.PayrollRunType;
 import com.ewos.payroll.domain.PayrollValidationReport;
+import com.ewos.payroll.domain.PayrollValidator;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.PayslipStatus;
@@ -46,6 +48,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -100,6 +104,7 @@ public class PayrollRunService {
     private final EmployeePayrollProfileRepository payrollProfiles;
     private final EmployeeEsiEnrollmentRepository esiEnrollments;
     private final EmployeeTaxDeclarationRepository taxDeclarations;
+    private final PayrollValidator validator;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
@@ -123,7 +128,8 @@ public class PayrollRunService {
             IncomeTaxCalculationService incomeTaxCalculationService,
             EmployeePayrollProfileRepository payrollProfiles,
             EmployeeEsiEnrollmentRepository esiEnrollments,
-            EmployeeTaxDeclarationRepository taxDeclarations) {
+            EmployeeTaxDeclarationRepository taxDeclarations,
+            PayrollValidator validator) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -145,6 +151,7 @@ public class PayrollRunService {
         this.payrollProfiles = payrollProfiles;
         this.esiEnrollments = esiEnrollments;
         this.taxDeclarations = taxDeclarations;
+        this.validator = validator;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
@@ -205,18 +212,26 @@ public class PayrollRunService {
         PayrollRun saved = runs.save(run);
         publishRun(PayrollEventType.RUN_STARTED, saved);
 
+        List<EmployeeCompensation> active =
+                (employeeFilter == null)
+                        ? compensations.activeForCompany(saved.getTenantId(), saved.getCompanyId())
+                        : compensations.activeForEmployeeIds(saved.getTenantId(), employeeFilter);
+        List<Employee> employeesInScope =
+                active.stream()
+                        .map(EmployeeCompensation::getEmployee)
+                        .filter(e -> e != null)
+                        .toList();
+        recordValidationReport(saved, validator.validate(saved.getTenantId(), employeesInScope));
+
         saved.setStatus(PayrollRunStatus.PROCESSING);
         saved.setStartedAt(Instant.now());
         saved.setStartedBy(actor);
-        processPayslips(saved, period, employeeFilter);
+        processPayslips(saved, period, active);
         return mapper.toResponse(saved);
     }
 
-    private void processPayslips(PayrollRun run, PayrollPeriod period, List<UUID> employeeFilter) {
-        List<EmployeeCompensation> active =
-                (employeeFilter == null)
-                        ? compensations.activeForCompany(run.getTenantId(), run.getCompanyId())
-                        : compensations.activeForEmployeeIds(run.getTenantId(), employeeFilter);
+    private void processPayslips(
+            PayrollRun run, PayrollPeriod period, List<EmployeeCompensation> active) {
 
         BigDecimal workingDays =
                 lop.weekdaysBetween(period.getPeriodStart(), period.getPeriodEnd());
@@ -462,6 +477,70 @@ public class PayrollRunService {
         List<PayrollRun> found = runs.findAllForPeriod(tenantId, periodId);
         guard.requireAccessForCompanies(found.stream().map(PayrollRun::getCompanyId).toList());
         return found.stream().map(mapper::toResponse).toList();
+    }
+
+    /** Run history for a company across every period — "Payroll Run History" (Sprint 24J). */
+    @Transactional(readOnly = true)
+    public List<PayrollRunResponse> forCompany(
+            UUID tenantId, UUID companyId, PayrollRunStatus status) {
+        guard.requireAccessForCompany(companyId);
+        List<PayrollRun> found =
+                status == null
+                        ? runs.findAllByTenantIdAndCompanyIdOrderByCreatedAtDesc(
+                                tenantId, companyId)
+                        : runs.findAllByTenantIdAndCompanyIdAndStatusOrderByCreatedAtDesc(
+                                tenantId, companyId, status);
+        return found.stream().map(mapper::toResponse).toList();
+    }
+
+    /**
+     * Reconstructs a run's activity timeline purely from timestamp/actor fields already on the row
+     * — no separate audit-log table, since every fact needed is already recorded there.
+     */
+    @Transactional(readOnly = true)
+    public List<PayrollRunTimelineEventResponse> timeline(UUID tenantId, UUID id) {
+        PayrollRun run = require(tenantId, id);
+        guard.requireAccessForCompany(run.getCompanyId());
+        List<PayrollRunTimelineEventResponse> events = new ArrayList<>();
+        events.add(
+                new PayrollRunTimelineEventResponse(
+                        "CREATED",
+                        run.getCreatedAt(),
+                        run.getCreatedBy(),
+                        run.getRunType().name()));
+        if (run.getStartedAt() != null) {
+            events.add(
+                    new PayrollRunTimelineEventResponse(
+                            "STARTED", run.getStartedAt(), run.getStartedBy(), null));
+        }
+        if (run.getCompletedAt() != null) {
+            events.add(
+                    new PayrollRunTimelineEventResponse(
+                            "COMPLETED",
+                            run.getCompletedAt(),
+                            null,
+                            run.getEmployeesProcessed() + " employees processed"));
+        }
+        if (run.getFailedAt() != null) {
+            events.add(
+                    new PayrollRunTimelineEventResponse(
+                            "FAILED", run.getFailedAt(), null, run.getFailureReason()));
+        }
+        if (run.getFinalizedAt() != null) {
+            events.add(
+                    new PayrollRunTimelineEventResponse(
+                            "FINALIZED", run.getFinalizedAt(), run.getFinalizedBy(), null));
+        }
+        if (run.getFrozenAt() != null) {
+            events.add(
+                    new PayrollRunTimelineEventResponse(
+                            "FROZEN", run.getFrozenAt(), run.getFrozenBy(), null));
+        }
+        events.sort(
+                Comparator.comparing(
+                        PayrollRunTimelineEventResponse::occurredAt,
+                        Comparator.nullsFirst(Comparator.naturalOrder())));
+        return events;
     }
 
     private PayrollRun require(UUID tenantId, UUID id) {

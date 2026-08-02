@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
+import com.ewos.payroll.api.dto.PayrollRunTimelineEventResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
 import com.ewos.payroll.domain.LopCalculator;
 import com.ewos.payroll.domain.PayrollCalculator;
@@ -18,6 +19,8 @@ import com.ewos.payroll.domain.PayrollPeriodStatus;
 import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollRunStatus;
+import com.ewos.payroll.domain.PayrollValidationReport;
+import com.ewos.payroll.domain.PayrollValidator;
 import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
@@ -67,6 +70,7 @@ class PayrollRunServiceTest {
     @Mock EmployeePayrollProfileRepository payrollProfiles;
     @Mock EmployeeEsiEnrollmentRepository esiEnrollments;
     @Mock EmployeeTaxDeclarationRepository taxDeclarations;
+    @Mock PayrollValidator validator;
 
     private PayrollRunService service;
 
@@ -94,7 +98,8 @@ class PayrollRunServiceTest {
                         incomeTaxCalculationService,
                         payrollProfiles,
                         esiEnrollments,
-                        taxDeclarations);
+                        taxDeclarations,
+                        validator);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -109,6 +114,9 @@ class PayrollRunServiceTest {
                             }
                             return r;
                         });
+        org.mockito.Mockito.lenient()
+                .when(validator.validate(any(), any()))
+                .thenReturn(new PayrollValidationReport(List.of(), List.of()));
     }
 
     @AfterEach
@@ -152,6 +160,37 @@ class PayrollRunServiceTest {
 
         assertThat(r.status()).isEqualTo(PayrollRunStatus.COMPLETED);
         verify(guard).requireAccessForCompany(companyId);
+    }
+
+    @Test
+    void startRecordsTheValidatorsReportOntoTheRunForAudit() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID periodId = UUID.randomUUID();
+        PayrollPeriod period = new PayrollPeriod();
+        period.setId(periodId);
+        period.setTenantId(tenantId);
+        period.setCompanyId(companyId);
+        period.setStatus(PayrollPeriodStatus.LOCKED);
+        when(periods.require(tenantId, periodId)).thenReturn(period);
+        when(compensations.activeForCompany(tenantId, companyId)).thenReturn(List.of());
+        when(lop.weekdaysBetween(any(), any())).thenReturn(java.math.BigDecimal.ZERO);
+        UUID employeeId = UUID.randomUUID();
+        when(validator.validate(any(), any()))
+                .thenReturn(
+                        new PayrollValidationReport(
+                                List.of(),
+                                List.of(
+                                        new PayrollValidationReport.Issue(
+                                                employeeId,
+                                                "Jane Doe",
+                                                "NO_PAYROLL_PROFILE",
+                                                "No active payroll profile"))));
+
+        PayrollRunResponse r =
+                service.start(new StartPayrollRunRequest(tenantId, companyId, periodId));
+
+        assertThat(r.validationReportJson()).contains("NO_PAYROLL_PROFILE").contains("Jane Doe");
     }
 
     @Test
@@ -200,6 +239,61 @@ class PayrollRunServiceTest {
 
         assertThat(results).hasSize(1);
         verify(guard).requireAccessForCompanies(List.of(companyId));
+    }
+
+    @Test
+    void forCompanyWithNoStatusListsEveryRunAcrossPeriods() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        PayrollRun run = new PayrollRun();
+        run.setId(UUID.randomUUID());
+        run.setCompanyId(companyId);
+        when(runs.findAllByTenantIdAndCompanyIdOrderByCreatedAtDesc(tenantId, companyId))
+                .thenReturn(List.of(run));
+
+        List<PayrollRunResponse> results = service.forCompany(tenantId, companyId, null);
+
+        assertThat(results).hasSize(1);
+        verify(guard).requireAccessForCompany(companyId);
+    }
+
+    @Test
+    void forCompanyWithStatusFiltersByStatus() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        when(runs.findAllByTenantIdAndCompanyIdAndStatusOrderByCreatedAtDesc(
+                        tenantId, companyId, PayrollRunStatus.FINALIZED))
+                .thenReturn(List.of());
+
+        service.forCompany(tenantId, companyId, PayrollRunStatus.FINALIZED);
+
+        verify(runs)
+                .findAllByTenantIdAndCompanyIdAndStatusOrderByCreatedAtDesc(
+                        tenantId, companyId, PayrollRunStatus.FINALIZED);
+    }
+
+    @Test
+    void timelineOrdersEventsChronologicallyAndOmitsUnreachedStages() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID starter = UUID.randomUUID();
+        PayrollRun run = new PayrollRun();
+        run.setId(id);
+        run.setCompanyId(companyId);
+        run.setRunType(com.ewos.payroll.domain.PayrollRunType.REGULAR);
+        run.setStartedAt(java.time.Instant.parse("2026-04-01T10:00:00Z"));
+        run.setStartedBy(starter);
+        run.setCompletedAt(java.time.Instant.parse("2026-04-01T10:05:00Z"));
+        when(runs.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(run));
+
+        List<PayrollRunTimelineEventResponse> events = service.timeline(tenantId, id);
+
+        assertThat(events)
+                .extracting(PayrollRunTimelineEventResponse::eventType)
+                .containsExactly("CREATED", "STARTED", "COMPLETED");
+        assertThat(events.get(1).actor()).isEqualTo(starter);
+        verify(guard).requireAccessForCompany(companyId);
     }
 
     // --- supplementary runs ---

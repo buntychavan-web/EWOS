@@ -8,8 +8,10 @@ import com.ewos.tenancy.application.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -46,5 +48,19 @@ public class PayslipSelfServiceController {
                                                 HttpStatus.NOT_FOUND,
                                                 "No employee record is linked to your account"));
         return service.forEmployee(tenantContext.homeTenantId(), employeeId);
+    }
+
+    @GetMapping("/payslips/{id}")
+    @Operation(summary = "Detail of one of the caller's own payslips, line by line")
+    public PayslipResponse myPayslip(@PathVariable UUID id) {
+        var employeeId =
+                employeeContext
+                        .currentEmployeeId()
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "No employee record is linked to your account"));
+        return service.getOwnPayslip(tenantContext.homeTenantId(), employeeId, id);
     }
 }

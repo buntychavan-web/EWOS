@@ -1,21 +1,23 @@
 # EWOS — Project Status
 
-_Last updated: 2026-08-02 (Sprint 24I)._
+_Last updated: 2026-08-02 (Sprint 24J)._
 
 Snapshot of the backend after Sprints 1, 2, 4, 5 (hardening), the Sprint
 1.1–1.4/2.x/4 program (multi-tenancy, RBAC hardening, employee identity
 linking, workflow/approval engine), the 2026-07-27 CTO Production
 Readiness Audit remediation, Sprint 15 (Enterprise Quality & Reliability
-Sprint, 2026-07-28), and now Sprints 16 through 24H-2 plus the in-flight
-Sprint 24I (Payroll V1 completion + repository housekeeping, 2026-08-02).
-This is the single source of truth for what is delivered, what quality
-gates are enforced, and what technical debt still exists. §§ 1–10 below are
-the original Sprint 1–5 snapshot from 2026-07-09 and are historical; §11
-covers the 2026-07-27 audit; §13 covers Sprint 15; **§14 (new) backfills
-every sprint from 16 through 24H-2** — the T1–T12 Talent/Recruitment/Exit
-suite, the WP-001–009 foundation/payroll build-out, and the Payroll
-Statutory Calculation Engine — none of which had ever been recorded here
-before this update, and §15 (new) covers Sprint 24I itself.
+Sprint, 2026-07-28), and now Sprints 16 through 24J (Payroll V1
+finalization + repository housekeeping, 2026-08-02). This is the single
+source of truth for what is delivered, what quality gates are enforced,
+and what technical debt still exists. §§ 1–10 below are the original
+Sprint 1–5 snapshot from 2026-07-09 and are historical; §11 covers the
+2026-07-27 audit; §13 covers Sprint 15; §14 backfills every sprint from
+16 through 24H-2 — the T1–T12 Talent/Recruitment/Exit suite, the
+WP-001–009 foundation/payroll build-out, and the Payroll Statutory
+Calculation Engine — none of which had ever been recorded here before
+that update; §15 covers Sprint 24I; **§16 (new) covers Sprint 24J** —
+Payroll V1's Employee Self-Service and Administration finalization, plus
+the Statutory Return and Lifecycle reviews.
 
 ---
 
@@ -250,6 +252,118 @@ branch is deleted). Summary: `claude/environment-selection-e607ds` →
 every sprint in §14/§15); `main`/`ewos-main` are stale ancestors stuck at
 Sprint 20; `claude/repository-selection-575dn9` is a divergent, abandoned
 10-commit fork from ~Sprint 5 with no relationship to current work.
+
+---
+
+## 16. Sprint 24J — Payroll Version 1 finalization (2026-08-02)
+
+Explicit CTO direction for this sprint: finish Payroll V1 so it can be frozen, without starting
+Exit Management and without introducing V2 architecture. A full read-only audit of the Payroll
+module against a ~40-item checklist (ESS, Administration, Statutory Returns, Lifecycle) was run
+first so nothing already built got duplicated — full findings are in the sprint's audit notes;
+summary below.
+
+### Employee Self-Service — shipped this sprint
+
+- **Payslip detail** — `GET /self-service/payslips/{id}` (ownership-checked, not a company-access
+  guard — an employee reading their own payslip needs no payroll authority at all).
+- **Salary Components Explanation / personalized explanations** — every `PayslipLineResponse` now
+  carries an `explanation` field (`PayslipLineExplainer`, pure function) describing what each line
+  is and, for percentage-based lines, the exact percentage applied — no admin data-entry required.
+- **Payroll Dashboard** — `GET /self-service/dashboard`: current compensation + latest payslip +
+  current fiscal year's tax declaration in one view. Pure aggregation of three already-existing
+  response types, no new data model.
+- **Income Tax Projection** — `GET /self-service/tax-projection`: runs the caller's own numbers
+  through the exact same `IncomeTaxCalculationService` the real payroll run uses, so the preview
+  can never diverge from what a run would actually withhold.
+- **Investment Declaration self-service** — `GET`/`PUT /self-service/tax-declaration`: employees
+  can now view/create/update their own declaration (previously admin-only via `PAYROLL_CONFIG`).
+  `tenantId`/`companyId`/`employeeId` are always resolved server-side from the authenticated
+  caller, never taken from the request body.
+- **Investment Proof Upload — Year-End Tax Compliance foundation** — new `tax_declaration_proofs`
+  table (V54) + `TaxDeclarationProof` entity, mirroring the existing `CandidateDocument`/
+  `ExitDocument` convention exactly: metadata + a `storageUri`, never raw file bytes. This is
+  explicitly the "necessary foundation for future Year-End Tax Compliance" the sprint asked for;
+  **Form 16 generation itself was explicitly out of scope for this sprint and was not attempted.**
+- **Payroll History / Earnings vs Deductions Breakdown / YTD Summary** — audited and found to
+  already exist (`myPayslips()` already returns full line-item detail with gross/deductions/net;
+  `EmployeeTaxDeclaration` already carries YTD fields) — not rebuilt.
+- **Payroll Notifications** — audited and found to already exist (`PayrollNotificationEventListener`
+  fires on payslip finalization) — not rebuilt.
+- **Payslip PDF Download — deferred, not built.** The codebase's established document convention
+  (candidate/exit documents) never generates files server-side, only stores a `storageUri` to
+  externally-hosted content. A payslip PDF is different: it would need this backend to render the
+  bytes itself, which means either adding a real PDF library (a dependency/licensing decision:
+  Apache PDFBox vs. commercial iText vs. OpenPDF) or hand-rolling raw PDF syntax that can't be
+  verified renders correctly without a PDF viewer in this environment. Rather than guess at a
+  dependency choice or ship an unverified hand-rolled renderer, this is left for a decision with
+  the frontend/product team on which library and in Sprint 24J the payslip detail JSON (which
+  carries every field a PDF would need) was shipped as the foundation for it.
+
+### Payroll Administration — shipped this sprint
+
+- **Payroll Exception Log — was dead code, now wired.** `PayrollRunService.recordValidationReport()`
+  existed since Sprint 24H-1/earlier but was **never called from anywhere** (confirmed via
+  repo-wide search) — every run's `validationReportJson` column was always null in practice, even
+  though it's already exposed in `PayrollRunResponse`. `doStart()` now runs the existing
+  `PayrollValidator` against the run's employee scope and records the report before processing
+  begins. No behavior change to run outcomes (blockers still don't hard-stop `start()` — that
+  contract was deliberately left alone) — this only makes the exception log actually populate.
+- **Payroll Run History** — `GET /payroll/runs?companyId=&status=` lists every run for a company
+  across periods (previously only listable per-period or via internal-only repository queries used
+  by other services).
+- **Payroll Activity Timeline / partial Approval History** — `GET /payroll/runs/{id}/timeline`
+  reconstructs a run's CREATED → STARTED → COMPLETED/FAILED → FINALIZED → FROZEN sequence with
+  actor and timestamp for each stage reached. Built entirely from fields already on `PayrollRun` —
+  no new audit-log table.
+- **Search / generic filtering / Payroll Comparison / Reprocessing** — reviewed, not built this
+  sprint. Search and multi-field filtering beyond status would need a proper query-spec change
+  across several controllers — a real feature, not a quick addition, and risks exactly the kind of
+  broad architectural change this sprint was told to avoid. General period-to-period comparison is
+  achievable today by combining the existing variance reports (`PayrollReportsController`) with the
+  new run history — no gap in capability, just no single combined endpoint yet. **Reprocessing an
+  already-finalized run was deliberately not built**: it has real implications (reversing GL
+  postings, statutory challans already filed, bank advices already sent) that need a product
+  decision, not a quick service method — flagged, not guessed at.
+
+### Statutory Return Foundation — reviewed, not implemented further
+
+PF already has a real, working return-file exporter (`PfEcrFileExporter`, Sprint 24I). ESIC,
+Professional Tax, and Labour Welfare Fund challans exist (config, calculation, and the DRAFT→
+FILED→PAID lifecycle with a manually-entered reference), but **no government-format file exporter
+was built for any of them this sprint** — per instruction, only where "official government
+specifications are available and verifiable." Unlike the EPFO ECR (a single, stable, well-known
+text format), ESIC/PT/LWF filing formats vary by state and portal and were not independently
+verified against a primary source in this sprint, so nothing was implemented rather than risk
+shipping an invented format. This is a real, open gap — flagged for a future sprint once the
+specific target state(s)/portal format(s) are confirmed with an authoritative source.
+
+### Payroll Lifecycle — full review
+
+| Item | Status |
+|---|---|
+| Previous Payroll Closure | **Exists** — `PayrollPeriodController.lock()`/`.close()`. |
+| Payroll Calendar | **Exists** — `PayrollPeriod` + company/status listing. |
+| Salary Revision | **Exists** — `EmployeeCompensationService` supersedes with effective-dated cutover + history. |
+| Arrears / Retro Pay | **Exists** — `PayrollArrearService`; "retro pay" is the same concept, not a separate feature (its own javadoc calls it "retro salary adjustments (arrears)"). |
+| Validation | **Exists**, narrow scope — checks active compensation, primary bank account, active payroll profile only. |
+| Payroll Processing | **Exists** — `PayrollRunService` is the core engine. |
+| Payroll Approval | **Exists, opt-in per tenant** — `PAYROLL_CLIENT_APPROVAL` workflow gates finalize only for tenants with that workflow definition seeded; other tenants finalize directly via `PAYROLL_RUN` authority with no maker-checker step. Not changed this sprint — making it mandatory platform-wide is a product/policy decision, not a bug fix. |
+| Loan Recovery / Reimbursements | **Achievable today, not a dedicated feature.** `PayComponent` already supports arbitrary `FIXED` `EARNING`/`DEDUCTION` components with a `taxable` flag and free-text `description` — a company can already configure "Loan EMI" (DEDUCTION, non-taxable) or "Travel Reimbursement" (EARNING, non-taxable) today with zero code changes. What's genuinely missing is loan-balance/amortization tracking and a reimbursement-claim workflow (submit → approve → pay) — both are real, separate features, not gaps in this sprint's "can payroll pay/deduct these at all" sense. Not built this sprint to avoid inventing a new domain model under time pressure. |
+| Attendance Import | **Missing, by design so far.** LOP is derived from approved unpaid `LeaveRequest` rows (`LopCalculator`), not from raw attendance/timesheet data — the `com.ewos.attendance` module isn't consulted by payroll at all today. |
+| Variable Input Import | **Missing.** No bulk-import path for variable pay components exists; `PayrollArrearService.create()` is single-record only. |
+| Payroll Simulation | **Missing as a feature.** `PayrollRunService` computes an internal throwaway preview payslip mid-calculation, but there is no admin/employee-facing dry-run endpoint. |
+
+None of the "Missing" items above were built this sprint — each is a genuine, separate feature
+(attendance-based LOP, bulk variable-pay import, a dry-run API) that would expand scope well beyond
+"finalize V1," not a quick gap-fill.
+
+### Verification
+
+340 payroll-package tests run (up from 322 before this sprint), 0 failures, 338 passing — the
+remaining 2 are the same pre-existing Testcontainers/Docker-sandbox errors present before any
+Sprint 24J change (this sandbox has no Docker daemon; CI, which does, is green). Checkstyle/PMD/
+SpotBugs clean.
 
 ---
 
@@ -675,3 +789,4 @@ docker compose up --build
 - **2026-07-27 (P9 validation)** — Fixing the CI trigger only got CI *running*; getting it to actually complete uncovered six previously-invisible bugs (three PMD false positives, a non-proxyable `final @Configuration` class, two ambiguous-Spring-constructor bugs, one dead derived-query method, and a Hibernate `@SQLDelete`/`@Version` bug that meant `User`/`Role`/`Permission` soft-delete had never worked) — see §0's new subsection for detail. Clearing all six let `mvn verify` reach `jacoco-check` for the first time ever, which is how the real ~33%-vs-80%-claimed coverage gap in §4 was found. Rather than discount the gate, added `ExitServiceTest`/`SuccessionServiceTest` (the two largest of 206 zero-coverage service classes) to genuinely clear a new `0.35` floor, and documented a staged `35% → 50% → 65% → 80%` roadmap tied to Beta/RC/GA in §11.
 - **2026-07-28 (Sprint 15 — Enterprise Quality & Reliability)** — Quality-only sprint, no new features: 16 new test files / 149 new test methods across payroll, statutory compliance, employee lifecycle, organization, and a permanent regression suite for two of the P9 findings. Found and fixed one new bug while writing tests (`StatutoryDeductionService`'s in-run duplicate-code check). Backend now at 986 tests, 0 failures, CI still green. Added §13 with full detail and a new `TESTING.md` guide.
 - **2026-08-02 (Sprint 24I — Payroll V1 completion + housekeeping)** — A live repository review found this document hadn't been updated since Sprint 15, despite the entire T1–T12 Talent/Recruitment/Exit suite, the WP-001–009 foundation/payroll build-out, and Sprints 16 through 24H-2 having shipped in the meantime (some of it, per git history, *before* Sprint 15). Added §14 to backfill all of it in summary form, and §15 documenting Sprint 24I itself: the PF ECR statutory return-file feature (closing the "government compliance output" gap identified in the CTO review that opened this sprint) and this document update. Corrected §7 item 16 (falsely claimed Payroll/Employee/Leave/Attendance/Organization were out of scope) and added item 17 for the ECR feature's known NCP-days/refund-of-advances limitation.
+- **2026-08-02 (Sprint 24J — Payroll Version 1 finalization)** — A full audit of the Payroll module against a ~40-item ESS/Administration/Statutory/Lifecycle checklist (to avoid duplicating anything already built) preceded any code change. Shipped: payslip detail + line-by-line explanations, a self-service dashboard, on-demand income-tax projection, self-service investment declaration, and an investment-proof-upload foundation for future Year-End Tax Compliance (Form 16 itself explicitly out of scope this sprint) on the ESS side; on the admin side, wired `PayrollRunService.recordValidationReport()` — present since an earlier sprint but never actually called, meaning the Payroll Exception Log had silently never populated — plus cross-period Payroll Run History and an Activity Timeline built from data already on `PayrollRun`. Statutory returns beyond PF (ESIC/PT/LWF) and several lifecycle items (attendance-based LOP, bulk variable-pay import, a simulation/dry-run API, dedicated loan/reimbursement tracking) were reviewed and deliberately not built — each would need either a verified government spec or scope beyond "finalize V1," so each is documented in §16 rather than guessed at. Added §16 with full detail.

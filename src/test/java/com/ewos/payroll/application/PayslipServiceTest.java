@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ewos.employee.domain.Employee;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.PayslipResponse;
 import com.ewos.payroll.domain.Payslip;
@@ -100,6 +101,51 @@ class PayslipServiceTest {
 
         assertThat(results).hasSize(1);
         verify(guard).requireAccessForCompanies(List.of(companyId));
+    }
+
+    @Test
+    void getOwnPayslipReturnsDetailWhenTheCallerOwnsIt() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        Payslip p = payslip(UUID.randomUUID());
+        Employee owner = new Employee();
+        owner.setId(employeeId);
+        p.setEmployee(owner);
+        when(repository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(p));
+
+        PayslipResponse r = service.getOwnPayslip(tenantId, employeeId, id);
+
+        assertThat(r.employeeId()).isEqualTo(employeeId);
+        org.mockito.Mockito.verifyNoInteractions(guard);
+    }
+
+    @Test
+    void getOwnPayslipThrowsNotFoundForSomeoneElsesPayslip() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        Payslip p = payslip(UUID.randomUUID());
+        Employee owner = new Employee();
+        owner.setId(UUID.randomUUID());
+        p.setEmployee(owner);
+        when(repository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(() -> service.getOwnPayslip(tenantId, UUID.randomUUID(), id))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getOwnPayslipThrowsNotFoundForAnUnknownPayslip() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        when(repository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getOwnPayslip(tenantId, UUID.randomUUID(), id))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

@@ -28,6 +28,7 @@ import com.ewos.payroll.api.dto.StatutoryChallanResponse;
 import com.ewos.payroll.api.dto.StatutoryDeductionResponse;
 import com.ewos.payroll.api.dto.StatutoryJurisdictionResponse;
 import com.ewos.payroll.api.dto.StatutorySettingResponse;
+import com.ewos.payroll.api.dto.TaxDeclarationProofResponse;
 import com.ewos.payroll.api.dto.ValidationIssueResponse;
 import com.ewos.payroll.domain.BankAdvice;
 import com.ewos.payroll.domain.EmployeeBankAccount;
@@ -51,12 +52,14 @@ import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
+import com.ewos.payroll.domain.PayslipLineExplainer;
 import com.ewos.payroll.domain.PfConfiguration;
 import com.ewos.payroll.domain.ProfessionalTaxSlab;
 import com.ewos.payroll.domain.StatutoryChallan;
 import com.ewos.payroll.domain.StatutoryDeduction;
 import com.ewos.payroll.domain.StatutoryJurisdiction;
 import com.ewos.payroll.domain.StatutorySetting;
+import com.ewos.payroll.domain.TaxDeclarationProof;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collections;
@@ -604,6 +607,26 @@ public final class PayrollMapper {
                 l.getCalculationType(),
                 l.getAmount(),
                 l.getPercentageApplied(),
-                l.getSortOrder());
+                l.getSortOrder(),
+                PayslipLineExplainer.explain(
+                        l.getComponentNameSnapshot(),
+                        l.getKind(),
+                        l.getCalculationType(),
+                        l.getPercentageApplied()));
+    }
+
+    public TaxDeclarationProofResponse toResponse(TaxDeclarationProof p) {
+        return new TaxDeclarationProofResponse(
+                p.getId(),
+                p.getEmployeeTaxDeclaration() != null
+                        ? p.getEmployeeTaxDeclaration().getId()
+                        : null,
+                p.getProofType(),
+                p.getFilename(),
+                p.getMimeType(),
+                p.getSizeBytes(),
+                p.getStorageUri(),
+                p.getNotes(),
+                p.getUploadedAt());
     }
 }

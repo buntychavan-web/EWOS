@@ -32,6 +32,7 @@ class EmployeeTaxDeclarationServiceTest {
 
     @Mock EmployeeTaxDeclarationRepository repository;
     @Mock EmployeeRepository employees;
+    @Mock com.ewos.payroll.infrastructure.persistence.TaxDeclarationProofRepository proofs;
     @Mock ClientAccessGuard guard;
     private final PayrollMapper mapper = new PayrollMapper();
 
@@ -42,7 +43,7 @@ class EmployeeTaxDeclarationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new EmployeeTaxDeclarationService(repository, employees, mapper, guard);
+        service = new EmployeeTaxDeclarationService(repository, employees, proofs, mapper, guard);
         org.mockito.Mockito.lenient()
                 .when(repository.save(any(EmployeeTaxDeclaration.class)))
                 .thenAnswer(
@@ -206,5 +207,48 @@ class EmployeeTaxDeclarationServiceTest {
 
         verify(guard).requireAccessForCompany(companyId);
         verify(repository).delete(existing);
+    }
+
+    @Test
+    void uploadProofChecksAccessAndStoresMetadataOnly() {
+        EmployeeTaxDeclaration declaration = new EmployeeTaxDeclaration();
+        declaration.setCompanyId(companyId);
+        UUID declarationId = UUID.randomUUID();
+        when(repository.findByIdAndTenantId(declarationId, tenantId))
+                .thenReturn(Optional.of(declaration));
+        when(proofs.save(any(com.ewos.payroll.domain.TaxDeclarationProof.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        var response =
+                service.uploadProof(
+                        tenantId,
+                        declarationId,
+                        new com.ewos.payroll.api.dto.UploadTaxDeclarationProofRequest(
+                                com.ewos.payroll.domain.TaxProofType.RENT_RECEIPT,
+                                "receipt.pdf",
+                                "application/pdf",
+                                1024L,
+                                "s3://bucket/receipt.pdf",
+                                null));
+
+        verify(guard).requireAccessForCompany(companyId);
+        assertThat(response.filename()).isEqualTo("receipt.pdf");
+        assertThat(response.storageUri()).isEqualTo("s3://bucket/receipt.pdf");
+        assertThat(response.proofType())
+                .isEqualTo(com.ewos.payroll.domain.TaxProofType.RENT_RECEIPT);
+    }
+
+    @Test
+    void proofsForDeclarationChecksAccessAndListsInUploadOrder() {
+        EmployeeTaxDeclaration declaration = new EmployeeTaxDeclaration();
+        declaration.setCompanyId(companyId);
+        UUID declarationId = UUID.randomUUID();
+        when(repository.findByIdAndTenantId(declarationId, tenantId))
+                .thenReturn(Optional.of(declaration));
+        when(proofs.findAllForDeclaration(tenantId, declarationId)).thenReturn(List.of());
+
+        service.proofsForDeclaration(tenantId, declarationId);
+
+        verify(guard).requireAccessForCompany(companyId);
     }
 }

@@ -22,6 +22,9 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, UUID> {
     List<PayrollRun> findAllByTenantIdAndCompanyIdAndStatusOrderByCreatedAtDesc(
             UUID tenantId, UUID companyId, PayrollRunStatus status);
 
+    List<PayrollRun> findAllByTenantIdAndCompanyIdOrderByCreatedAtDesc(
+            UUID tenantId, UUID companyId);
+
     List<PayrollRun> findAllByTenantIdAndCompanyIdInOrderByCreatedAtDesc(
             UUID tenantId, List<UUID> companyIds);
 }

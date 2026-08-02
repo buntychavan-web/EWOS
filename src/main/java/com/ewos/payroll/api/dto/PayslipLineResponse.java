@@ -14,4 +14,5 @@ public record PayslipLineResponse(
         PayComponentCalculationType calculationType,
         BigDecimal amount,
         BigDecimal percentageApplied,
-        int sortOrder) {}
+        int sortOrder,
+        String explanation) {}
