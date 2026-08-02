@@ -9,6 +9,7 @@ import com.ewos.identity.domain.Role;
 import com.ewos.identity.domain.User;
 import com.ewos.identity.domain.events.IdentityEvent;
 import com.ewos.identity.domain.events.IdentityEventType;
+import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.identity.infrastructure.persistence.UserSpecifications;
@@ -44,6 +45,7 @@ public class UserService {
     private final TenantMembershipFilter tenantMembershipFilter;
     private final TenantClaimResolver tenantClaimResolver;
     private final IdentityEventPublisher events;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public UserService(
@@ -57,7 +59,8 @@ public class UserService {
             DefaultTenantMembershipProvisioner tenantMembershipProvisioner,
             TenantMembershipFilter tenantMembershipFilter,
             TenantClaimResolver tenantClaimResolver,
-            IdentityEventPublisher events) {
+            IdentityEventPublisher events,
+            RefreshTokenRepository refreshTokenRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -69,6 +72,7 @@ public class UserService {
         this.tenantMembershipFilter = tenantMembershipFilter;
         this.tenantClaimResolver = tenantClaimResolver;
         this.events = events;
+        this.refreshTokenRepository = refreshTokenRepository;
     }
 
     public UserResponse create(CreateUserRequest request) {
@@ -214,6 +218,10 @@ public class UserService {
         user.setPasswordHash(hash);
         user.setPasswordChangedAt(Instant.now());
         passwordHistory.record(user, hash);
+        // A password change/reset must end every other session — otherwise a refresh token
+        // captured before the change (e.g. by whoever/whatever prompted the reset) keeps working
+        // indefinitely. The access token itself still lives out its short TTL, same as logout.
+        refreshTokenRepository.revokeAllForUser(user.getId(), "password_changed");
     }
 
     private Set<Role> resolveRoles(Set<UUID> roleIds) {

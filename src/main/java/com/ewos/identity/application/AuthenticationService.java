@@ -49,6 +49,7 @@ public class AuthenticationService {
     private final TenantClaimResolver tenantClaimResolver;
     private final EmployeeClaimResolver employeeClaimResolver;
     private final IdentityEventPublisher events;
+    private final RefreshTokenSecurityService refreshTokenSecurity;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
@@ -62,12 +63,14 @@ public class AuthenticationService {
             AccountLockoutService accountLockoutService,
             TenantClaimResolver tenantClaimResolver,
             EmployeeClaimResolver employeeClaimResolver,
-            IdentityEventPublisher events) {
+            IdentityEventPublisher events,
+            RefreshTokenSecurityService refreshTokenSecurity) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
+        this.refreshTokenSecurity = refreshTokenSecurity;
         this.loginHistoryRecorder = loginHistoryRecorder;
         this.accountLockoutService = accountLockoutService;
         this.tenantClaimResolver = tenantClaimResolver;
@@ -107,7 +110,7 @@ public class AuthenticationService {
         }
 
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
-            boolean nowLocked = accountLockoutService.recordFailedAttempt(user);
+            boolean nowLocked = accountLockoutService.recordFailedAttemptDurably(user.getId());
             loginHistoryRecorder.record(
                     LoginEventType.LOGIN_FAILURE,
                     user,
@@ -169,14 +172,24 @@ public class AuthenticationService {
         }
 
         RefreshToken stored = maybeStored.get();
-        if (stored.isRevoked() || stored.getExpiresAt().isBefore(Instant.now())) {
+        boolean alreadyRevoked = stored.isRevoked();
+        if (alreadyRevoked || stored.getExpiresAt().isBefore(Instant.now())) {
+            if (alreadyRevoked) {
+                // Presenting a token that was already revoked — almost always because it was
+                // already rotated — is the standard signal of a stolen refresh token being replayed
+                // after the legitimate client moved past it. Revoke the whole family so that theft
+                // can't keep riding the family forward. Durable via its own REQUIRES_NEW
+                // transaction
+                // since this method always throws right after (see RefreshTokenSecurityService).
+                refreshTokenSecurity.revokeFamilyDurably(stored.getFamilyId(), "reuse-detected");
+            }
             loginHistoryRecorder.record(
                     LoginEventType.REFRESH_FAILURE,
                     stored.getUser(),
                     stored.getUser().getUsername(),
                     ipAddress,
                     userAgent,
-                    stored.isRevoked() ? "revoked" : "expired");
+                    alreadyRevoked ? "revoked" : "expired");
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Refresh token expired or revoked");
         }
 

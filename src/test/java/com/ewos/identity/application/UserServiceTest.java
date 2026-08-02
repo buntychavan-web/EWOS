@@ -19,6 +19,7 @@ import com.ewos.identity.api.dto.UserResponse;
 import com.ewos.identity.api.dto.UserSearchCriteria;
 import com.ewos.identity.domain.Role;
 import com.ewos.identity.domain.User;
+import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
 import com.ewos.identity.infrastructure.persistence.RoleRepository;
 import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.shared.exception.ApiException;
@@ -59,6 +60,7 @@ class UserServiceTest {
     @Mock TenantMembershipFilter tenantMembershipFilter;
     @Mock TenantClaimResolver tenantClaimResolver;
     @Mock IdentityEventPublisher identityEventPublisher;
+    @Mock RefreshTokenRepository refreshTokenRepository;
 
     private UserService service;
 
@@ -76,7 +78,8 @@ class UserServiceTest {
                         tenantMembershipProvisioner,
                         tenantMembershipFilter,
                         tenantClaimResolver,
-                        identityEventPublisher);
+                        identityEventPublisher,
+                        refreshTokenRepository);
         lenient()
                 .when(userRepository.save(any(User.class)))
                 .thenAnswer(
@@ -409,6 +412,7 @@ class UserServiceTest {
         verify(passwordHistory).record(user, "hash(Fresh!Pass1)");
         assertThat(user.getPasswordHash()).isEqualTo("hash(Fresh!Pass1)");
         assertThat(user.getPasswordChangedAt()).isNotNull();
+        verify(refreshTokenRepository).revokeAllForUser(eq(user.getId()), anyString());
 
         ArgumentCaptor<com.ewos.identity.domain.events.IdentityEvent> captor =
                 ArgumentCaptor.forClass(com.ewos.identity.domain.events.IdentityEvent.class);
@@ -454,6 +458,20 @@ class UserServiceTest {
         service.changePassword(user.getId(), "Right!Current1", "Fresh!Pass1");
 
         assertThat(user.getPasswordHash()).isEqualTo("hash(Fresh!Pass1)");
+        verify(refreshTokenRepository).revokeAllForUser(eq(user.getId()), anyString());
+    }
+
+    @Test
+    void changePasswordDoesNotRevokeSessionsWhenCurrentPasswordWrong() {
+        User user = existingUser();
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrong-current", user.getPasswordHash())).thenReturn(false);
+
+        assertThatThrownBy(
+                        () -> service.changePassword(user.getId(), "wrong-current", "Fresh!Pass1"))
+                .isInstanceOf(ApiException.class);
+
+        verify(refreshTokenRepository, never()).revokeAllForUser(any(), any());
     }
 
     @Test
