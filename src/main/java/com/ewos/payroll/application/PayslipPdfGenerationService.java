@@ -49,6 +49,7 @@ public class PayslipPdfGenerationService {
     private static final PDFont FONT_REGULAR = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
     private static final PDFont FONT_BOLD =
             new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
      * Renders one payslip. If {@code password} is non-blank, the PDF is AES-256 encrypted so it
@@ -68,8 +69,8 @@ public class PayslipPdfGenerationService {
                 y = writeEmployeeBlock(content, payslip, y);
                 y = writeLinesTable(content, payslip, PayComponentKind.EARNING, "Earnings", y);
                 y = writeLinesTable(content, payslip, PayComponentKind.DEDUCTION, "Deductions", y);
-                y = writeSummary(content, payslip, y);
-                writeFooter(content, branding, y);
+                writeSummary(content, payslip, y);
+                writeFooter(content, branding);
             }
 
             if (password != null && !password.isBlank()) {
@@ -106,8 +107,9 @@ public class PayslipPdfGenerationService {
     }
 
     private static float writeHeader(
-            PDPageContentStream content, PayslipBrandingConfiguration branding, float y)
+            PDPageContentStream content, PayslipBrandingConfiguration branding, float startY)
             throws IOException {
+        float y = startY;
         String displayName = branding != null ? branding.getDisplayName() : "Payslip";
         content.beginText();
         content.setFont(FONT_BOLD, 16);
@@ -141,8 +143,9 @@ public class PayslipPdfGenerationService {
         return y - 20;
     }
 
-    private static float writeEmployeeBlock(PDPageContentStream content, Payslip payslip, float y)
-            throws IOException {
+    private static float writeEmployeeBlock(
+            PDPageContentStream content, Payslip payslip, float startY) throws IOException {
+        float y = startY;
         String[][] rows = {
             {"Employee Name", nullToEmpty(payslip.getEmployeeNameSnapshot())},
             {"Employee Number", nullToEmpty(payslip.getEmployeeNumberSnapshot())},
@@ -174,8 +177,9 @@ public class PayslipPdfGenerationService {
             Payslip payslip,
             PayComponentKind kind,
             String heading,
-            float y)
+            float startY)
             throws IOException {
+        float y = startY;
         List<PayslipLine> lines =
                 payslip.getLines().stream()
                         .filter(l -> l.getKind() == kind)
@@ -208,8 +212,9 @@ public class PayslipPdfGenerationService {
         return y - 14;
     }
 
-    private static float writeSummary(PDPageContentStream content, Payslip payslip, float y)
+    private static float writeSummary(PDPageContentStream content, Payslip payslip, float startY)
             throws IOException {
+        float y = startY;
         String[][] rows = {
             {"Gross Earnings", formatAmount(payslip.getGrossAmount())},
             {"Total Deductions", formatAmount(payslip.getDeductionsAmount())},
@@ -232,8 +237,7 @@ public class PayslipPdfGenerationService {
     }
 
     private static void writeFooter(
-            PDPageContentStream content, PayslipBrandingConfiguration branding, float y)
-            throws IOException {
+            PDPageContentStream content, PayslipBrandingConfiguration branding) throws IOException {
         if (branding == null) {
             return;
         }
@@ -267,9 +271,8 @@ public class PayslipPdfGenerationService {
     }
 
     private static String randomOwnerPassword() {
-        SecureRandom random = new SecureRandom();
         byte[] bytes = new byte[24];
-        random.nextBytes(bytes);
+        SECURE_RANDOM.nextBytes(bytes);
         return java.util.Base64.getEncoder().encodeToString(bytes);
     }
 
