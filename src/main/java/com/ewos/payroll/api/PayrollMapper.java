@@ -655,6 +655,22 @@ public final class PayrollMapper {
                 c.getNotes());
     }
 
+    public com.ewos.payroll.api.dto.PayslipBrandingConfigurationResponse toResponse(
+            com.ewos.payroll.domain.PayslipBrandingConfiguration c) {
+        return new com.ewos.payroll.api.dto.PayslipBrandingConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getDisplayName(),
+                c.getAddressLine1(),
+                c.getAddressLine2(),
+                c.getSupportEmail(),
+                c.getFooterNote(),
+                c.getLogoStorageUri(),
+                c.getPasswordPolicy(),
+                c.isActive());
+    }
+
     public TaxDeclarationProofResponse toResponse(TaxDeclarationProof p) {
         return new TaxDeclarationProofResponse(
                 p.getId(),

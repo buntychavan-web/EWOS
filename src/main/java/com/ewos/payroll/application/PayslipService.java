@@ -29,19 +29,29 @@ public class PayslipService {
     }
 
     public PayslipResponse getById(UUID tenantId, UUID id) {
+        return mapper.toResponse(requireForAdmin(tenantId, id));
+    }
+
+    /** Same access check as {@link #getById}, returning the entity for callers that need it. */
+    public Payslip requireForAdmin(UUID tenantId, UUID id) {
         Payslip payslip =
                 repository
                         .findByIdAndTenantId(id, tenantId)
                         .orElseThrow(
                                 () -> new ApiException(HttpStatus.NOT_FOUND, "Payslip not found"));
         guard.requireAccessForCompany(payslip.getCompanyId());
-        return mapper.toResponse(payslip);
+        return payslip;
     }
 
     public List<PayslipResponse> forRun(UUID tenantId, UUID runId) {
+        return entitiesForRun(tenantId, runId).stream().map(mapper::toResponse).toList();
+    }
+
+    /** Same access check as {@link #forRun}, returning entities for callers that need them. */
+    public List<Payslip> entitiesForRun(UUID tenantId, UUID runId) {
         List<Payslip> slips = repository.findAllForRun(tenantId, runId);
         guard.requireAccessForCompanies(slips.stream().map(Payslip::getCompanyId).toList());
-        return slips.stream().map(mapper::toResponse).toList();
+        return slips;
     }
 
     public List<PayslipResponse> forEmployee(UUID tenantId, UUID employeeId) {
@@ -56,6 +66,11 @@ public class PayslipService {
      * needs no company-level payroll authority at all.
      */
     public PayslipResponse getOwnPayslip(UUID tenantId, UUID employeeId, UUID id) {
+        return mapper.toResponse(requireOwn(tenantId, employeeId, id));
+    }
+
+    /** Same ownership check as {@link #getOwnPayslip}, returning the entity for PDF generation. */
+    public Payslip requireOwn(UUID tenantId, UUID employeeId, UUID id) {
         Payslip payslip =
                 repository
                         .findByIdAndTenantId(id, tenantId)
@@ -64,6 +79,6 @@ public class PayslipService {
         if (payslip.getEmployee() == null || !employeeId.equals(payslip.getEmployee().getId())) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Payslip not found");
         }
-        return mapper.toResponse(payslip);
+        return payslip;
     }
 }

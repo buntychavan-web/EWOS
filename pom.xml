@@ -22,6 +22,7 @@
 
     <jjwt.version>0.12.6</jjwt.version>
     <springdoc.version>2.6.0</springdoc.version>
+    <pdfbox.version>3.0.3</pdfbox.version>
     <testcontainers.version>1.20.4</testcontainers.version>
 
     <spotless.version>2.43.0</spotless.version>
@@ -153,6 +154,17 @@
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>${springdoc.version}</version>
+    </dependency>
+
+    <!-- Payslip PDF generation (Sprint 24K item 3). Apache-2.0 licensed, pure-Java, supports
+         password protection/encryption and PKI-based digital signatures natively, no native
+         binaries — evaluated against OpenPDF (LGPL/MPL — acceptable but a smaller ecosystem)
+         and commercial iText 7 (AGPL/commercial dual license — avoided to keep this project's
+         dependency tree entirely permissively licensed). -->
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>${pdfbox.version}</version>
     </dependency>
 
     <!-- Config metadata -->
