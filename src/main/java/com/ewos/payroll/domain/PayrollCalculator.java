@@ -231,4 +231,35 @@ public final class PayrollCalculator {
     private static BigDecimal scale(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
     }
+
+    /**
+     * Sums a computed payslip's one-time/variable EARNING lines (Sprint 24K §8.3) — a
+     * bonus/incentive component explicitly flagged {@code recurring = false}, or an arrear line
+     * (which never carries a {@link PayComponent} reference and is identified by its {@code
+     * "ARREAR_"} code prefix instead). The implicit basic-salary line also has no {@link
+     * PayComponent} reference but is always recurring, so the absence of a component alone is never
+     * treated as a one-time signal. Shared by {@code PayrollRunService} (real runs) and {@code
+     * PayrollSimulationService} (dry runs) so the recurring/one-time split logic exists in exactly
+     * one place.
+     */
+    public static BigDecimal oneTimeGross(ComputedPayslip payslip) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (PayslipLine line : payslip.lines()) {
+            if (line.getKind() != PayComponentKind.EARNING) {
+                continue;
+            }
+            if (isOneTimeLine(line)) {
+                total = total.add(line.getAmount());
+            }
+        }
+        return total;
+    }
+
+    private static boolean isOneTimeLine(PayslipLine line) {
+        if (line.getPayComponent() != null) {
+            return !line.getPayComponent().isRecurring();
+        }
+        String code = line.getComponentCodeSnapshot();
+        return code != null && code.startsWith("ARREAR_");
+    }
 }

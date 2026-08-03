@@ -18,8 +18,6 @@ import com.ewos.payroll.domain.EmployeeEsiEnrollment;
 import com.ewos.payroll.domain.EmployeePayrollProfile;
 import com.ewos.payroll.domain.EmployeeTaxDeclaration;
 import com.ewos.payroll.domain.LopCalculator;
-import com.ewos.payroll.domain.PayComponent;
-import com.ewos.payroll.domain.PayComponentKind;
 import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.domain.PayrollCalculator;
 import com.ewos.payroll.domain.PayrollCalculator.ComputedPayslip;
@@ -639,7 +637,7 @@ public class PayrollRunService {
         BigDecimal monthlyHraReceived = findLineAmount(preview, "HRA");
         int monthsRemaining =
                 com.ewos.payroll.domain.FiscalYear.monthsRemaining(period.getPeriodStart());
-        BigDecimal oneTimeGross = oneTimeGross(preview);
+        BigDecimal oneTimeGross = PayrollCalculator.oneTimeGross(preview);
         BigDecimal recurringGross = grossWage.subtract(oneTimeGross).max(BigDecimal.ZERO);
         TdsInput tdsInput =
                 new TdsInput(
@@ -679,34 +677,6 @@ public class PayrollRunService {
                 ptAmount,
                 lwfResult.employeeContribution(),
                 tdsResult.monthlyTdsRecovery());
-    }
-
-    /**
-     * Sums this preview's one-time/variable EARNING lines (Sprint 24K §8.3) — a bonus/incentive
-     * component explicitly flagged {@code recurring = false}, or an arrear line (which never
-     * carries a {@link PayComponent} reference and is identified by its {@code "ARREAR_"} code
-     * prefix instead). The implicit BASIC line also has no {@link PayComponent} reference but is
-     * always recurring, so the absence of a component alone is not treated as a one-time signal.
-     */
-    private static BigDecimal oneTimeGross(ComputedPayslip preview) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (PayslipLine line : preview.lines()) {
-            if (line.getKind() != PayComponentKind.EARNING) {
-                continue;
-            }
-            if (isOneTimeLine(line)) {
-                total = total.add(line.getAmount());
-            }
-        }
-        return total;
-    }
-
-    private static boolean isOneTimeLine(PayslipLine line) {
-        if (line.getPayComponent() != null) {
-            return !line.getPayComponent().isRecurring();
-        }
-        String code = line.getComponentCodeSnapshot();
-        return code != null && code.startsWith("ARREAR_");
     }
 
     /**

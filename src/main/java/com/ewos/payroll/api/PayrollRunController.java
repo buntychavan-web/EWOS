@@ -2,9 +2,11 @@ package com.ewos.payroll.api;
 
 import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.PayrollRunTimelineEventResponse;
+import com.ewos.payroll.api.dto.PayrollSimulationReportResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
 import com.ewos.payroll.api.dto.StartSupplementaryRunRequest;
 import com.ewos.payroll.application.PayrollRunService;
+import com.ewos.payroll.application.PayrollSimulationService;
 import com.ewos.payroll.domain.PayrollRunStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,9 +31,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class PayrollRunController {
 
     private final PayrollRunService service;
+    private final PayrollSimulationService simulationService;
 
-    public PayrollRunController(PayrollRunService service) {
+    public PayrollRunController(
+            PayrollRunService service, PayrollSimulationService simulationService) {
         this.service = service;
+        this.simulationService = simulationService;
     }
 
     @PostMapping
@@ -107,5 +112,18 @@ public class PayrollRunController {
     public List<PayrollRunTimelineEventResponse> timeline(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return service.timeline(tenantId, id);
+    }
+
+    @GetMapping("/simulate")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(
+            summary =
+                    "Dry run: compute what a payroll run over this period would produce without"
+                            + " creating any run, payslip, or statutory record")
+    public PayrollSimulationReportResponse simulate(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @RequestParam UUID companyId,
+            @RequestParam UUID payrollPeriodId) {
+        return simulationService.simulate(tenantId, companyId, payrollPeriodId);
     }
 }
