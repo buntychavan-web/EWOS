@@ -13,6 +13,8 @@ import com.ewos.payroll.api.dto.GratuityConfigurationResponse;
 import com.ewos.payroll.api.dto.IncomeTaxPolicyResponse;
 import com.ewos.payroll.api.dto.IncomeTaxSlabResponse;
 import com.ewos.payroll.api.dto.IncomeTaxSurchargeSlabResponse;
+import com.ewos.payroll.api.dto.LtaBlockClaimResponse;
+import com.ewos.payroll.api.dto.LtaBlockConfigurationResponse;
 import com.ewos.payroll.api.dto.LwfConfigurationResponse;
 import com.ewos.payroll.api.dto.PayComponentResponse;
 import com.ewos.payroll.api.dto.PayGroupResponse;
@@ -34,6 +36,7 @@ import com.ewos.payroll.domain.BankAdvice;
 import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.EmployeeCompensationLine;
+import com.ewos.payroll.domain.EmployeeLtaBlockClaim;
 import com.ewos.payroll.domain.EmployeePayrollProfile;
 import com.ewos.payroll.domain.EmployeeTaxDeclaration;
 import com.ewos.payroll.domain.EsiConfiguration;
@@ -42,6 +45,7 @@ import com.ewos.payroll.domain.GratuityConfiguration;
 import com.ewos.payroll.domain.IncomeTaxPolicy;
 import com.ewos.payroll.domain.IncomeTaxSlab;
 import com.ewos.payroll.domain.IncomeTaxSurchargeSlab;
+import com.ewos.payroll.domain.LtaBlockConfiguration;
 import com.ewos.payroll.domain.LwfConfiguration;
 import com.ewos.payroll.domain.PayComponent;
 import com.ewos.payroll.domain.PayGroup;
@@ -615,6 +619,39 @@ public final class PayrollMapper {
                         l.getKind(),
                         l.getCalculationType(),
                         l.getPercentageApplied()));
+    }
+
+    public LtaBlockConfigurationResponse toResponse(LtaBlockConfiguration c) {
+        return new LtaBlockConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getBlockDurationYears(),
+                c.getAnchorBlockStartYear(),
+                c.getMaxExemptClaimsPerBlock(),
+                c.isCarryForwardEnabled(),
+                c.getCarryForwardMaxClaims(),
+                c.getEffectiveFrom(),
+                c.getEffectiveTo(),
+                c.isActive(),
+                c.getNotes());
+    }
+
+    public LtaBlockClaimResponse toResponse(EmployeeLtaBlockClaim c) {
+        return new LtaBlockClaimResponse(
+                c.getId(),
+                c.getEmployee() != null ? c.getEmployee().getId() : null,
+                c.getBlockStartYear(),
+                c.getBlockEndYear(),
+                c.getClaimType(),
+                c.getFiscalYear(),
+                c.getClaimDate(),
+                c.getLtaCreditedAmount(),
+                c.getAmountClaimed(),
+                c.getTaxFreeAmount(),
+                c.getTaxableAmount(),
+                c.isCarriedForwardFromPreviousBlock(),
+                c.getNotes());
     }
 
     public TaxDeclarationProofResponse toResponse(TaxDeclarationProof p) {

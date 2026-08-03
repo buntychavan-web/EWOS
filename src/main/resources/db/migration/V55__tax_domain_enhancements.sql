@@ -121,7 +121,10 @@ CREATE TABLE employee_lta_block_claims (
     carried_forward_from_previous_block BOOLEAN NOT NULL DEFAULT FALSE,
     notes                 VARCHAR(2000),
     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by            UUID,
+    updated_by            UUID,
+    version_no            BIGINT      NOT NULL DEFAULT 0,
     CONSTRAINT ck_lta_claim_type CHECK (claim_type IN ('ANNUAL_CREDIT', 'JOURNEY_CLAIM', 'BLOCK_CARRY_FORWARD'))
 );
 
