@@ -1,7 +1,9 @@
 package com.ewos.payroll.api;
 
 import com.ewos.employee.application.EmployeeContext;
+import com.ewos.payroll.api.dto.PayrollInsightResponse;
 import com.ewos.payroll.api.dto.PayslipResponse;
+import com.ewos.payroll.application.PayrollInsightProvider;
 import com.ewos.payroll.application.PayslipPdfService;
 import com.ewos.payroll.application.PayslipService;
 import com.ewos.shared.exception.ApiException;
@@ -29,16 +31,19 @@ public class PayslipSelfServiceController {
 
     private final PayslipService service;
     private final PayslipPdfService pdfService;
+    private final PayrollInsightProvider insightProvider;
     private final TenantContext tenantContext;
     private final EmployeeContext employeeContext;
 
     public PayslipSelfServiceController(
             PayslipService service,
             PayslipPdfService pdfService,
+            PayrollInsightProvider insightProvider,
             TenantContext tenantContext,
             EmployeeContext employeeContext) {
         this.service = service;
         this.pdfService = pdfService;
+        this.insightProvider = insightProvider;
         this.tenantContext = tenantContext;
         this.employeeContext = employeeContext;
     }
@@ -84,5 +89,23 @@ public class PayslipSelfServiceController {
                                                 "No employee record is linked to your account"));
         byte[] pdf = pdfService.generateForSelf(tenantContext.homeTenantId(), employeeId, id);
         return PayslipController.pdfResponse(pdf, "payslip.pdf");
+    }
+
+    @GetMapping("/payslips/{id}/insights")
+    @Operation(
+            summary =
+                    "Rule-based explanations for one of the caller's own payslips (Sprint 24K AI"
+                            + " foundation — no LLM involved, every fact is already computed data)")
+    public List<PayrollInsightResponse> ownPayslipInsights(@PathVariable UUID id) {
+        var employeeId =
+                employeeContext
+                        .currentEmployeeId()
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "No employee record is linked to your account"));
+        var payslip = service.requireOwn(tenantContext.homeTenantId(), employeeId, id);
+        return insightProvider.explainPayslip(payslip);
     }
 }

@@ -671,6 +671,25 @@ public final class PayrollMapper {
                 c.isActive());
     }
 
+    public com.ewos.payroll.api.dto.KnowledgeDocumentResponse toResponse(
+            com.ewos.payroll.domain.KnowledgeDocument d) {
+        return new com.ewos.payroll.api.dto.KnowledgeDocumentResponse(
+                d.getId(),
+                d.getTenantId(),
+                d.getCompanyId(),
+                d.getDocumentFamilyId(),
+                d.getVersionNumber(),
+                d.getSourceType(),
+                d.getTitle(),
+                d.getReferenceNumber(),
+                d.getSummary(),
+                d.getTags(),
+                d.getStorageUri(),
+                d.getEffectiveFrom(),
+                d.getEffectiveTo(),
+                d.getStatus());
+    }
+
     public TaxDeclarationProofResponse toResponse(TaxDeclarationProof p) {
         return new TaxDeclarationProofResponse(
                 p.getId(),
