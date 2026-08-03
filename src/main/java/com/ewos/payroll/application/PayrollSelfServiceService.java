@@ -134,9 +134,11 @@ public class PayrollSelfServiceService {
                         snapshot != null ? snapshot.surchargeSlabsFor(regime) : List.of(),
                         new TdsInput(
                                 monthlyTaxableSalary,
+                                BigDecimal.ZERO,
                                 monthlyBasic,
                                 monthlyHra,
                                 monthsRemaining,
+                                monthlyTaxableSalary,
                                 declaration));
 
         return new TaxProjectionResponse(

@@ -12,6 +12,7 @@ import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.PayrollRunTimelineEventResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
+import com.ewos.payroll.domain.EmployeeTaxDeclaration;
 import com.ewos.payroll.domain.LopCalculator;
 import com.ewos.payroll.domain.PayrollCalculator;
 import com.ewos.payroll.domain.PayrollPeriod;
@@ -21,15 +22,19 @@ import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollRunStatus;
 import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.PayrollValidator;
+import com.ewos.payroll.domain.TdsAdjustmentLog;
+import com.ewos.payroll.domain.TdsAdjustmentType;
 import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
+import com.ewos.payroll.infrastructure.persistence.TdsAdjustmentLogRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -71,6 +76,7 @@ class PayrollRunServiceTest {
     @Mock EmployeeEsiEnrollmentRepository esiEnrollments;
     @Mock EmployeeTaxDeclarationRepository taxDeclarations;
     @Mock PayrollValidator validator;
+    @Mock TdsAdjustmentLogRepository tdsAdjustmentLogs;
 
     private PayrollRunService service;
 
@@ -99,7 +105,8 @@ class PayrollRunServiceTest {
                         payrollProfiles,
                         esiEnrollments,
                         taxDeclarations,
-                        validator);
+                        validator,
+                        tdsAdjustmentLogs);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -512,5 +519,195 @@ class PayrollRunServiceTest {
         verify(runs).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(PayrollRunStatus.FAILED);
         assertThat(captor.getValue().getFailureReason()).contains("leave lookup exploded");
+    }
+
+    // --- Sprint 24K §8.2/§8.3 — recurring/one-time TDS split and adjustment audit trail ---
+
+    @Test
+    void splitsRecurringAndOneTimeGrossIntoTdsInputAndLogsAdjustmentsForAudit() {
+        PayrollRunService realCalcService =
+                new PayrollRunService(
+                        runs,
+                        payslips,
+                        periods,
+                        compensations,
+                        new PayrollCalculator(),
+                        lop,
+                        arrears,
+                        leaves,
+                        new PayrollPolicy(),
+                        new PayrollMapper(),
+                        events,
+                        guard,
+                        statutoryConfigResolver,
+                        pfCalculationService,
+                        esiCalculationService,
+                        professionalTaxCalculationService,
+                        lwfCalculationService,
+                        incomeTaxCalculationService,
+                        payrollProfiles,
+                        esiEnrollments,
+                        taxDeclarations,
+                        validator,
+                        tdsAdjustmentLogs);
+
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID periodId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+
+        PayrollPeriod period = new PayrollPeriod();
+        period.setId(periodId);
+        period.setTenantId(tenantId);
+        period.setCompanyId(companyId);
+        period.setStatus(PayrollPeriodStatus.LOCKED);
+        period.setPeriodStart(java.time.LocalDate.of(2026, 4, 1));
+        period.setPeriodEnd(java.time.LocalDate.of(2026, 4, 30));
+        period.setPayDate(java.time.LocalDate.of(2026, 5, 1));
+        when(periods.require(tenantId, periodId)).thenReturn(period);
+
+        com.ewos.employee.domain.Employee employee = new com.ewos.employee.domain.Employee();
+        employee.setId(employeeId);
+        employee.setEmployeeNumber("E100");
+        employee.setDisplayName("Test Employee");
+        employee.setHireDate(java.time.LocalDate.of(2020, 1, 1));
+
+        com.ewos.payroll.domain.PayComponent bonusComponent =
+                new com.ewos.payroll.domain.PayComponent();
+        bonusComponent.setCode("BONUS");
+        bonusComponent.setName("Performance Bonus");
+        bonusComponent.setKind(com.ewos.payroll.domain.PayComponentKind.EARNING);
+        bonusComponent.setCalculationType(
+                com.ewos.payroll.domain.PayComponentCalculationType.FIXED);
+        bonusComponent.setRecurring(false);
+        bonusComponent.setActive(true);
+        bonusComponent.setSortOrder(50);
+
+        com.ewos.payroll.domain.EmployeeCompensationLine bonusLine =
+                new com.ewos.payroll.domain.EmployeeCompensationLine();
+        bonusLine.setPayComponent(bonusComponent);
+        bonusLine.setAmount(new java.math.BigDecimal("50000"));
+
+        com.ewos.payroll.domain.EmployeeCompensation comp =
+                new com.ewos.payroll.domain.EmployeeCompensation();
+        comp.setTenantId(tenantId);
+        comp.setCompanyId(companyId);
+        comp.setEmployee(employee);
+        comp.setBasicSalary(new java.math.BigDecimal("40000"));
+        comp.setCurrency("INR");
+        comp.addLine(bonusLine);
+
+        when(compensations.activeForCompany(tenantId, companyId)).thenReturn(List.of(comp));
+        when(lop.weekdaysBetween(any(), any())).thenReturn(java.math.BigDecimal.valueOf(22));
+        when(lop.computeLopDays(any(), any(), any())).thenReturn(java.math.BigDecimal.ZERO);
+        when(leaves.findApprovedOverlappingForEmployees(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(arrears.findPendingForEmployees(any(), any())).thenReturn(List.of());
+
+        com.ewos.payroll.domain.EmployeePayrollProfile profile =
+                new com.ewos.payroll.domain.EmployeePayrollProfile();
+        profile.setEmployee(employee);
+        profile.setCompanyId(companyId);
+        profile.setTaxRegime("NEW");
+        when(payrollProfiles.findAllActiveForEmployees(tenantId, List.of(employeeId)))
+                .thenReturn(List.of(profile));
+        when(esiEnrollments.findAllByTenantIdAndEmployeeIdInAndContributionPeriodStart(
+                        any(), any(), any()))
+                .thenReturn(List.of());
+        when(taxDeclarations.findAllByTenantIdAndEmployeeIdInAndFiscalYearAndActiveTrue(
+                        any(), any(), any()))
+                .thenReturn(List.of());
+        when(taxDeclarations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        StatutoryConfigResolver.ConfigSnapshot snapshot =
+                new StatutoryConfigResolver.ConfigSnapshot(
+                        null, null, null, Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+                        Map.of());
+        when(statutoryConfigResolver.resolve(any(), any(), any(), any(), any()))
+                .thenReturn(snapshot);
+
+        when(pfCalculationService.calculate(
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        org.mockito.ArgumentMatchers.anyBoolean(),
+                        any()))
+                .thenReturn(
+                        new PfCalculationService.PfResult(
+                                java.math.BigDecimal.ZERO,
+                                java.math.BigDecimal.ZERO,
+                                java.math.BigDecimal.ZERO,
+                                java.math.BigDecimal.ZERO));
+        when(esiCalculationService.calculate(
+                        any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(
+                        new EsiCalculationService.EsiResult(
+                                java.math.BigDecimal.ZERO,
+                                java.math.BigDecimal.ZERO,
+                                false,
+                                null,
+                                false));
+        when(professionalTaxCalculationService.calculate(any(), any(), any(), any()))
+                .thenReturn(java.math.BigDecimal.ZERO);
+        when(lwfCalculationService.calculate(any(), any()))
+                .thenReturn(
+                        new LwfCalculationService.LwfResult(
+                                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO));
+
+        IncomeTaxCalculationService.TdsResult tdsResult =
+                new IncomeTaxCalculationService.TdsResult(
+                        new java.math.BigDecimal("5000.00"),
+                        new java.math.BigDecimal("1000.00"),
+                        new java.math.BigDecimal("4000.00"),
+                        new java.math.BigDecimal("200.00"),
+                        new java.math.BigDecimal("12000.00"),
+                        new java.math.BigDecimal("8000.00"),
+                        new java.math.BigDecimal("480000.00"),
+                        new java.math.BigDecimal("400000.00"),
+                        java.math.BigDecimal.ZERO,
+                        java.math.BigDecimal.ZERO);
+        org.mockito.ArgumentCaptor<IncomeTaxCalculationService.TdsInput> tdsInputCaptor =
+                org.mockito.ArgumentCaptor.forClass(IncomeTaxCalculationService.TdsInput.class);
+        when(incomeTaxCalculationService.calculate(
+                        any(), any(), any(), any(), tdsInputCaptor.capture()))
+                .thenReturn(tdsResult);
+
+        when(payslips.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        PayrollRunResponse response =
+                realCalcService.start(new StartPayrollRunRequest(tenantId, companyId, periodId));
+
+        assertThat(response.status()).isEqualTo(PayrollRunStatus.COMPLETED);
+
+        IncomeTaxCalculationService.TdsInput capturedInput = tdsInputCaptor.getValue();
+        // Basic (40000, implicit recurring line) vs. the non-recurring bonus (50000) must be
+        // split apart rather than both annualised together.
+        assertThat(capturedInput.monthlyRecurringTaxableSalary()).isEqualByComparingTo("40000");
+        assertThat(capturedInput.oneTimePaymentThisPeriod()).isEqualByComparingTo("50000");
+        assertThat(capturedInput.payableEarningsThisPeriod()).isEqualByComparingTo("90000");
+
+        // Both a shortfall (§8.2) and an incremental variable-payment recovery (§8.3) occurred
+        // this period, so two audit rows must be written.
+        org.mockito.ArgumentCaptor<TdsAdjustmentLog> logCaptor =
+                org.mockito.ArgumentCaptor.forClass(TdsAdjustmentLog.class);
+        verify(tdsAdjustmentLogs, org.mockito.Mockito.times(2)).save(logCaptor.capture());
+        List<TdsAdjustmentType> types =
+                logCaptor.getAllValues().stream().map(TdsAdjustmentLog::getAdjustmentType).toList();
+        assertThat(types)
+                .containsExactlyInAnyOrder(
+                        com.ewos.payroll.domain.TdsAdjustmentType.SHORTFALL_CAP,
+                        com.ewos.payroll.domain.TdsAdjustmentType.VARIABLE_PAYMENT_INCREMENTAL);
+
+        // The recurring-only recovery goes to ytdTdsDeducted; the incremental bonus recovery
+        // goes to the separate ytdVariablePaymentTdsRecovered accumulator instead (never mixed).
+        org.mockito.ArgumentCaptor<EmployeeTaxDeclaration> declarationCaptor =
+                org.mockito.ArgumentCaptor.forClass(EmployeeTaxDeclaration.class);
+        verify(taxDeclarations, org.mockito.Mockito.atLeastOnce())
+                .save(declarationCaptor.capture());
+        EmployeeTaxDeclaration savedDeclaration =
+                declarationCaptor.getAllValues().get(declarationCaptor.getAllValues().size() - 1);
+        assertThat(savedDeclaration.getYtdTdsDeducted()).isEqualByComparingTo("1000.00");
+        assertThat(savedDeclaration.getYtdVariablePaymentTdsRecovered())
+                .isEqualByComparingTo("4000.00");
     }
 }

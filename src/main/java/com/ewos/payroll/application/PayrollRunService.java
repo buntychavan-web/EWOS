@@ -18,6 +18,8 @@ import com.ewos.payroll.domain.EmployeeEsiEnrollment;
 import com.ewos.payroll.domain.EmployeePayrollProfile;
 import com.ewos.payroll.domain.EmployeeTaxDeclaration;
 import com.ewos.payroll.domain.LopCalculator;
+import com.ewos.payroll.domain.PayComponent;
+import com.ewos.payroll.domain.PayComponentKind;
 import com.ewos.payroll.domain.PayrollArrear;
 import com.ewos.payroll.domain.PayrollCalculator;
 import com.ewos.payroll.domain.PayrollCalculator.ComputedPayslip;
@@ -33,6 +35,8 @@ import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.PayslipStatus;
 import com.ewos.payroll.domain.TaxRegime;
+import com.ewos.payroll.domain.TdsAdjustmentLog;
+import com.ewos.payroll.domain.TdsAdjustmentType;
 import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
 import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
@@ -41,6 +45,7 @@ import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationReposit
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
+import com.ewos.payroll.infrastructure.persistence.TdsAdjustmentLogRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -105,6 +110,7 @@ public class PayrollRunService {
     private final EmployeeEsiEnrollmentRepository esiEnrollments;
     private final EmployeeTaxDeclarationRepository taxDeclarations;
     private final PayrollValidator validator;
+    private final TdsAdjustmentLogRepository tdsAdjustmentLogs;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
@@ -129,7 +135,8 @@ public class PayrollRunService {
             EmployeePayrollProfileRepository payrollProfiles,
             EmployeeEsiEnrollmentRepository esiEnrollments,
             EmployeeTaxDeclarationRepository taxDeclarations,
-            PayrollValidator validator) {
+            PayrollValidator validator,
+            TdsAdjustmentLogRepository tdsAdjustmentLogs) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -152,6 +159,7 @@ public class PayrollRunService {
         this.esiEnrollments = esiEnrollments;
         this.taxDeclarations = taxDeclarations;
         this.validator = validator;
+        this.tdsAdjustmentLogs = tdsAdjustmentLogs;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
@@ -631,12 +639,16 @@ public class PayrollRunService {
         BigDecimal monthlyHraReceived = findLineAmount(preview, "HRA");
         int monthsRemaining =
                 com.ewos.payroll.domain.FiscalYear.monthsRemaining(period.getPeriodStart());
+        BigDecimal oneTimeGross = oneTimeGross(preview);
+        BigDecimal recurringGross = grossWage.subtract(oneTimeGross).max(BigDecimal.ZERO);
         TdsInput tdsInput =
                 new TdsInput(
-                        grossWage,
+                        recurringGross,
+                        oneTimeGross,
                         preview.basicApplied(),
                         monthlyHraReceived,
                         monthsRemaining,
+                        grossWage,
                         declaration);
         TdsResult tdsResult =
                 incomeTaxCalculationService.calculate(
@@ -646,14 +658,20 @@ public class PayrollRunService {
                         statutoryConfig.surchargeSlabsFor(regime),
                         tdsInput);
 
-        declaration.setYtdTaxableSalary(declaration.getYtdTaxableSalary().add(grossWage));
+        declaration.setYtdTaxableSalary(declaration.getYtdTaxableSalary().add(recurringGross));
         declaration.setYtdHraReceived(declaration.getYtdHraReceived().add(monthlyHraReceived));
         declaration.setYtdTdsDeducted(
-                declaration.getYtdTdsDeducted().add(tdsResult.monthlyTdsRecovery()));
+                declaration.getYtdTdsDeducted().add(tdsResult.recurringTdsRecovery()));
+        declaration.setYtdVariablePaymentTdsRecovered(
+                declaration
+                        .getYtdVariablePaymentTdsRecovered()
+                        .add(tdsResult.incrementalTaxOnOneTimePayment()));
         declaration.setYtdProfessionalTaxPaid(
                 declaration.getYtdProfessionalTaxPaid().add(ptAmount));
         EmployeeTaxDeclaration savedDeclaration = taxDeclarations.save(declaration);
         taxDeclarationByEmployee.put(emp.getId(), savedDeclaration);
+
+        recordTdsAdjustments(run, emp, period, savedDeclaration, tdsResult);
 
         return new StatutoryAmounts(
                 pfResult.employeeContribution(),
@@ -661,6 +679,84 @@ public class PayrollRunService {
                 ptAmount,
                 lwfResult.employeeContribution(),
                 tdsResult.monthlyTdsRecovery());
+    }
+
+    /**
+     * Sums this preview's one-time/variable EARNING lines (Sprint 24K §8.3) — a bonus/incentive
+     * component explicitly flagged {@code recurring = false}, or an arrear line (which never
+     * carries a {@link PayComponent} reference and is identified by its {@code "ARREAR_"} code
+     * prefix instead). The implicit BASIC line also has no {@link PayComponent} reference but is
+     * always recurring, so the absence of a component alone is not treated as a one-time signal.
+     */
+    private static BigDecimal oneTimeGross(ComputedPayslip preview) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (PayslipLine line : preview.lines()) {
+            if (line.getKind() != PayComponentKind.EARNING) {
+                continue;
+            }
+            if (isOneTimeLine(line)) {
+                total = total.add(line.getAmount());
+            }
+        }
+        return total;
+    }
+
+    private static boolean isOneTimeLine(PayslipLine line) {
+        if (line.getPayComponent() != null) {
+            return !line.getPayComponent().isRecurring();
+        }
+        String code = line.getComponentCodeSnapshot();
+        return code != null && code.startsWith("ARREAR_");
+    }
+
+    /**
+     * Persists the audit trail for any non-standard TDS recovery this period — a shortfall capped
+     * against actual payable earnings (§8.2) or an incremental recovery from a one-time payment
+     * (§8.3). No row is written when the period's recovery was the plain even share.
+     */
+    private void recordTdsAdjustments(
+            PayrollRun run,
+            Employee emp,
+            PayrollPeriod period,
+            EmployeeTaxDeclaration declaration,
+            TdsResult tdsResult) {
+        int periodMonth = period.getPeriodStart().getMonthValue();
+        if (tdsResult.shortfallCarriedForward().signum() > 0) {
+            TdsAdjustmentLog log = new TdsAdjustmentLog();
+            log.setTenantId(run.getTenantId());
+            log.setCompanyId(run.getCompanyId());
+            log.setEmployee(emp);
+            log.setPayrollRun(run);
+            log.setPeriodMonth(periodMonth);
+            log.setAdjustmentType(TdsAdjustmentType.SHORTFALL_CAP);
+            log.setExpectedRecovery(
+                    tdsResult.recurringTdsRecovery().add(tdsResult.shortfallCarriedForward()));
+            log.setActualRecovery(tdsResult.recurringTdsRecovery());
+            log.setShortfallAmount(tdsResult.shortfallCarriedForward());
+            log.setCumulativeYtdShortfall(tdsResult.shortfallCarriedForward());
+            log.setNotes(
+                    "Recovery capped against actual payable earnings this period; shortfall"
+                            + " redistributes across remaining months via the normal even-share"
+                            + " recalculation.");
+            tdsAdjustmentLogs.save(log);
+        }
+        if (tdsResult.incrementalTaxOnOneTimePayment().signum() > 0) {
+            TdsAdjustmentLog log = new TdsAdjustmentLog();
+            log.setTenantId(run.getTenantId());
+            log.setCompanyId(run.getCompanyId());
+            log.setEmployee(emp);
+            log.setPayrollRun(run);
+            log.setPeriodMonth(periodMonth);
+            log.setAdjustmentType(TdsAdjustmentType.VARIABLE_PAYMENT_INCREMENTAL);
+            log.setExpectedRecovery(BigDecimal.ZERO);
+            log.setActualRecovery(tdsResult.incrementalTaxOnOneTimePayment());
+            log.setShortfallAmount(BigDecimal.ZERO);
+            log.setCumulativeYtdShortfall(declaration.getYtdVariablePaymentTdsRecovered());
+            log.setNotes(
+                    "Incremental tax recovered in full this period against a one-time/variable"
+                            + " payment; future recurring recovery is unaffected.");
+            tdsAdjustmentLogs.save(log);
+        }
     }
 
     private static BigDecimal findLineAmount(ComputedPayslip payslip, String componentCode) {

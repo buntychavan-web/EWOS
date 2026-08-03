@@ -54,6 +54,15 @@ public class PayComponent extends AuditableEntity {
     @Column(name = "taxable", nullable = false)
     private boolean taxable = true;
 
+    /**
+     * Whether this component repeats every payroll (Basic, HRA, standard allowances — {@code true})
+     * or is one-time/variable (bonus, incentive, ex-gratia — {@code false}). The income-tax engine
+     * annualises only recurring components; a one-time payment is taxed via its own
+     * incremental-liability calculation instead of being multiplied by 12 (Sprint 24K §8.3).
+     */
+    @Column(name = "recurring", nullable = false)
+    private boolean recurring = true;
+
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
@@ -137,6 +146,14 @@ public class PayComponent extends AuditableEntity {
 
     public void setTaxable(boolean taxable) {
         this.taxable = taxable;
+    }
+
+    public boolean isRecurring() {
+        return recurring;
+    }
+
+    public void setRecurring(boolean recurring) {
+        this.recurring = recurring;
     }
 
     public boolean isActive() {

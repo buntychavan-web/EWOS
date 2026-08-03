@@ -12,17 +12,40 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
- * Monthly TDS projection. Every run re-projects the employee's annual salary from the current month
- * (an explicit, documented simplification — no run distributes months-elapsed differently),
- * computes the full annual tax liability, and recovers {@code (annualLiability - ytdTdsDeducted) /
- * monthsRemainingInFY} this month. Because every run re-projects and nets off what's already been
- * deducted, a mid-year salary change or a new declaration self-corrects on the very next run
- * without a separate year-end reconciliation pass. HRA/LTA exemptions and the Chapter VI-A
- * deduction only apply under the old regime — the new regime seed data zeroes them out at the
- * policy level, but this service also gates on {@code regime} explicitly so a misconfigured policy
- * row can never grant an old-regime exemption under the new regime. No marginal relief is applied
- * to the surcharge — see the Sprint 24H-1 design document. Pure: no persistence; the caller
- * persists the returned YTD deltas onto {@link EmployeeTaxDeclaration}.
+ * Monthly TDS projection. Every run re-projects the employee's annual salary from the current
+ * month's <em>recurring</em> pay (an explicit, documented simplification — no run distributes
+ * months-elapsed differently), computes the full annual tax liability, and recovers {@code
+ * (annualLiability - ytdTdsDeducted) / monthsRemainingInFY} this month. Because every run
+ * re-projects and nets off what's already been deducted, a mid-year salary change or a new
+ * declaration self-corrects on the very next run without a separate year-end reconciliation pass.
+ * HRA/LTA exemptions and the Chapter VI-A deduction only apply under the old regime — the new
+ * regime seed data zeroes them out at the policy level, but this service also gates on {@code
+ * regime} explicitly so a misconfigured policy row can never grant an old-regime exemption under
+ * the new regime. No marginal relief is applied to the surcharge — see the Sprint 24H-1 design
+ * document. Pure: no persistence; the caller persists the returned YTD deltas onto {@link
+ * EmployeeTaxDeclaration}.
+ *
+ * <p><b>Sprint 24K §8.2 — prorated recovery.</b> {@code monthlyRecurringTaxableSalary} is the
+ * employee's normal recurring monthly figure (what the projection annualises), while {@code
+ * payableEarningsThisPeriod} is what's actually payable this specific period. When the two diverge
+ * — a new joiner's first partial month, LOP, a salary hold — the even-share recovery is prorated
+ * down by the same ratio, rather than deducting the full normal amount against a shrunken payslip.
+ * The un-recovered amount is never separately stored: because {@code ytdTdsDeducted} only ever
+ * reflects what was <em>actually</em> recovered, the very next run's even-share division naturally
+ * redistributes the shortfall across the remaining months — the same self-correcting mechanism
+ * already documented above for salary changes. {@link TdsResult#shortfallCarriedForward()} exposes
+ * the amount for audit logging by the caller.
+ *
+ * <p><b>Sprint 24K §8.3 — tax on variable payments.</b> {@code oneTimePaymentThisPeriod} (bonus,
+ * incentive, ex-gratia, one-off arrears) is deliberately <em>not</em> multiplied by 12 the way
+ * recurring salary is — doing so would grossly overstate projected annual income for a single bonus
+ * month. Instead the engine computes the annual tax liability twice — once on the recurring salary
+ * alone ({@link TdsResult#recurringAnnualTaxLiability()}, the baseline every future month's
+ * even-share redistribution uses) and once with the one-time payment added on top — and recovers
+ * only the <em>difference</em> ({@link TdsResult#incrementalTaxOnOneTimePayment()}) in full this
+ * period. That incremental amount is deliberately kept out of {@code ytdTdsDeducted} (the caller
+ * persists it onto {@link EmployeeTaxDeclaration#getYtdVariablePaymentTdsRecovered()} instead), so
+ * a bonus recovered in full this month never suppresses next month's normal recurring recovery.
  */
 @Service
 public class IncomeTaxCalculationService {
@@ -35,15 +58,21 @@ public class IncomeTaxCalculationService {
     private static final BigDecimal HRA_NON_METRO_PCT = new BigDecimal("40");
 
     public record TdsInput(
-            BigDecimal monthlyTaxableSalary,
+            BigDecimal monthlyRecurringTaxableSalary,
+            BigDecimal oneTimePaymentThisPeriod,
             BigDecimal monthlyBasic,
             BigDecimal monthlyHraReceived,
             int monthsRemainingInFiscalYear,
+            BigDecimal payableEarningsThisPeriod,
             EmployeeTaxDeclaration declaration) {}
 
     public record TdsResult(
             BigDecimal monthlyTdsRecovery,
+            BigDecimal recurringTdsRecovery,
+            BigDecimal incrementalTaxOnOneTimePayment,
+            BigDecimal shortfallCarriedForward,
             BigDecimal annualTaxLiability,
+            BigDecimal recurringAnnualTaxLiability,
             BigDecimal projectedAnnualSalary,
             BigDecimal taxableIncome,
             BigDecimal hraExemption,
@@ -51,7 +80,7 @@ public class IncomeTaxCalculationService {
 
         static TdsResult zero() {
             BigDecimal z = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-            return new TdsResult(z, z, z, z, z, z);
+            return new TdsResult(z, z, z, z, z, z, z, z, z, z);
         }
     }
 
@@ -64,14 +93,15 @@ public class IncomeTaxCalculationService {
         if (regime == null || policy == null || slabs == null || slabs.isEmpty() || input == null) {
             return TdsResult.zero();
         }
-        BigDecimal monthlyTaxableSalary = nz(input.monthlyTaxableSalary());
-        if (monthlyTaxableSalary.signum() <= 0) {
+        BigDecimal monthlyRecurringTaxableSalary = nz(input.monthlyRecurringTaxableSalary());
+        if (monthlyRecurringTaxableSalary.signum() <= 0) {
             return TdsResult.zero();
         }
         EmployeeTaxDeclaration declaration = input.declaration();
         boolean oldRegime = regime == TaxRegime.OLD;
 
-        BigDecimal projectedAnnualSalary = scale(monthlyTaxableSalary.multiply(MONTHS_PER_YEAR));
+        BigDecimal projectedAnnualSalary =
+                scale(monthlyRecurringTaxableSalary.multiply(MONTHS_PER_YEAR));
 
         BigDecimal hraExemption = BigDecimal.ZERO;
         BigDecimal ltaExemption = BigDecimal.ZERO;
@@ -113,6 +143,70 @@ public class IncomeTaxCalculationService {
                         .max(BigDecimal.ZERO);
         taxableIncome = scale(taxableIncome);
 
+        BigDecimal recurringAnnualTaxLiability =
+                computeAnnualTax(slabs, policy, surchargeSlabs, taxableIncome);
+
+        // §8.3 — a one-time payment is taxed as the incremental liability it causes on top of the
+        // recurring baseline, never by annualising the payment itself.
+        BigDecimal oneTimePayment = nz(input.oneTimePaymentThisPeriod());
+        BigDecimal annualTaxLiability = recurringAnnualTaxLiability;
+        BigDecimal incrementalTax = BigDecimal.ZERO;
+        if (oneTimePayment.signum() > 0) {
+            BigDecimal taxableIncomeWithBonus = scale(taxableIncome.add(oneTimePayment));
+            annualTaxLiability =
+                    computeAnnualTax(slabs, policy, surchargeSlabs, taxableIncomeWithBonus);
+            incrementalTax =
+                    annualTaxLiability.subtract(recurringAnnualTaxLiability).max(BigDecimal.ZERO);
+        }
+
+        int monthsRemaining = Math.max(1, input.monthsRemainingInFiscalYear());
+        BigDecimal ytdTdsDeducted =
+                declaration == null ? BigDecimal.ZERO : nz(declaration.getYtdTdsDeducted());
+        BigDecimal recurringEvenShare =
+                recurringAnnualTaxLiability
+                        .subtract(ytdTdsDeducted)
+                        .divide(
+                                BigDecimal.valueOf(monthsRemaining),
+                                MONEY_SCALE,
+                                RoundingMode.HALF_UP)
+                        .max(BigDecimal.ZERO);
+
+        // §8.2 — prorate the recurring even-share against what's actually payable this period; the
+        // shortfall self-corrects on the next run because ytdTdsDeducted only ever reflects what
+        // was actually recovered.
+        BigDecimal recurringRecovery = recurringEvenShare;
+        BigDecimal shortfall = BigDecimal.ZERO;
+        BigDecimal payableThisPeriod = input.payableEarningsThisPeriod();
+        if (payableThisPeriod != null
+                && payableThisPeriod.compareTo(monthlyRecurringTaxableSalary) < 0) {
+            BigDecimal ratio =
+                    payableThisPeriod
+                            .max(BigDecimal.ZERO)
+                            .divide(monthlyRecurringTaxableSalary, 10, RoundingMode.HALF_UP);
+            recurringRecovery = scale(recurringEvenShare.multiply(ratio));
+            shortfall = recurringEvenShare.subtract(recurringRecovery).max(BigDecimal.ZERO);
+        }
+
+        BigDecimal totalRecovery = scale(recurringRecovery.add(incrementalTax));
+
+        return new TdsResult(
+                totalRecovery,
+                recurringRecovery,
+                scale(incrementalTax),
+                shortfall,
+                annualTaxLiability,
+                recurringAnnualTaxLiability,
+                projectedAnnualSalary,
+                taxableIncome,
+                scale(hraExemption),
+                scale(ltaExemption));
+    }
+
+    private BigDecimal computeAnnualTax(
+            List<IncomeTaxSlab> slabs,
+            IncomeTaxPolicy policy,
+            List<IncomeTaxSurchargeSlab> surchargeSlabs,
+            BigDecimal taxableIncome) {
         BigDecimal slabTax = computeSlabTax(slabs, taxableIncome);
 
         BigDecimal taxAfterRebate;
@@ -134,27 +228,7 @@ public class IncomeTaxCalculationService {
 
         BigDecimal cess = pct(taxAfterRebate.add(surcharge), policy.getCessRatePct());
 
-        BigDecimal annualTaxLiability = scale(taxAfterRebate.add(surcharge).add(cess));
-
-        int monthsRemaining = Math.max(1, input.monthsRemainingInFiscalYear());
-        BigDecimal ytdTdsDeducted =
-                declaration == null ? BigDecimal.ZERO : nz(declaration.getYtdTdsDeducted());
-        BigDecimal monthlyRecovery =
-                annualTaxLiability
-                        .subtract(ytdTdsDeducted)
-                        .divide(
-                                BigDecimal.valueOf(monthsRemaining),
-                                MONEY_SCALE,
-                                RoundingMode.HALF_UP)
-                        .max(BigDecimal.ZERO);
-
-        return new TdsResult(
-                monthlyRecovery,
-                annualTaxLiability,
-                projectedAnnualSalary,
-                taxableIncome,
-                scale(hraExemption),
-                scale(ltaExemption));
+        return scale(taxAfterRebate.add(surcharge).add(cess));
     }
 
     private BigDecimal computeHraExemption(

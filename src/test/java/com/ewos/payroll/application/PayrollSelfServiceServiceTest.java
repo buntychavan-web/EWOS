@@ -135,6 +135,10 @@ class PayrollSelfServiceServiceTest {
         IncomeTaxCalculationService.TdsResult result =
                 new IncomeTaxCalculationService.TdsResult(
                         new BigDecimal("1000"),
+                        new BigDecimal("1000"),
+                        new BigDecimal("0"),
+                        new BigDecimal("0"),
+                        new BigDecimal("12000"),
                         new BigDecimal("12000"),
                         new BigDecimal("1200000"),
                         new BigDecimal("1100000"),

@@ -22,5 +22,6 @@ public record EmployeeTaxDeclarationResponse(
         BigDecimal ytdHraReceived,
         BigDecimal ytdTdsDeducted,
         BigDecimal ytdProfessionalTaxPaid,
+        BigDecimal ytdVariablePaymentTdsRecovered,
         boolean active,
         long versionNo) {}

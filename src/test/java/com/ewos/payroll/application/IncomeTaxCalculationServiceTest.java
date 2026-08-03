@@ -85,7 +85,14 @@ class IncomeTaxCalculationServiceTest {
     @Test
     void newRegimeBelowRebateThresholdOwesNothing() {
         TdsInput input =
-                new TdsInput(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+                new TdsInput(
+                        new BigDecimal("100000"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("100000"),
+                        null);
         TdsResult r =
                 service.calculate(
                         TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
@@ -98,7 +105,14 @@ class IncomeTaxCalculationServiceTest {
     @Test
     void newRegimeAboveRebateThresholdComputesSlabTaxPlusCess() {
         TdsInput input =
-                new TdsInput(new BigDecimal("200000"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+                new TdsInput(
+                        new BigDecimal("200000"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("200000"),
+                        null);
         TdsResult r =
                 service.calculate(
                         TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
@@ -115,7 +129,13 @@ class IncomeTaxCalculationServiceTest {
         // relief caps the pre-cess tax at the 10,000 excess itself.
         TdsInput input =
                 new TdsInput(
-                        new BigDecimal("107083.33"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+                        new BigDecimal("107083.33"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("107083.33"),
+                        null);
         TdsResult r =
                 service.calculate(
                         TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
@@ -136,7 +156,14 @@ class IncomeTaxCalculationServiceTest {
         // Once slab tax is smaller than the excess over the threshold, marginal relief never
         // triggers and ordinary slab tax applies — same as before this fix.
         TdsInput input =
-                new TdsInput(new BigDecimal("150000"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+                new TdsInput(
+                        new BigDecimal("150000"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("150000"),
+                        null);
         TdsResult r =
                 service.calculate(
                         TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
@@ -148,7 +175,14 @@ class IncomeTaxCalculationServiceTest {
     @Test
     void newRegimeHighIncomeAppliesSurchargeWithNoMarginalRelief() {
         TdsInput input =
-                new TdsInput(new BigDecimal("600000"), BigDecimal.ZERO, BigDecimal.ZERO, 12, null);
+                new TdsInput(
+                        new BigDecimal("600000"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("600000"),
+                        null);
         TdsResult r =
                 service.calculate(
                         TaxRegime.NEW,
@@ -175,9 +209,11 @@ class IncomeTaxCalculationServiceTest {
         TdsInput input =
                 new TdsInput(
                         new BigDecimal("80000"),
+                        BigDecimal.ZERO,
                         new BigDecimal("40000"),
                         new BigDecimal("16000"),
                         6,
+                        new BigDecimal("80000"),
                         declaration);
         TdsResult r =
                 service.calculate(
@@ -200,9 +236,11 @@ class IncomeTaxCalculationServiceTest {
         TdsInput input =
                 new TdsInput(
                         new BigDecimal("100000"),
+                        BigDecimal.ZERO,
                         new BigDecimal("40000"),
                         new BigDecimal("16000"),
                         12,
+                        new BigDecimal("100000"),
                         declaration);
         TdsResult r =
                 service.calculate(
@@ -220,7 +258,79 @@ class IncomeTaxCalculationServiceTest {
                         newRegimeSlabs(),
                         newRegimePolicy(),
                         List.of(),
-                        new TdsInput(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 12, null));
+                        new TdsInput(
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                12,
+                                BigDecimal.ZERO,
+                                null));
         assertThat(r.monthlyTdsRecovery()).isEqualByComparingTo("0");
+    }
+
+    /**
+     * Sprint 24K §8.2 — a new joiner / LOP / salary-hold period pays only half of the employee's
+     * normal recurring monthly salary. The even-share recovery must be prorated down by the same
+     * ratio rather than deducted in full against a shrunken payslip, with the unrecovered amount
+     * surfaced via {@link TdsResult#shortfallCarriedForward()} for the caller to log.
+     */
+    @Test
+    void proratesRecurringRecoveryWhenPayableEarningsAreBelowNormalMonthlySalary() {
+        TdsInput input =
+                new TdsInput(
+                        new BigDecimal("200000"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("100000"),
+                        null);
+        TdsResult r =
+                service.calculate(
+                        TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
+
+        assertThat(r.taxableIncome()).isEqualByComparingTo("2325000.00");
+        assertThat(r.recurringAnnualTaxLiability()).isEqualByComparingTo("292500.00");
+        assertThat(r.annualTaxLiability()).isEqualByComparingTo("292500.00");
+        // Full even share would be 292500/12 = 24375.00; only half is payable this period.
+        assertThat(r.recurringTdsRecovery()).isEqualByComparingTo("12187.50");
+        assertThat(r.shortfallCarriedForward()).isEqualByComparingTo("12187.50");
+        assertThat(r.incrementalTaxOnOneTimePayment()).isEqualByComparingTo("0.00");
+        assertThat(r.monthlyTdsRecovery()).isEqualByComparingTo("12187.50");
+    }
+
+    /**
+     * Sprint 24K §8.3 — a one-time bonus large enough to push the employee into a higher slab must
+     * have its incremental tax recovered in full this period, while the recurring baseline (and
+     * therefore every future month's even-share redistribution) is completely unaffected by it.
+     */
+    @Test
+    void recoversIncrementalTaxOnOneTimePaymentInFullWithoutAffectingRecurringBaseline() {
+        TdsInput input =
+                new TdsInput(
+                        new BigDecimal("100000"),
+                        new BigDecimal("300000"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        12,
+                        new BigDecimal("100000"),
+                        null);
+        TdsResult r =
+                service.calculate(
+                        TaxRegime.NEW, newRegimeSlabs(), newRegimePolicy(), List.of(), input);
+
+        // Recurring-only taxable income/liability match the below-rebate-threshold case exactly —
+        // the bonus never leaks into the annualised recurring salary.
+        assertThat(r.taxableIncome()).isEqualByComparingTo("1125000.00");
+        assertThat(r.recurringAnnualTaxLiability()).isEqualByComparingTo("0.00");
+        assertThat(r.recurringTdsRecovery()).isEqualByComparingTo("0.00");
+        assertThat(r.shortfallCarriedForward()).isEqualByComparingTo("0.00");
+
+        // Taxable income + bonus = 1,425,000 crosses into the 15% slab; incremental tax is the
+        // full liability that produces on top of the (zero) recurring baseline.
+        assertThat(r.annualTaxLiability()).isEqualByComparingTo("97500.00");
+        assertThat(r.incrementalTaxOnOneTimePayment()).isEqualByComparingTo("97500.00");
+        assertThat(r.monthlyTdsRecovery()).isEqualByComparingTo("97500.00");
     }
 }

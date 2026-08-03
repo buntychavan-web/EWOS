@@ -86,6 +86,7 @@ public final class PayrollMapper {
                 c.getDefaultAmount(),
                 c.getDefaultPercentage(),
                 c.isTaxable(),
+                c.isRecurring(),
                 c.isActive(),
                 c.getSortOrder(),
                 c.getCreatedAt(),
@@ -593,6 +594,7 @@ public final class PayrollMapper {
                 d.getYtdHraReceived(),
                 d.getYtdTdsDeducted(),
                 d.getYtdProfessionalTaxPaid(),
+                d.getYtdVariablePaymentTdsRecovered(),
                 d.isActive(),
                 d.getVersionNo());
     }

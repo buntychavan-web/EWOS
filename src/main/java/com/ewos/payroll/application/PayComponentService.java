@@ -66,6 +66,9 @@ public class PayComponentService {
         if (request.taxable() != null) {
             c.setTaxable(request.taxable());
         }
+        if (request.recurring() != null) {
+            c.setRecurring(request.recurring());
+        }
         if (request.active() != null) {
             c.setActive(request.active());
         }
@@ -107,6 +110,9 @@ public class PayComponentService {
         }
         if (request.taxable() != null) {
             c.setTaxable(request.taxable());
+        }
+        if (request.recurring() != null) {
+            c.setRecurring(request.recurring());
         }
         if (request.active() != null) {
             c.setActive(request.active());

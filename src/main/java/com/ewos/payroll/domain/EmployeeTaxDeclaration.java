@@ -83,6 +83,18 @@ public class EmployeeTaxDeclaration extends AuditableEntity {
     @Column(name = "ytd_professional_tax_paid", nullable = false, precision = 18, scale = 4)
     private BigDecimal ytdProfessionalTaxPaid = BigDecimal.ZERO;
 
+    /**
+     * Tax recovered specifically against one-time/variable payments (Sprint 24K §8.3) — tracked
+     * separately from {@link #ytdTdsDeducted} (which stays recurring-salary-only) so a bonus's
+     * incremental tax never distorts the recurring monthly TDS trajectory for future periods.
+     */
+    @Column(
+            name = "ytd_variable_payment_tds_recovered",
+            nullable = false,
+            precision = 18,
+            scale = 4)
+    private BigDecimal ytdVariablePaymentTdsRecovered = BigDecimal.ZERO;
+
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
@@ -219,6 +231,14 @@ public class EmployeeTaxDeclaration extends AuditableEntity {
 
     public void setYtdProfessionalTaxPaid(BigDecimal ytdProfessionalTaxPaid) {
         this.ytdProfessionalTaxPaid = ytdProfessionalTaxPaid;
+    }
+
+    public BigDecimal getYtdVariablePaymentTdsRecovered() {
+        return ytdVariablePaymentTdsRecovered;
+    }
+
+    public void setYtdVariablePaymentTdsRecovered(BigDecimal ytdVariablePaymentTdsRecovered) {
+        this.ytdVariablePaymentTdsRecovered = ytdVariablePaymentTdsRecovered;
     }
 
     public boolean isActive() {
