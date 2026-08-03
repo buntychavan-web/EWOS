@@ -69,6 +69,10 @@ public class PayrollArrear extends AuditableEntity {
     @Column(name = "applied_at")
     private Instant appliedAt;
 
+    /** Set when this row was created by a bulk variable-payment upload; null for single-row API. */
+    @Column(name = "bulk_upload_batch_id", updatable = false)
+    private UUID bulkUploadBatchId;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -170,6 +174,14 @@ public class PayrollArrear extends AuditableEntity {
 
     public void setAppliedAt(Instant appliedAt) {
         this.appliedAt = appliedAt;
+    }
+
+    public UUID getBulkUploadBatchId() {
+        return bulkUploadBatchId;
+    }
+
+    public void setBulkUploadBatchId(UUID bulkUploadBatchId) {
+        this.bulkUploadBatchId = bulkUploadBatchId;
     }
 
     public Instant getDeletedAt() {

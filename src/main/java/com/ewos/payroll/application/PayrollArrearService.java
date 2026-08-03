@@ -41,6 +41,15 @@ public class PayrollArrearService {
     }
 
     public ArrearResponse create(CreateArrearRequest request) {
+        return create(request, null);
+    }
+
+    /**
+     * Same as {@link #create(CreateArrearRequest)} but tags the created row with a bulk-upload
+     * batch id for audit traceability. Used by {@code BulkVariablePaymentService} so a bulk upload
+     * never duplicates this method's validation/creation logic — it only supplies the extra tag.
+     */
+    public ArrearResponse create(CreateArrearRequest request, UUID bulkUploadBatchId) {
         guard.requireAccessForCompany(request.companyId());
         Employee employee =
                 employees
@@ -63,6 +72,7 @@ public class PayrollArrearService {
         a.setKind(request.kind());
         a.setForPeriodStart(request.forPeriodStart());
         a.setForPeriodEnd(request.forPeriodEnd());
+        a.setBulkUploadBatchId(bulkUploadBatchId);
         return mapper.toResponse(repository.save(a));
     }
 

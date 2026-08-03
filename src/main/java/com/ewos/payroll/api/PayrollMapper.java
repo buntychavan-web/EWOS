@@ -411,6 +411,7 @@ public final class PayrollMapper {
                 a.getForPeriodEnd(),
                 a.isApplied(),
                 a.getAppliedAt(),
+                a.getBulkUploadBatchId(),
                 a.getVersionNo());
     }
 
