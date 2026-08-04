@@ -28,16 +28,18 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, UUID> {
             @Param("tenantId") UUID tenantId, @Param("periodId") UUID periodId);
 
     /**
-     * True if a FROZEN REGULAR run already exists for this period (Codex CTO audit P0-6). Once the
-     * period's regular run is frozen the cycle is treated as fully closed to further payroll
-     * activity; corrections belong to a later period, not a same-period supplementary run.
+     * The FROZEN REGULAR run for this period, if one exists (Codex CTO audit P0-6; Sprint 24L item
+     * 2 reopen framework). Once the period's regular run is frozen the cycle is treated as fully
+     * closed to further payroll activity — a same-period supplementary run is refused unless an
+     * active {@link com.ewos.payroll.domain.PayrollRunReopenAuthorization} exists for this exact
+     * run.
      */
     @Query(
-            "select count(r) > 0 from PayrollRun r where r.tenantId = :tenantId and"
+            "select r from PayrollRun r where r.tenantId = :tenantId and"
                     + " r.payrollPeriod.id = :periodId and r.runType ="
                     + " com.ewos.payroll.domain.PayrollRunType.REGULAR and r.status ="
                     + " com.ewos.payroll.domain.PayrollRunStatus.FROZEN")
-    boolean existsFrozenRegularRunForPeriod(
+    Optional<PayrollRun> findFrozenRegularRunForPeriod(
             @Param("tenantId") UUID tenantId, @Param("periodId") UUID periodId);
 
     /**

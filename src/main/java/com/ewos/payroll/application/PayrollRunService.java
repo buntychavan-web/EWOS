@@ -42,6 +42,7 @@ import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileReposit
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollApprovalRequestRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
+import com.ewos.payroll.infrastructure.persistence.PayrollRunReopenAuthorizationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.payroll.infrastructure.persistence.TdsAdjustmentLogRepository;
@@ -117,6 +118,7 @@ public class PayrollRunService {
     private final PayrollValidator validator;
     private final TdsAdjustmentLogRepository tdsAdjustmentLogs;
     private final PayrollApprovalRequestRepository approvalRequests;
+    private final PayrollRunReopenAuthorizationRepository reopenAuthorizations;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
@@ -143,7 +145,8 @@ public class PayrollRunService {
             EmployeeTaxDeclarationRepository taxDeclarations,
             PayrollValidator validator,
             TdsAdjustmentLogRepository tdsAdjustmentLogs,
-            PayrollApprovalRequestRepository approvalRequests) {
+            PayrollApprovalRequestRepository approvalRequests,
+            PayrollRunReopenAuthorizationRepository reopenAuthorizations) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -168,6 +171,7 @@ public class PayrollRunService {
         this.validator = validator;
         this.tdsAdjustmentLogs = tdsAdjustmentLogs;
         this.approvalRequests = approvalRequests;
+        this.reopenAuthorizations = reopenAuthorizations;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
@@ -191,9 +195,12 @@ public class PayrollRunService {
      * Off-cycle supplementary run: processes only the given employees against the given period. The
      * period does not need to be LOCKED — supplementary runs are corrections and may target any
      * period status other than CLOSED. Also rejected once the period's REGULAR run has been FROZEN
-     * (Codex CTO audit P0-6): freezing is this codebase's "the cycle is done" signal, so a
-     * correction discovered afterwards belongs to a later period, not a same-period supplementary
-     * run — otherwise {@link #freeze(UUID, UUID)}'s terminal-lock guarantee would be hollow.
+     * (Codex CTO audit P0-6) unless an active {@link PayrollRunReopenAuthorization} exists for that
+     * frozen run (Sprint 24L item 2): freezing is this codebase's "the cycle is done" signal, so a
+     * correction discovered afterwards needs an explicit, authorized, audited reopen — otherwise
+     * {@link #freeze(UUID, UUID)}'s terminal-lock guarantee would be hollow. When an authorization
+     * is consumed this way, the resulting run is the correction's "reversal entry": the frozen run
+     * itself is never touched.
      */
     public PayrollRunResponse startSupplementary(
             UUID tenantId, UUID companyId, UUID payrollPeriodId, List<UUID> employeeIds) {
@@ -211,13 +218,32 @@ public class PayrollRunService {
                     HttpStatus.CONFLICT,
                     "Cannot run supplementary payroll against a CLOSED period");
         }
-        if (runs.existsFrozenRegularRunForPeriod(tenantId, payrollPeriodId)) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Cannot run supplementary payroll — the period's regular run has already"
-                            + " been frozen; corrections belong to a later period");
+        com.ewos.payroll.domain.PayrollRunReopenAuthorization consumedAuthorization = null;
+        var frozenRun = runs.findFrozenRegularRunForPeriod(tenantId, payrollPeriodId);
+        if (frozenRun.isPresent()) {
+            consumedAuthorization =
+                    reopenAuthorizations
+                            .findActiveForRun(tenantId, frozenRun.get().getId())
+                            .orElseThrow(
+                                    () ->
+                                            new ApiException(
+                                                    HttpStatus.CONFLICT,
+                                                    "Cannot run supplementary payroll — the"
+                                                            + " period's regular run has already"
+                                                            + " been frozen; an administrator must"
+                                                            + " authorize a reopen first"));
         }
-        return doStart(period, PayrollRunType.SUPPLEMENTARY, employeeIds);
+
+        PayrollRunResponse response = doStart(period, PayrollRunType.SUPPLEMENTARY, employeeIds);
+
+        if (consumedAuthorization != null) {
+            consumedAuthorization.setStatus(
+                    com.ewos.payroll.domain.PayrollRunReopenAuthorizationStatus.CONSUMED);
+            consumedAuthorization.setConsumedAt(Instant.now());
+            consumedAuthorization.setConsumedByRun(
+                    runs.findByIdAndTenantId(response.id(), tenantId).orElseThrow());
+        }
+        return response;
     }
 
     /** Internal: creates a FINAL_SETTLEMENT run for a single employee. */

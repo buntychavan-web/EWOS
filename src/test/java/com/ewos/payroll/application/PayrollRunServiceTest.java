@@ -29,6 +29,7 @@ import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileReposit
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollApprovalRequestRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
+import com.ewos.payroll.infrastructure.persistence.PayrollRunReopenAuthorizationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.payroll.infrastructure.persistence.TdsAdjustmentLogRepository;
@@ -79,6 +80,7 @@ class PayrollRunServiceTest {
     @Mock PayrollValidator validator;
     @Mock TdsAdjustmentLogRepository tdsAdjustmentLogs;
     @Mock PayrollApprovalRequestRepository approvalRequests;
+    @Mock PayrollRunReopenAuthorizationRepository reopenAuthorizations;
 
     private PayrollRunService service;
 
@@ -109,7 +111,8 @@ class PayrollRunServiceTest {
                         taxDeclarations,
                         validator,
                         tdsAdjustmentLogs,
-                        approvalRequests);
+                        approvalRequests,
+                        reopenAuthorizations);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -431,7 +434,7 @@ class PayrollRunServiceTest {
     }
 
     @Test
-    void startSupplementaryRejectsAPeriodWhoseRegularRunIsAlreadyFrozen() {
+    void startSupplementaryRejectsAPeriodWhoseRegularRunIsAlreadyFrozenWithNoReopenAuthorization() {
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
         UUID periodId = UUID.randomUUID();
@@ -439,8 +442,13 @@ class PayrollRunServiceTest {
         period.setId(periodId);
         period.setCompanyId(companyId);
         period.setStatus(PayrollPeriodStatus.LOCKED);
+        PayrollRun frozenRun = new PayrollRun();
+        frozenRun.setId(UUID.randomUUID());
         when(periods.require(tenantId, periodId)).thenReturn(period);
-        when(runs.existsFrozenRegularRunForPeriod(tenantId, periodId)).thenReturn(true);
+        when(runs.findFrozenRegularRunForPeriod(tenantId, periodId))
+                .thenReturn(Optional.of(frozenRun));
+        when(reopenAuthorizations.findActiveForRun(tenantId, frozenRun.getId()))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(
                         () ->
@@ -450,6 +458,43 @@ class PayrollRunServiceTest {
                 .hasMessageContaining("frozen")
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void startSupplementaryAllowedAndConsumesTheAuthorizationWhenARegularRunIsFrozenButReopened() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID periodId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        PayrollPeriod period = new PayrollPeriod();
+        period.setId(periodId);
+        period.setTenantId(tenantId);
+        period.setCompanyId(companyId);
+        period.setStatus(PayrollPeriodStatus.LOCKED);
+        PayrollRun frozenRun = new PayrollRun();
+        frozenRun.setId(UUID.randomUUID());
+        com.ewos.payroll.domain.PayrollRunReopenAuthorization authorization =
+                new com.ewos.payroll.domain.PayrollRunReopenAuthorization();
+        authorization.setStatus(com.ewos.payroll.domain.PayrollRunReopenAuthorizationStatus.ACTIVE);
+        when(periods.require(tenantId, periodId)).thenReturn(period);
+        when(runs.findFrozenRegularRunForPeriod(tenantId, periodId))
+                .thenReturn(Optional.of(frozenRun));
+        when(reopenAuthorizations.findActiveForRun(tenantId, frozenRun.getId()))
+                .thenReturn(Optional.of(authorization));
+        when(compensations.activeForEmployeeIds(tenantId, List.of(employeeId)))
+                .thenReturn(List.of());
+        when(lop.weekdaysBetween(any(), any())).thenReturn(java.math.BigDecimal.ZERO);
+        PayrollRun consumingRun = new PayrollRun();
+        consumingRun.setId(UUID.randomUUID());
+        when(runs.findByIdAndTenantId(any(), org.mockito.ArgumentMatchers.eq(tenantId)))
+                .thenReturn(Optional.of(consumingRun));
+
+        service.startSupplementary(tenantId, companyId, periodId, List.of(employeeId));
+
+        assertThat(authorization.getStatus())
+                .isEqualTo(com.ewos.payroll.domain.PayrollRunReopenAuthorizationStatus.CONSUMED);
+        assertThat(authorization.getConsumedAt()).isNotNull();
+        assertThat(authorization.getConsumedByRun()).isEqualTo(consumingRun);
     }
 
     @Test
@@ -711,7 +756,8 @@ class PayrollRunServiceTest {
                         taxDeclarations,
                         validator,
                         tdsAdjustmentLogs,
-                        approvalRequests);
+                        approvalRequests,
+                        reopenAuthorizations);
 
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();

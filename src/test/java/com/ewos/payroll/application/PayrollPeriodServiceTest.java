@@ -13,6 +13,7 @@ import com.ewos.payroll.domain.PayrollFrequency;
 import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollPeriodStatus;
 import com.ewos.payroll.domain.PayrollPolicy;
+import com.ewos.payroll.infrastructure.persistence.PayrollPeriodReopenLogRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollPeriodRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.shared.exception.ApiException;
@@ -41,6 +42,7 @@ class PayrollPeriodServiceTest {
 
     @Mock PayrollPeriodRepository repository;
     @Mock PayrollRunRepository runs;
+    @Mock PayrollPeriodReopenLogRepository reopenLog;
     @Mock ApplicationEventPublisher events;
     @Mock ClientAccessGuard guard;
 
@@ -50,7 +52,13 @@ class PayrollPeriodServiceTest {
     void setUp() {
         service =
                 new PayrollPeriodService(
-                        repository, runs, new PayrollPolicy(), new PayrollMapper(), events, guard);
+                        repository,
+                        runs,
+                        reopenLog,
+                        new PayrollPolicy(),
+                        new PayrollMapper(),
+                        events,
+                        guard);
         org.mockito.Mockito.lenient()
                 .when(repository.save(any(PayrollPeriod.class)))
                 .thenAnswer(
@@ -106,6 +114,57 @@ class PayrollPeriodServiceTest {
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
         assertThat(p.getStatus()).isEqualTo(PayrollPeriodStatus.LOCKED);
+    }
+
+    @Test
+    void reopenFlipsAClosedPeriodBackToLockedAndLogsTheReason() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        PayrollPeriod p = period(companyId, PayrollPeriodStatus.CLOSED);
+        when(repository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(p));
+        SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new UsernamePasswordAuthenticationToken(
+                                UUID.randomUUID().toString(), "n/a", List.of()));
+
+        var response =
+                service.reopen(
+                        tenantId,
+                        id,
+                        new com.ewos.payroll.api.dto.ReopenPayrollPeriodRequest(
+                                "found a missed arrear"));
+
+        assertThat(response.status()).isEqualTo(PayrollPeriodStatus.LOCKED);
+        org.mockito.ArgumentCaptor<com.ewos.payroll.domain.PayrollPeriodReopenLog> captor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.ewos.payroll.domain.PayrollPeriodReopenLog.class);
+        verify(reopenLog).save(captor.capture());
+        assertThat(captor.getValue().getReason()).isEqualTo("found a missed arrear");
+        assertThat(captor.getValue().getPreviousStatus()).isEqualTo(PayrollPeriodStatus.CLOSED);
+        assertThat(captor.getValue().getNewStatus()).isEqualTo(PayrollPeriodStatus.LOCKED);
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void reopenRejectedWhenThePeriodIsNotClosed() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        PayrollPeriod p = period(companyId, PayrollPeriodStatus.LOCKED);
+        when(repository.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(
+                        () ->
+                                service.reopen(
+                                        tenantId,
+                                        id,
+                                        new com.ewos.payroll.api.dto.ReopenPayrollPeriodRequest(
+                                                "reason")))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+        verify(reopenLog, org.mockito.Mockito.never()).save(any());
     }
 
     @Test
