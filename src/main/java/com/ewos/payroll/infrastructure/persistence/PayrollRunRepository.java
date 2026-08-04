@@ -13,6 +13,49 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, UUID> {
 
     Optional<PayrollRun> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    /**
+     * True if a REGULAR run already exists for this period that hasn't FAILED (Codex CTO audit
+     * P0-4). Backed by a DB-level partial unique index for the race-condition case; this query is
+     * the pre-check that turns the race into a clean {@code 409} instead of a raw constraint
+     * violation for the common sequential case.
+     */
+    @Query(
+            "select count(r) > 0 from PayrollRun r where r.tenantId = :tenantId and"
+                    + " r.payrollPeriod.id = :periodId and r.runType ="
+                    + " com.ewos.payroll.domain.PayrollRunType.REGULAR and r.status <>"
+                    + " com.ewos.payroll.domain.PayrollRunStatus.FAILED")
+    boolean existsActiveRegularRunForPeriod(
+            @Param("tenantId") UUID tenantId, @Param("periodId") UUID periodId);
+
+    /**
+     * True if a FROZEN REGULAR run already exists for this period (Codex CTO audit P0-6). Once the
+     * period's regular run is frozen the cycle is treated as fully closed to further payroll
+     * activity; corrections belong to a later period, not a same-period supplementary run.
+     */
+    @Query(
+            "select count(r) > 0 from PayrollRun r where r.tenantId = :tenantId and"
+                    + " r.payrollPeriod.id = :periodId and r.runType ="
+                    + " com.ewos.payroll.domain.PayrollRunType.REGULAR and r.status ="
+                    + " com.ewos.payroll.domain.PayrollRunStatus.FROZEN")
+    boolean existsFrozenRegularRunForPeriod(
+            @Param("tenantId") UUID tenantId, @Param("periodId") UUID periodId);
+
+    /**
+     * True if any run for this period is still mid-lifecycle — not yet FINALIZED/FROZEN and not
+     * FAILED (Codex CTO audit P0-5). {@link
+     * com.ewos.payroll.application.PayrollPeriodService#close} must refuse to close while this is
+     * true, or a period can be marked CLOSED while a run against it is still
+     * PENDING/PROCESSING/COMPLETED-but-not-finalized.
+     */
+    @Query(
+            "select count(r) > 0 from PayrollRun r where r.tenantId = :tenantId and"
+                    + " r.payrollPeriod.id = :periodId and r.status not in"
+                    + " (com.ewos.payroll.domain.PayrollRunStatus.FINALIZED,"
+                    + " com.ewos.payroll.domain.PayrollRunStatus.FROZEN,"
+                    + " com.ewos.payroll.domain.PayrollRunStatus.FAILED)")
+    boolean existsNonTerminalRunForPeriod(
+            @Param("tenantId") UUID tenantId, @Param("periodId") UUID periodId);
+
     @Query(
             "select r from PayrollRun r where r.tenantId = :tenantId and r.payrollPeriod.id ="
                     + " :periodId order by r.createdAt desc")

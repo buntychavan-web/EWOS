@@ -10,6 +10,7 @@ import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
 import com.ewos.payroll.infrastructure.persistence.PayrollPeriodRepository;
+import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PayrollPeriodService {
 
     private final PayrollPeriodRepository repository;
+    private final PayrollRunRepository runs;
     private final PayrollPolicy policy;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
@@ -34,11 +36,13 @@ public class PayrollPeriodService {
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollPeriodService(
             PayrollPeriodRepository repository,
+            PayrollRunRepository runs,
             PayrollPolicy policy,
             PayrollMapper mapper,
             ApplicationEventPublisher events,
             ClientAccessGuard guard) {
         this.repository = repository;
+        this.runs = runs;
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
@@ -122,6 +126,12 @@ public class PayrollPeriodService {
         PayrollPeriod p = require(tenantId, id);
         guard.requireAccessForCompany(p.getCompanyId());
         policy.assertClosable(p);
+        if (runs.existsNonTerminalRunForPeriod(tenantId, id)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Cannot close period: one or more payroll runs against it are not yet"
+                            + " FINALIZED or FROZEN");
+        }
         UUID actor = requireActor();
         p.setStatus(PayrollPeriodStatus.CLOSED);
         p.setClosedAt(Instant.now());

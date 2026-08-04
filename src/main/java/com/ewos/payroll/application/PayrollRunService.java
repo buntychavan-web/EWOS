@@ -71,10 +71,12 @@ import org.springframework.transaction.annotation.Transactional;
  * Orchestrates payroll runs.
  *
  * <ul>
- *   <li>{@link #start(StartPayrollRunRequest)} — reserves a {@link PayrollRun}, transitions to
- *       {@code PROCESSING}, generates a {@code DRAFT} payslip per active-compensation employee in
- *       the company (consuming LOP from approved unpaid leave and pending arrears), then lands in
- *       {@code COMPLETED} with aggregate totals.
+ *   <li>{@link #start(StartPayrollRunRequest)} — reserves a {@link PayrollRun}, runs {@link
+ *       PayrollValidator} pre-flight and fails the run with {@code HTTP 409} if any blocker is
+ *       found (Codex CTO audit P0-3 — the report was previously recorded for audit but never
+ *       enforced), otherwise transitions to {@code PROCESSING}, generates a {@code DRAFT} payslip
+ *       per active-compensation employee in the company (consuming LOP from approved unpaid leave
+ *       and pending arrears), then lands in {@code COMPLETED} with aggregate totals.
  *   <li>{@link #finalizeRun(UUID, UUID)} — flips every payslip on the run to {@code FINALIZED}.
  *   <li>{@link #freeze(UUID, UUID)} — terminal lock; no supplementary or corrective run may adjust
  *       this run's payslips.
@@ -167,13 +169,23 @@ public class PayrollRunService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Period belongs to a different company");
         }
         policy.assertRunnable(period);
+        if (runs.existsActiveRegularRunForPeriod(request.tenantId(), request.payrollPeriodId())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "A payroll run already exists for this period; use the supplementary run"
+                            + " endpoint for corrections instead of starting a second regular"
+                            + " run");
+        }
         return doStart(period, PayrollRunType.REGULAR, null);
     }
 
     /**
      * Off-cycle supplementary run: processes only the given employees against the given period. The
      * period does not need to be LOCKED — supplementary runs are corrections and may target any
-     * period status other than CLOSED.
+     * period status other than CLOSED. Also rejected once the period's REGULAR run has been FROZEN
+     * (Codex CTO audit P0-6): freezing is this codebase's "the cycle is done" signal, so a
+     * correction discovered afterwards belongs to a later period, not a same-period supplementary
+     * run — otherwise {@link #freeze(UUID, UUID)}'s terminal-lock guarantee would be hollow.
      */
     public PayrollRunResponse startSupplementary(
             UUID tenantId, UUID companyId, UUID payrollPeriodId, List<UUID> employeeIds) {
@@ -190,6 +202,12 @@ public class PayrollRunService {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "Cannot run supplementary payroll against a CLOSED period");
+        }
+        if (runs.existsFrozenRegularRunForPeriod(tenantId, payrollPeriodId)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Cannot run supplementary payroll — the period's regular run has already"
+                            + " been frozen; corrections belong to a later period");
         }
         return doStart(period, PayrollRunType.SUPPLEMENTARY, employeeIds);
     }
@@ -227,7 +245,18 @@ public class PayrollRunService {
                         .map(EmployeeCompensation::getEmployee)
                         .filter(e -> e != null)
                         .toList();
-        recordValidationReport(saved, validator.validate(saved.getTenantId(), employeesInScope));
+        PayrollValidationReport validationReport =
+                validator.validate(saved.getTenantId(), employeesInScope);
+        recordValidationReport(saved, validationReport);
+        if (!validationReport.isRunnable()) {
+            String reason = blockersSummary(validationReport);
+            saved.setStatus(PayrollRunStatus.FAILED);
+            saved.setFailedAt(Instant.now());
+            saved.setFailureReason(reason);
+            publishRun(PayrollEventType.RUN_FAILED, saved);
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Payroll run blocked by pre-flight validation: " + reason);
+        }
 
         saved.setStatus(PayrollRunStatus.PROCESSING);
         saved.setStartedAt(Instant.now());
@@ -727,6 +756,12 @@ public class PayrollRunService {
                             + " payment; future recurring recovery is unaffected.");
             tdsAdjustmentLogs.save(log);
         }
+    }
+
+    private static String blockersSummary(PayrollValidationReport report) {
+        return report.blockers().stream()
+                .map(i -> i.employeeName() + ": " + i.message() + " (" + i.code() + ")")
+                .collect(Collectors.joining("; "));
     }
 
     private static BigDecimal findLineAmount(ComputedPayslip payslip, String componentCode) {

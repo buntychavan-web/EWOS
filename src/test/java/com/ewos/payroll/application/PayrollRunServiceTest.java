@@ -201,6 +201,77 @@ class PayrollRunServiceTest {
     }
 
     @Test
+    void startFailsTheRunAndRefusesToProcessWhenValidationReportsABlocker() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID periodId = UUID.randomUUID();
+        PayrollPeriod period = new PayrollPeriod();
+        period.setId(periodId);
+        period.setTenantId(tenantId);
+        period.setCompanyId(companyId);
+        period.setStatus(PayrollPeriodStatus.LOCKED);
+        when(periods.require(tenantId, periodId)).thenReturn(period);
+        when(compensations.activeForCompany(tenantId, companyId)).thenReturn(List.of());
+        UUID employeeId = UUID.randomUUID();
+        when(validator.validate(any(), any()))
+                .thenReturn(
+                        new PayrollValidationReport(
+                                List.of(
+                                        new PayrollValidationReport.Issue(
+                                                employeeId,
+                                                "Asha Rao",
+                                                "NO_PRIMARY_BANK_ACCOUNT",
+                                                "Employee has no primary bank account for salary"
+                                                        + " credit")),
+                                List.of()));
+
+        assertThatThrownBy(
+                        () ->
+                                service.start(
+                                        new StartPayrollRunRequest(tenantId, companyId, periodId)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Asha Rao")
+                .hasMessageContaining("NO_PRIMARY_BANK_ACCOUNT")
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        org.mockito.Mockito.verifyNoInteractions(lop);
+
+        org.mockito.ArgumentCaptor<PayrollRun> captor =
+                org.mockito.ArgumentCaptor.forClass(PayrollRun.class);
+        verify(runs).save(captor.capture());
+        PayrollRun saved = captor.getValue();
+        assertThat(saved.getStatus()).isEqualTo(PayrollRunStatus.FAILED);
+        assertThat(saved.getFailureReason()).contains("Asha Rao", "NO_PRIMARY_BANK_ACCOUNT");
+        assertThat(saved.getFailedAt()).isNotNull();
+    }
+
+    @Test
+    void startRejectsASecondRegularRunAgainstTheSamePeriod() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID periodId = UUID.randomUUID();
+        PayrollPeriod period = new PayrollPeriod();
+        period.setId(periodId);
+        period.setTenantId(tenantId);
+        period.setCompanyId(companyId);
+        period.setStatus(PayrollPeriodStatus.LOCKED);
+        when(periods.require(tenantId, periodId)).thenReturn(period);
+        when(runs.existsActiveRegularRunForPeriod(tenantId, periodId)).thenReturn(true);
+
+        assertThatThrownBy(
+                        () ->
+                                service.start(
+                                        new StartPayrollRunRequest(tenantId, companyId, periodId)))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        org.mockito.Mockito.verify(runs, org.mockito.Mockito.never()).save(any());
+        org.mockito.Mockito.verifyNoInteractions(compensations);
+    }
+
+    @Test
     void startSupplementaryChecksAccessForTheGivenCompany() {
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
@@ -352,6 +423,28 @@ class PayrollRunServiceTest {
                                 service.startSupplementary(
                                         tenantId, companyId, periodId, List.of(UUID.randomUUID())))
                 .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void startSupplementaryRejectsAPeriodWhoseRegularRunIsAlreadyFrozen() {
+        UUID tenantId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID periodId = UUID.randomUUID();
+        PayrollPeriod period = new PayrollPeriod();
+        period.setId(periodId);
+        period.setCompanyId(companyId);
+        period.setStatus(PayrollPeriodStatus.LOCKED);
+        when(periods.require(tenantId, periodId)).thenReturn(period);
+        when(runs.existsFrozenRegularRunForPeriod(tenantId, periodId)).thenReturn(true);
+
+        assertThatThrownBy(
+                        () ->
+                                service.startSupplementary(
+                                        tenantId, companyId, periodId, List.of(UUID.randomUUID())))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("frozen")
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.CONFLICT);
     }
