@@ -6,7 +6,16 @@ import com.ewos.payroll.api.dto.CompensationLineResponse;
 import com.ewos.payroll.api.dto.EmployeeBankAccountResponse;
 import com.ewos.payroll.api.dto.EmployeeCompensationResponse;
 import com.ewos.payroll.api.dto.EmployeePayrollProfileResponse;
+import com.ewos.payroll.api.dto.EmployeeTaxDeclarationResponse;
+import com.ewos.payroll.api.dto.EsiConfigurationResponse;
 import com.ewos.payroll.api.dto.FinalSettlementResponse;
+import com.ewos.payroll.api.dto.GratuityConfigurationResponse;
+import com.ewos.payroll.api.dto.IncomeTaxPolicyResponse;
+import com.ewos.payroll.api.dto.IncomeTaxSlabResponse;
+import com.ewos.payroll.api.dto.IncomeTaxSurchargeSlabResponse;
+import com.ewos.payroll.api.dto.LtaBlockClaimResponse;
+import com.ewos.payroll.api.dto.LtaBlockConfigurationResponse;
+import com.ewos.payroll.api.dto.LwfConfigurationResponse;
 import com.ewos.payroll.api.dto.PayComponentResponse;
 import com.ewos.payroll.api.dto.PayGroupResponse;
 import com.ewos.payroll.api.dto.PaymentInstructionResponse;
@@ -15,16 +24,29 @@ import com.ewos.payroll.api.dto.PayrollRunResponse;
 import com.ewos.payroll.api.dto.PayrollValidationReportResponse;
 import com.ewos.payroll.api.dto.PayslipLineResponse;
 import com.ewos.payroll.api.dto.PayslipResponse;
+import com.ewos.payroll.api.dto.PfConfigurationResponse;
+import com.ewos.payroll.api.dto.ProfessionalTaxSlabResponse;
 import com.ewos.payroll.api.dto.StatutoryChallanResponse;
 import com.ewos.payroll.api.dto.StatutoryDeductionResponse;
+import com.ewos.payroll.api.dto.StatutoryJurisdictionResponse;
 import com.ewos.payroll.api.dto.StatutorySettingResponse;
+import com.ewos.payroll.api.dto.TaxDeclarationProofResponse;
 import com.ewos.payroll.api.dto.ValidationIssueResponse;
 import com.ewos.payroll.domain.BankAdvice;
 import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.EmployeeCompensationLine;
+import com.ewos.payroll.domain.EmployeeLtaBlockClaim;
 import com.ewos.payroll.domain.EmployeePayrollProfile;
+import com.ewos.payroll.domain.EmployeeTaxDeclaration;
+import com.ewos.payroll.domain.EsiConfiguration;
 import com.ewos.payroll.domain.FinalSettlement;
+import com.ewos.payroll.domain.GratuityConfiguration;
+import com.ewos.payroll.domain.IncomeTaxPolicy;
+import com.ewos.payroll.domain.IncomeTaxSlab;
+import com.ewos.payroll.domain.IncomeTaxSurchargeSlab;
+import com.ewos.payroll.domain.LtaBlockConfiguration;
+import com.ewos.payroll.domain.LwfConfiguration;
 import com.ewos.payroll.domain.PayComponent;
 import com.ewos.payroll.domain.PayGroup;
 import com.ewos.payroll.domain.PaymentInstruction;
@@ -34,9 +56,14 @@ import com.ewos.payroll.domain.PayrollRun;
 import com.ewos.payroll.domain.PayrollValidationReport;
 import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipLine;
+import com.ewos.payroll.domain.PayslipLineExplainer;
+import com.ewos.payroll.domain.PfConfiguration;
+import com.ewos.payroll.domain.ProfessionalTaxSlab;
 import com.ewos.payroll.domain.StatutoryChallan;
 import com.ewos.payroll.domain.StatutoryDeduction;
+import com.ewos.payroll.domain.StatutoryJurisdiction;
 import com.ewos.payroll.domain.StatutorySetting;
+import com.ewos.payroll.domain.TaxDeclarationProof;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collections;
@@ -63,6 +90,7 @@ public final class PayrollMapper {
                 c.getDefaultAmount(),
                 c.getDefaultPercentage(),
                 c.isTaxable(),
+                c.isRecurring(),
                 c.isActive(),
                 c.getSortOrder(),
                 c.getCreatedAt(),
@@ -229,6 +257,10 @@ public final class PayrollMapper {
                 p.getPayGroup() != null ? p.getPayGroup().getId() : null,
                 p.getTaxRegime(),
                 p.getCountryCode(),
+                p.getStateCode(),
+                p.isInternationalWorker(),
+                p.isVpfEnabled(),
+                p.getVpfPercentage(),
                 readIdentifiers(p.getStatutoryIdentifiersJson()),
                 p.getEffectiveFrom(),
                 p.getEffectiveTo(),
@@ -344,6 +376,11 @@ public final class PayrollMapper {
                 s.getUnusedLeaveDays(),
                 s.getEncashmentAmount(),
                 s.getGratuityAmount(),
+                s.getGratuityCalculatedAmount(),
+                s.isGratuityOverridden(),
+                s.getGratuityOverrideReason(),
+                s.isGratuityEligibilityWaived(),
+                s.getGratuityWaiverReason(),
                 s.getNoticePayRecovery(),
                 s.getNoticePayReceivable(),
                 s.getOtherEarnings(),
@@ -374,6 +411,7 @@ public final class PayrollMapper {
                 a.getForPeriodEnd(),
                 a.isApplied(),
                 a.getAppliedAt(),
+                a.getBulkUploadBatchId(),
                 a.getVersionNo());
     }
 
@@ -409,7 +447,7 @@ public final class PayrollMapper {
         }
     }
 
-    private static Map<String, String> readIdentifiers(String json) {
+    public static Map<String, String> readIdentifiers(String json) {
         if (json == null || json.isBlank()) {
             return Collections.emptyMap();
         }
@@ -418,6 +456,152 @@ public final class PayrollMapper {
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             return Collections.emptyMap();
         }
+    }
+
+    public PfConfigurationResponse toResponse(PfConfiguration c) {
+        return new PfConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getWageCeiling(),
+                c.getEpsWageCeiling(),
+                c.getEmployeeRatePct(),
+                c.getEmployerPfRatePct(),
+                c.getEpsRatePct(),
+                c.getEffectiveFrom(),
+                c.getEffectiveTo(),
+                c.isActive(),
+                c.getVersionNo());
+    }
+
+    public EsiConfigurationResponse toResponse(EsiConfiguration c) {
+        return new EsiConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getWageThreshold(),
+                c.getEmployeeRatePct(),
+                c.getEmployerRatePct(),
+                c.getEffectiveFrom(),
+                c.getEffectiveTo(),
+                c.isActive(),
+                c.getVersionNo());
+    }
+
+    public GratuityConfigurationResponse toResponse(GratuityConfiguration c) {
+        return new GratuityConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getStatutoryCeiling(),
+                c.getRateNumerator(),
+                c.getRateDenominator(),
+                c.getMinYearsEligibility(),
+                c.getEffectiveFrom(),
+                c.getEffectiveTo(),
+                c.isActive(),
+                c.getVersionNo());
+    }
+
+    public ProfessionalTaxSlabResponse toResponse(ProfessionalTaxSlab s) {
+        return new ProfessionalTaxSlabResponse(
+                s.getId(),
+                s.getTenantId(),
+                s.getJurisdiction() != null ? s.getJurisdiction().getId() : null,
+                s.getGender(),
+                s.getMinMonthlyIncome(),
+                s.getMaxMonthlyIncome(),
+                s.getMonthlyTaxAmount(),
+                s.getAnnualCapAmount(),
+                s.getEffectiveFrom(),
+                s.getEffectiveTo(),
+                s.isActive(),
+                s.getVersionNo());
+    }
+
+    public LwfConfigurationResponse toResponse(LwfConfiguration c) {
+        return new LwfConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getJurisdiction() != null ? c.getJurisdiction().getId() : null,
+                c.getEmployeeContribution(),
+                c.getEmployerContribution(),
+                c.getRemittanceMonths(),
+                c.getEffectiveFrom(),
+                c.getEffectiveTo(),
+                c.isActive(),
+                c.getVersionNo());
+    }
+
+    public IncomeTaxSlabResponse toResponse(IncomeTaxSlab s) {
+        return new IncomeTaxSlabResponse(
+                s.getId(),
+                s.getTenantId(),
+                s.getRegime(),
+                s.getFiscalYear(),
+                s.getMinIncome(),
+                s.getMaxIncome(),
+                s.getRatePct(),
+                s.isActive(),
+                s.getVersionNo());
+    }
+
+    public IncomeTaxPolicyResponse toResponse(IncomeTaxPolicy p) {
+        return new IncomeTaxPolicyResponse(
+                p.getId(),
+                p.getTenantId(),
+                p.getRegime(),
+                p.getFiscalYear(),
+                p.getRebateIncomeThreshold(),
+                p.getRebateMaxAmount(),
+                p.getCessRatePct(),
+                p.getStandardDeduction(),
+                p.getChapterViaMaxDeduction(),
+                p.getHousePropertyLossCap(),
+                p.isActive(),
+                p.getVersionNo());
+    }
+
+    public IncomeTaxSurchargeSlabResponse toResponse(IncomeTaxSurchargeSlab s) {
+        return new IncomeTaxSurchargeSlabResponse(
+                s.getId(),
+                s.getTenantId(),
+                s.getRegime(),
+                s.getFiscalYear(),
+                s.getMinIncome(),
+                s.getMaxIncome(),
+                s.getSurchargeRatePct(),
+                s.isActive(),
+                s.getVersionNo());
+    }
+
+    public StatutoryJurisdictionResponse toResponse(StatutoryJurisdiction j) {
+        return new StatutoryJurisdictionResponse(
+                j.getId(), j.getCountryCode(), j.getStateCode(), j.getName(), j.isActive());
+    }
+
+    public EmployeeTaxDeclarationResponse toResponse(EmployeeTaxDeclaration d) {
+        return new EmployeeTaxDeclarationResponse(
+                d.getId(),
+                d.getTenantId(),
+                d.getCompanyId(),
+                d.getEmployee() != null ? d.getEmployee().getId() : null,
+                d.getFiscalYear(),
+                d.getRegime(),
+                d.getPreviousEmployerIncome(),
+                d.getOtherIncome(),
+                d.getHousePropertyLoss(),
+                d.getChapterViaDeclaredAmount(),
+                d.getRentPaidAnnual(),
+                d.isMetroCity(),
+                d.getLtaExemptionDeclared(),
+                d.getYtdTaxableSalary(),
+                d.getYtdHraReceived(),
+                d.getYtdTdsDeducted(),
+                d.getYtdProfessionalTaxPaid(),
+                d.getYtdVariablePaymentTdsRecovered(),
+                d.isActive(),
+                d.getVersionNo());
     }
 
     private static PayslipLineResponse toPayslipLineResponse(PayslipLine l) {
@@ -430,6 +614,94 @@ public final class PayrollMapper {
                 l.getCalculationType(),
                 l.getAmount(),
                 l.getPercentageApplied(),
-                l.getSortOrder());
+                l.getSortOrder(),
+                PayslipLineExplainer.explain(
+                        l.getComponentNameSnapshot(),
+                        l.getKind(),
+                        l.getCalculationType(),
+                        l.getPercentageApplied()));
+    }
+
+    public LtaBlockConfigurationResponse toResponse(LtaBlockConfiguration c) {
+        return new LtaBlockConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getBlockDurationYears(),
+                c.getAnchorBlockStartYear(),
+                c.getMaxExemptClaimsPerBlock(),
+                c.isCarryForwardEnabled(),
+                c.getCarryForwardMaxClaims(),
+                c.getEffectiveFrom(),
+                c.getEffectiveTo(),
+                c.isActive(),
+                c.getNotes());
+    }
+
+    public LtaBlockClaimResponse toResponse(EmployeeLtaBlockClaim c) {
+        return new LtaBlockClaimResponse(
+                c.getId(),
+                c.getEmployee() != null ? c.getEmployee().getId() : null,
+                c.getBlockStartYear(),
+                c.getBlockEndYear(),
+                c.getClaimType(),
+                c.getFiscalYear(),
+                c.getClaimDate(),
+                c.getLtaCreditedAmount(),
+                c.getAmountClaimed(),
+                c.getTaxFreeAmount(),
+                c.getTaxableAmount(),
+                c.isCarriedForwardFromPreviousBlock(),
+                c.getNotes());
+    }
+
+    public com.ewos.payroll.api.dto.PayslipBrandingConfigurationResponse toResponse(
+            com.ewos.payroll.domain.PayslipBrandingConfiguration c) {
+        return new com.ewos.payroll.api.dto.PayslipBrandingConfigurationResponse(
+                c.getId(),
+                c.getTenantId(),
+                c.getCompanyId(),
+                c.getDisplayName(),
+                c.getAddressLine1(),
+                c.getAddressLine2(),
+                c.getSupportEmail(),
+                c.getFooterNote(),
+                c.getLogoStorageUri(),
+                c.getPasswordPolicy(),
+                c.isActive());
+    }
+
+    public com.ewos.payroll.api.dto.KnowledgeDocumentResponse toResponse(
+            com.ewos.payroll.domain.KnowledgeDocument d) {
+        return new com.ewos.payroll.api.dto.KnowledgeDocumentResponse(
+                d.getId(),
+                d.getTenantId(),
+                d.getCompanyId(),
+                d.getDocumentFamilyId(),
+                d.getVersionNumber(),
+                d.getSourceType(),
+                d.getTitle(),
+                d.getReferenceNumber(),
+                d.getSummary(),
+                d.getTags(),
+                d.getStorageUri(),
+                d.getEffectiveFrom(),
+                d.getEffectiveTo(),
+                d.getStatus());
+    }
+
+    public TaxDeclarationProofResponse toResponse(TaxDeclarationProof p) {
+        return new TaxDeclarationProofResponse(
+                p.getId(),
+                p.getEmployeeTaxDeclaration() != null
+                        ? p.getEmployeeTaxDeclaration().getId()
+                        : null,
+                p.getProofType(),
+                p.getFilename(),
+                p.getMimeType(),
+                p.getSizeBytes(),
+                p.getStorageUri(),
+                p.getNotes(),
+                p.getUploadedAt());
     }
 }

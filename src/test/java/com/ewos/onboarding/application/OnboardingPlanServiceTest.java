@@ -14,6 +14,7 @@ import com.ewos.onboarding.api.OnboardingMapper;
 import com.ewos.onboarding.api.dto.AddOnboardingTaskRequest;
 import com.ewos.onboarding.api.dto.AssignPlanRolesRequest;
 import com.ewos.onboarding.api.dto.CreateOnboardingPlanRequest;
+import com.ewos.onboarding.api.dto.ReassignOnboardingTaskRequest;
 import com.ewos.onboarding.api.dto.UpdateOnboardingTaskStatusRequest;
 import com.ewos.onboarding.domain.OnboardingPlan;
 import com.ewos.onboarding.domain.OnboardingPlanStatus;
@@ -417,6 +418,65 @@ class OnboardingPlanServiceTest {
                 .hasMessageContaining("already terminal");
     }
 
+    // --- reassignTask ---
+
+    @Test
+    void reassignTaskUpdatesTheAssignedEmployeeAndPublishesTaskAssigned() {
+        OnboardingPlan p = plannedPlan();
+        OnboardingTaskInstance t = new OnboardingTaskInstance();
+        t.setId(UUID.randomUUID());
+        t.setPlan(p);
+        t.setStatus(OnboardingTaskStatus.PENDING);
+        when(tasks.findByIdAndTenantId(t.getId(), tenantId)).thenReturn(Optional.of(t));
+        UUID newAssigneeId = UUID.randomUUID();
+        Employee newAssignee = new Employee();
+        newAssignee.setId(newAssigneeId);
+        when(employees.findByIdAndTenantId(newAssigneeId, tenantId))
+                .thenReturn(Optional.of(newAssignee));
+
+        var response =
+                service.reassignTask(
+                        tenantId, t.getId(), new ReassignOnboardingTaskRequest(newAssigneeId));
+
+        assertThat(response.assignedEmployeeId()).isEqualTo(newAssigneeId);
+        verify(events).publishEvent(any(com.ewos.onboarding.domain.events.OnboardingEvent.class));
+    }
+
+    @Test
+    void reassignTaskClearsTheAssignmentWhenEmployeeIdIsNull() {
+        OnboardingPlan p = plannedPlan();
+        OnboardingTaskInstance t = new OnboardingTaskInstance();
+        t.setId(UUID.randomUUID());
+        t.setPlan(p);
+        t.setStatus(OnboardingTaskStatus.PENDING);
+        t.setAssignedEmployee(employeeIn(companyId));
+        when(tasks.findByIdAndTenantId(t.getId(), tenantId)).thenReturn(Optional.of(t));
+
+        var response =
+                service.reassignTask(tenantId, t.getId(), new ReassignOnboardingTaskRequest(null));
+
+        assertThat(response.assignedEmployeeId()).isNull();
+    }
+
+    @Test
+    void reassignTaskRejectedForATerminalTask() {
+        OnboardingTaskInstance t = new OnboardingTaskInstance();
+        t.setId(UUID.randomUUID());
+        t.setPlan(plannedPlan());
+        t.setStatus(OnboardingTaskStatus.COMPLETED);
+        when(tasks.findByIdAndTenantId(t.getId(), tenantId)).thenReturn(Optional.of(t));
+
+        assertThatThrownBy(
+                        () ->
+                                service.reassignTask(
+                                        tenantId,
+                                        t.getId(),
+                                        new ReassignOnboardingTaskRequest(UUID.randomUUID())))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
     // --- not-found / access ---
 
     @Test
@@ -438,5 +498,41 @@ class OnboardingPlanServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void forEmployeeReturnsThePlanForThatEmployee() {
+        OnboardingPlan p = plannedPlan();
+        when(plans.findByTenantIdAndEmployeeId(tenantId, employeeId)).thenReturn(Optional.of(p));
+
+        var response = service.forEmployee(tenantId, employeeId);
+
+        assertThat(response.id()).isEqualTo(p.getId());
+    }
+
+    @Test
+    void tasksForEmployeeThrowsNotFoundWhenNoPlanExists() {
+        when(plans.findByTenantIdAndEmployeeId(tenantId, employeeId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.tasksForEmployee(tenantId, employeeId))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void tasksForEmployeeReturnsTheTasksOnThatEmployeesPlan() {
+        OnboardingPlan p = plannedPlan();
+        when(plans.findByTenantIdAndEmployeeId(tenantId, employeeId)).thenReturn(Optional.of(p));
+        OnboardingTaskInstance t = new OnboardingTaskInstance();
+        t.setId(UUID.randomUUID());
+        t.setPlan(p);
+        when(tasks.findAllByTenantIdAndPlanIdOrderBySortOrderAsc(tenantId, p.getId()))
+                .thenReturn(List.of(t));
+
+        var response = service.tasksForEmployee(tenantId, employeeId);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).id()).isEqualTo(t.getId());
     }
 }

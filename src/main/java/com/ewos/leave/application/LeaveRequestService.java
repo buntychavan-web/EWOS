@@ -112,7 +112,7 @@ public class LeaveRequestService {
     }
 
     public LeaveRequestResponse create(CreateLeaveRequestRequest request) {
-        guard.requireAccessForCompany(request.companyId());
+        guard.requireAccessForCompany(request.companyId(), request.employeeId());
         Employee employee = requireEmployee(request.tenantId(), request.employeeId());
         if (!employee.getCompanyId().equals(request.companyId())) {
             throw new ApiException(
@@ -144,7 +144,7 @@ public class LeaveRequestService {
 
     public LeaveRequestResponse submit(UUID tenantId, UUID id, SubmitLeaveRequestRequest request) {
         LeaveRequest r = require(tenantId, id);
-        guard.requireAccessForCompany(r.getCompanyId());
+        guard.requireAccessForCompany(r.getCompanyId(), r.getEmployee().getId());
         policy.assertSubmittable(r);
         policy.assertRequestable(r, LocalDate.now(clock));
 
@@ -166,7 +166,8 @@ public class LeaveRequestService {
                                 request.workflowDefinitionId(),
                                 SUBJECT_TYPE,
                                 r.getId(),
-                                SUBJECT_TYPE + ":" + r.getId()));
+                                SUBJECT_TYPE + ":" + r.getId()),
+                        r.getEmployee().getId());
 
         // Move the requested days into the pending bucket to prevent double-booking.
         balance.setPendingDays(balance.getPendingDays().add(r.getDaysRequested()));
@@ -238,7 +239,7 @@ public class LeaveRequestService {
 
     public LeaveRequestResponse cancel(UUID tenantId, UUID id, boolean actorIsAdmin) {
         LeaveRequest r = require(tenantId, id);
-        guard.requireAccessForCompany(r.getCompanyId());
+        guard.requireAccessForCompany(r.getCompanyId(), r.getEmployee().getId());
         policy.assertCancelable(r, actorIsAdmin);
         UUID actor = requireActor();
 
@@ -283,7 +284,8 @@ public class LeaveRequestService {
     @Transactional(readOnly = true)
     public List<LeaveRequestResponse> forEmployee(UUID tenantId, UUID employeeId) {
         List<LeaveRequest> found = requests.findAllForEmployee(tenantId, employeeId);
-        guard.requireAccessForCompanies(found.stream().map(LeaveRequest::getCompanyId).toList());
+        guard.requireAccessForCompanies(
+                found.stream().map(LeaveRequest::getCompanyId).toList(), employeeId);
         return found.stream().map(mapper::toResponse).toList();
     }
 

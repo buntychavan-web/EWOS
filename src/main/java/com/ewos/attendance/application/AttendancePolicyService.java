@@ -67,6 +67,9 @@ public class AttendancePolicyService {
         if (request.active() != null) {
             p.setActive(request.active());
         }
+        if (request.sandwichLeavePolicyEnabled() != null) {
+            p.setSandwichLeavePolicyEnabled(request.sandwichLeavePolicyEnabled());
+        }
         return mapper.toResponse(repository.save(p));
     }
 
@@ -102,6 +105,9 @@ public class AttendancePolicyService {
         }
         if (request.active() != null) {
             p.setActive(request.active());
+        }
+        if (request.sandwichLeavePolicyEnabled() != null) {
+            p.setSandwichLeavePolicyEnabled(request.sandwichLeavePolicyEnabled());
         }
         return mapper.toResponse(p);
     }

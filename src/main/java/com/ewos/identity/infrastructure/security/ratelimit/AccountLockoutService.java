@@ -1,11 +1,16 @@
 package com.ewos.identity.infrastructure.security.ratelimit;
 
 import com.ewos.identity.domain.User;
+import com.ewos.identity.infrastructure.persistence.UserRepository;
 import com.ewos.shared.exception.ApiException;
 import java.time.Instant;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Increments failed-login counters, locks accounts after the configured threshold, and clears
@@ -20,9 +25,12 @@ import org.springframework.stereotype.Service;
 public class AccountLockoutService {
 
     private final AccountLockoutProperties properties;
+    private final UserRepository userRepository;
 
-    public AccountLockoutService(AccountLockoutProperties properties) {
+    public AccountLockoutService(
+            AccountLockoutProperties properties, UserRepository userRepository) {
         this.properties = properties;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -47,19 +55,48 @@ public class AccountLockoutService {
     }
 
     /**
-     * Records a failed login. Returns {@code true} if this attempt tripped the lockout threshold.
+     * Durably records a failed login attempt and, if it trips the lockout threshold, locks the
+     * account — all in its own {@code REQUIRES_NEW} transaction, the same pattern {@code
+     * LoginHistoryRecorder#record} and {@code IdentityEventPublisher#publish} already use. {@code
+     * AuthenticationService#login} always throws right after calling this (401 on bad password),
+     * and Spring's default rollback rule for that unchecked {@code ApiException} would otherwise
+     * take an in-memory-only counter update down with it — which is exactly why, before this fix,
+     * failed attempts never durably accumulated and lockout could never trigger. Committing
+     * independently here, through this separate bean so the {@code REQUIRES_NEW} proxy boundary is
+     * real, closes that gap.
+     *
+     * <p>Reads the row with a pessimistic write lock so concurrent failed attempts against the same
+     * account serialize instead of racing a read-modify-write and losing an increment.
+     *
+     * <p>Returns {@code true} if this attempt tripped the lockout threshold.
      */
-    public boolean recordFailedAttempt(User user) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean recordFailedAttemptDurably(UUID userId) {
         if (!properties.enabled()) {
             return false;
         }
-        int attempts = user.getFailedLoginAttempts() + 1;
-        user.setFailedLoginAttempts(attempts);
-        if (attempts >= properties.maxAttempts()) {
-            user.setLockedUntil(Instant.now().plus(properties.lockDuration()));
-            return true;
+        Optional<User> maybeUser = userRepository.findByIdForUpdate(userId);
+        if (maybeUser.isEmpty()) {
+            return false;
         }
-        return false;
+        User user = maybeUser.get();
+        Instant now = Instant.now();
+        Instant lockedUntil = user.getLockedUntil();
+        int attempts;
+        if (lockedUntil != null && !lockedUntil.isAfter(now)) {
+            // A previously-tripped lock has since expired — restart the counter instead of piling
+            // this attempt onto the stale total that caused it.
+            attempts = 1;
+            user.setLockedUntil(null);
+        } else {
+            attempts = user.getFailedLoginAttempts() + 1;
+        }
+        user.setFailedLoginAttempts(attempts);
+        boolean nowLocked = attempts >= properties.maxAttempts();
+        if (nowLocked) {
+            user.setLockedUntil(now.plus(properties.lockDuration()));
+        }
+        return nowLocked;
     }
 
     /** Resets counters on a successful login. */

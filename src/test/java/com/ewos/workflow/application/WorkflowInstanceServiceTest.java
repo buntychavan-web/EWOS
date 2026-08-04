@@ -92,6 +92,23 @@ class WorkflowInstanceServiceTest {
     }
 
     @Test
+    void startWithEmployeeIdUsesTheEmployeeAwareGuardOverload() {
+        UUID tenant = UUID.randomUUID();
+        UUID company = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        WorkflowDefinition def = twoStateDef(tenant);
+        when(definitions.require(tenant, def.getId())).thenReturn(def);
+
+        StartInstanceRequest request =
+                new StartInstanceRequest(
+                        tenant, company, def.getId(), "leave_request", UUID.randomUUID(), null);
+        service.start(request, employeeId);
+
+        verify(guard).requireAccessForCompany(company, employeeId);
+        verify(guard, org.mockito.Mockito.never()).requireAccessForCompany(any(UUID.class));
+    }
+
+    @Test
     void startRejectsInactiveDefinition() {
         UUID tenant = UUID.randomUUID();
         UUID company = UUID.randomUUID();

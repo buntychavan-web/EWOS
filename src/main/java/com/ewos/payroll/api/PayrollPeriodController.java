@@ -1,7 +1,9 @@
 package com.ewos.payroll.api;
 
 import com.ewos.payroll.api.dto.CreatePayrollPeriodRequest;
+import com.ewos.payroll.api.dto.PayrollPeriodReopenLogResponse;
 import com.ewos.payroll.api.dto.PayrollPeriodResponse;
+import com.ewos.payroll.api.dto.ReopenPayrollPeriodRequest;
 import com.ewos.payroll.api.dto.UpdatePayrollPeriodRequest;
 import com.ewos.payroll.application.PayrollPeriodService;
 import com.ewos.payroll.domain.PayrollPeriodStatus;
@@ -92,5 +94,23 @@ public class PayrollPeriodController {
     public PayrollPeriodResponse close(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return service.close(tenantId, id);
+    }
+
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasAuthority('PAYROLL_ADMIN')")
+    @Operation(summary = "Reopen a CLOSED period back to LOCKED, with a mandatory reason")
+    public PayrollPeriodResponse reopen(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ReopenPayrollPeriodRequest request) {
+        return service.reopen(tenantId, id, request);
+    }
+
+    @GetMapping("/{id}/reopen-history")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "Complete audit history of this period's reopen actions")
+    public List<PayrollPeriodReopenLogResponse> reopenHistory(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return service.reopenHistory(tenantId, id);
     }
 }

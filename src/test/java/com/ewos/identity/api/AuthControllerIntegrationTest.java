@@ -123,6 +123,46 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void reusingARotatedRefreshTokenRevokesTheWholeFamilyIncludingTheNewOne() throws Exception {
+        // Sprint 24G — replaying an already-rotated refresh token is the standard signal of theft;
+        // the fix must revoke every token in the family, not just reject the stale one, so a
+        // legitimate client's freshly-rotated token stops working too and is forced to re-login.
+        TokenResponse firstPair = login();
+
+        MvcResult refreshResult =
+                mockMvc.perform(
+                                post("/api/v1/auth/refresh")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                objectMapper.writeValueAsBytes(
+                                                        new RefreshRequest(
+                                                                firstPair.refreshToken()))))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        TokenResponse secondPair =
+                objectMapper.readValue(
+                        refreshResult.getResponse().getContentAsByteArray(), TokenResponse.class);
+
+        // Replay the already-rotated first token — reuse detection fires.
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsBytes(
+                                                new RefreshRequest(firstPair.refreshToken()))))
+                .andExpect(status().isUnauthorized());
+
+        // The second (legitimately rotated, never-before-used) token is now also revoked.
+        mockMvc.perform(
+                        post("/api/v1/auth/refresh")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsBytes(
+                                                new RefreshRequest(secondPair.refreshToken()))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void refreshWithUnknownTokenReturns401() throws Exception {
         mockMvc.perform(
                         post("/api/v1/auth/refresh")

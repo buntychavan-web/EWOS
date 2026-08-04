@@ -56,4 +56,32 @@ class BootstrapTenantMembershipProvisionerTest {
 
         verify(memberships, never()).save(org.mockito.ArgumentMatchers.any());
     }
+
+    @Test
+    void ensureMembershipAssignsTheGivenTenantRatherThanBootstrap() {
+        // Sprint 21 UAT — UserService#create uses this overload so a new user lands in the
+        // creating admin's own tenant, not always the platform bootstrap tenant.
+        UUID userId = UUID.randomUUID();
+        UUID otherTenant = UUID.randomUUID();
+        when(memberships.findByUserId(userId)).thenReturn(Optional.empty());
+
+        provisioner.ensureMembership(userId, otherTenant);
+
+        ArgumentCaptor<UserTenantMembership> captor =
+                ArgumentCaptor.forClass(UserTenantMembership.class);
+        verify(memberships).save(captor.capture());
+        assertThat(captor.getValue().getUserId()).isEqualTo(userId);
+        assertThat(captor.getValue().getTenantId()).isEqualTo(otherTenant);
+        assertThat(captor.getValue().isPrimary()).isTrue();
+    }
+
+    @Test
+    void ensureMembershipIsNoOpWhenUserAlreadyHasAMembership() {
+        UUID userId = UUID.randomUUID();
+        when(memberships.findByUserId(userId)).thenReturn(Optional.of(new UserTenantMembership()));
+
+        provisioner.ensureMembership(userId, UUID.randomUUID());
+
+        verify(memberships, never()).save(org.mockito.ArgumentMatchers.any());
+    }
 }

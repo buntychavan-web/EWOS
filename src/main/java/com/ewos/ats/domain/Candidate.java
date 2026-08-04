@@ -131,6 +131,25 @@ public class Candidate extends AuditableEntity {
     @Column(name = "summary", length = 4000)
     private String summary;
 
+    @Column(name = "consent_given", nullable = false)
+    private boolean consentGiven;
+
+    @Column(name = "consent_given_at")
+    private Instant consentGivenAt;
+
+    @Column(name = "consent_withdrawn_at")
+    private Instant consentWithdrawnAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "consent_source", length = 32)
+    private CandidateConsentSource consentSource;
+
+    @Column(name = "retention_policy_code", length = 64)
+    private String retentionPolicyCode;
+
+    @Column(name = "retention_expires_at")
+    private Instant retentionExpiresAt;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -392,6 +411,54 @@ public class Candidate extends AuditableEntity {
 
     public void setSummary(String v) {
         this.summary = v;
+    }
+
+    public boolean isConsentGiven() {
+        return consentGiven;
+    }
+
+    public void setConsentGiven(boolean v) {
+        this.consentGiven = v;
+    }
+
+    public Instant getConsentGivenAt() {
+        return consentGivenAt;
+    }
+
+    public void setConsentGivenAt(Instant v) {
+        this.consentGivenAt = v;
+    }
+
+    public Instant getConsentWithdrawnAt() {
+        return consentWithdrawnAt;
+    }
+
+    public void setConsentWithdrawnAt(Instant v) {
+        this.consentWithdrawnAt = v;
+    }
+
+    public CandidateConsentSource getConsentSource() {
+        return consentSource;
+    }
+
+    public void setConsentSource(CandidateConsentSource v) {
+        this.consentSource = v;
+    }
+
+    public String getRetentionPolicyCode() {
+        return retentionPolicyCode;
+    }
+
+    public void setRetentionPolicyCode(String v) {
+        this.retentionPolicyCode = v;
+    }
+
+    public Instant getRetentionExpiresAt() {
+        return retentionExpiresAt;
+    }
+
+    public void setRetentionExpiresAt(Instant v) {
+        this.retentionExpiresAt = v;
     }
 
     public Instant getDeletedAt() {

@@ -17,4 +17,7 @@ public interface EmployeeCompetencyRepository extends JpaRepository<EmployeeComp
 
     List<EmployeeCompetency> findAllByTenantIdAndCompanyIdAndCompetencyId(
             UUID tenantId, UUID companyId, UUID competencyId);
+
+    /** Sprint 24E — full company employee-competency list, backing CSV export. */
+    List<EmployeeCompetency> findAllByTenantIdAndCompanyId(UUID tenantId, UUID companyId);
 }

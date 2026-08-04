@@ -1,9 +1,11 @@
 package com.ewos.ats.api.dto;
 
+import com.ewos.ats.domain.CandidateConsentSource;
 import com.ewos.ats.domain.CandidateGender;
 import com.ewos.ats.domain.CandidateSource;
 import com.ewos.ats.domain.CandidateStatus;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -40,4 +42,10 @@ public record CandidateResponse(
         String githubUrl,
         String portfolioUrl,
         String summary,
+        boolean consentGiven,
+        Instant consentGivenAt,
+        Instant consentWithdrawnAt,
+        CandidateConsentSource consentSource,
+        String retentionPolicyCode,
+        Instant retentionExpiresAt,
         long versionNo) {}

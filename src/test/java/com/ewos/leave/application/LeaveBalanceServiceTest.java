@@ -231,6 +231,6 @@ class LeaveBalanceServiceTest {
 
         service.balancesForEmployee(tenantId, employeeId, 2026);
 
-        verify(guard).requireAccessForCompanies(List.of(companyId));
+        verify(guard).requireAccessForCompanies(List.of(companyId), employeeId);
     }
 }

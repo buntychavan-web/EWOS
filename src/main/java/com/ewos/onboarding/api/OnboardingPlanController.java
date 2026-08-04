@@ -5,6 +5,7 @@ import com.ewos.onboarding.api.dto.AssignPlanRolesRequest;
 import com.ewos.onboarding.api.dto.CreateOnboardingPlanRequest;
 import com.ewos.onboarding.api.dto.OnboardingPlanResponse;
 import com.ewos.onboarding.api.dto.OnboardingTaskInstanceResponse;
+import com.ewos.onboarding.api.dto.ReassignOnboardingTaskRequest;
 import com.ewos.onboarding.api.dto.UpdateOnboardingTaskStatusRequest;
 import com.ewos.onboarding.application.OnboardingPlanService;
 import com.ewos.onboarding.domain.OnboardingPlanStatus;
@@ -143,5 +144,15 @@ public class OnboardingPlanController {
     public OnboardingTaskInstanceResponse remindTask(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return plans.remindTask(tenantId, id);
+    }
+
+    @PutMapping("/tasks/{id}/assignee")
+    @PreAuthorize("hasAuthority('ONBOARDING_WRITE')")
+    @Operation(summary = "Reassign the employee responsible for an onboarding task")
+    public OnboardingTaskInstanceResponse reassignTask(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @RequestBody ReassignOnboardingTaskRequest req) {
+        return plans.reassignTask(tenantId, id, req);
     }
 }

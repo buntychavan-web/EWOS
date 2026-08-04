@@ -1,9 +1,17 @@
 package com.ewos.payroll.api;
 
+import com.ewos.payroll.api.dto.PayrollExceptionResponse;
+import com.ewos.payroll.api.dto.PayrollRunComparisonResponse;
 import com.ewos.payroll.api.dto.PayrollRunResponse;
+import com.ewos.payroll.api.dto.PayrollRunTimelineEventResponse;
+import com.ewos.payroll.api.dto.PayrollSimulationReportResponse;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
 import com.ewos.payroll.api.dto.StartSupplementaryRunRequest;
+import com.ewos.payroll.application.PayrollComparisonService;
+import com.ewos.payroll.application.PayrollExceptionReportService;
 import com.ewos.payroll.application.PayrollRunService;
+import com.ewos.payroll.application.PayrollSimulationService;
+import com.ewos.payroll.domain.PayrollRunStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -18,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -26,9 +35,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class PayrollRunController {
 
     private final PayrollRunService service;
+    private final PayrollSimulationService simulationService;
+    private final PayrollComparisonService comparisonService;
+    private final PayrollExceptionReportService exceptionReportService;
 
-    public PayrollRunController(PayrollRunService service) {
+    public PayrollRunController(
+            PayrollRunService service,
+            PayrollSimulationService simulationService,
+            PayrollComparisonService comparisonService,
+            PayrollExceptionReportService exceptionReportService) {
         this.service = service;
+        this.simulationService = simulationService;
+        this.comparisonService = comparisonService;
+        this.exceptionReportService = exceptionReportService;
     }
 
     @PostMapping
@@ -86,5 +105,54 @@ public class PayrollRunController {
     public List<PayrollRunResponse> forPeriod(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID periodId) {
         return service.forPeriod(tenantId, periodId);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "Run history for a company across every period, optionally by status")
+    public List<PayrollRunResponse> forCompany(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @RequestParam UUID companyId,
+            @RequestParam(required = false) PayrollRunStatus status) {
+        return service.forCompany(tenantId, companyId, status);
+    }
+
+    @GetMapping("/{id}/timeline")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "This run's activity timeline: created/started/completed/finalized/frozen")
+    public List<PayrollRunTimelineEventResponse> timeline(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return service.timeline(tenantId, id);
+    }
+
+    @GetMapping("/simulate")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(
+            summary =
+                    "Dry run: compute what a payroll run over this period would produce without"
+                            + " creating any run, payslip, or statutory record")
+    public PayrollSimulationReportResponse simulate(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @RequestParam UUID companyId,
+            @RequestParam UUID payrollPeriodId) {
+        return simulationService.simulate(tenantId, companyId, payrollPeriodId);
+    }
+
+    @GetMapping("/compare")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "Compare two runs' payslips employee-by-employee")
+    public PayrollRunComparisonResponse compare(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @RequestParam UUID baseRunId,
+            @RequestParam UUID compareRunId) {
+        return comparisonService.compare(tenantId, baseRunId, compareRunId);
+    }
+
+    @GetMapping("/{id}/exceptions")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "Payslips on this run worth manual review before finalizing")
+    public List<PayrollExceptionResponse> exceptions(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        return exceptionReportService.exceptionsForRun(tenantId, id);
     }
 }

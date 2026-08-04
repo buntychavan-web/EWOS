@@ -69,7 +69,8 @@ class AttendancePolicyServiceTest {
                 10,
                 new BigDecimal("1.50"),
                 30,
-                true);
+                true,
+                null);
     }
 
     @Test
@@ -112,7 +113,7 @@ class AttendancePolicyServiceTest {
 
         UpdateAttendancePolicyRequest req =
                 new UpdateAttendancePolicyRequest(
-                        null, null, null, null, null, 15, null, null, null);
+                        null, null, null, null, null, 15, null, null, null, null);
         var response = service.update(tenantId, id, req);
 
         assertThat(response.name()).isEqualTo("Standard");

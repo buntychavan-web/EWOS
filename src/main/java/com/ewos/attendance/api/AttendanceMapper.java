@@ -1,9 +1,11 @@
 package com.ewos.attendance.api;
 
 import com.ewos.attendance.api.dto.AttendancePolicyResponse;
+import com.ewos.attendance.api.dto.HolidayResponse;
 import com.ewos.attendance.api.dto.TimeEntryResponse;
 import com.ewos.attendance.api.dto.TimesheetResponse;
 import com.ewos.attendance.domain.AttendancePolicy;
+import com.ewos.attendance.domain.Holiday;
 import com.ewos.attendance.domain.TimeEntry;
 import com.ewos.attendance.domain.Timesheet;
 import org.springframework.stereotype.Component;
@@ -26,11 +28,27 @@ public final class AttendanceMapper {
                 p.getOvertimeMultiplier(),
                 p.getPeriodLengthDays(),
                 p.isActive(),
+                p.isSandwichLeavePolicyEnabled(),
                 p.getCreatedAt(),
                 p.getUpdatedAt(),
                 p.getCreatedBy(),
                 p.getUpdatedBy(),
                 p.getVersionNo());
+    }
+
+    public HolidayResponse toResponse(Holiday h) {
+        return new HolidayResponse(
+                h.getId(),
+                h.getTenantId(),
+                h.getCompanyId(),
+                h.getHolidayDate(),
+                h.getName(),
+                h.isRecurringAnnually(),
+                h.getCreatedAt(),
+                h.getUpdatedAt(),
+                h.getCreatedBy(),
+                h.getUpdatedBy(),
+                h.getVersionNo());
     }
 
     public TimeEntryResponse toResponse(TimeEntry e) {

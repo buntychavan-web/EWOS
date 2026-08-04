@@ -22,5 +22,6 @@ public record CreatePayComponentRequest(
         @DecimalMin("0.0000") BigDecimal defaultAmount,
         @DecimalMin("0.0000") @DecimalMax("100.0000") BigDecimal defaultPercentage,
         Boolean taxable,
+        Boolean recurring,
         Boolean active,
         @PositiveOrZero Integer sortOrder) {}

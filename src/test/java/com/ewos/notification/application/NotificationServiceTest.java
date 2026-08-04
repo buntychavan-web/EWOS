@@ -8,10 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ewos.notification.domain.Notification;
+import com.ewos.notification.domain.NotificationTemplate;
 import com.ewos.notification.domain.NotificationType;
 import com.ewos.notification.infrastructure.persistence.NotificationRepository;
+import com.ewos.notification.infrastructure.persistence.NotificationTemplateRepository;
 import com.ewos.shared.exception.ApiException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -28,13 +31,15 @@ import org.springframework.security.core.context.SecurityContextHolder;
 class NotificationServiceTest {
 
     @Mock NotificationRepository repository;
+    @Mock NotificationTemplateRepository templates;
+    @Mock EmailNotificationSender emailSender;
 
     private NotificationService service;
     private UUID caller;
 
     @BeforeEach
     void setUp() {
-        service = new NotificationService(repository);
+        service = new NotificationService(repository, templates, Optional.of(emailSender));
         caller = UUID.randomUUID();
         SecurityContextHolder.getContext()
                 .setAuthentication(
@@ -99,5 +104,116 @@ class NotificationServiceTest {
         when(repository.markRead(id, tenantId, caller)).thenReturn(1);
 
         service.markRead(tenantId, id);
+    }
+
+    @Test
+    void sendAlsoInvokesTheEmailChannelWhenConfigured() {
+        UUID tenantId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+
+        service.send(tenantId, recipient, NotificationType.TASK_ASSIGNED, "New task", "body", "/x");
+
+        verify(emailSender)
+                .send(tenantId, recipient, NotificationType.TASK_ASSIGNED, "New task", "body");
+    }
+
+    @Test
+    void sendSkipsTheEmailChannelWhenNotConfigured() {
+        NotificationService noEmail =
+                new NotificationService(repository, templates, Optional.empty());
+        UUID tenantId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+
+        noEmail.send(tenantId, recipient, NotificationType.TASK_ASSIGNED, "New task", "body", "/x");
+
+        verify(emailSender, never()).send(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void tenantSpecificTemplateOverridesTheDefaultTitleAndBody() {
+        UUID tenantId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+        NotificationTemplate template = new NotificationTemplate();
+        template.setTitleTemplate("Custom title");
+        template.setBodyTemplate("Custom body");
+        when(templates.findByTenantIdAndTypeAndActiveTrue(tenantId, NotificationType.GOAL_ASSIGNED))
+                .thenReturn(Optional.of(template));
+
+        service.send(
+                tenantId,
+                recipient,
+                NotificationType.GOAL_ASSIGNED,
+                "Default title",
+                "Default body",
+                null);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Notification.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("Custom title");
+        assertThat(captor.getValue().getBody()).isEqualTo("Custom body");
+    }
+
+    @Test
+    void fallsBackToThePlatformDefaultTemplateWhenNoTenantOverrideExists() {
+        UUID tenantId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+        NotificationTemplate globalDefault = new NotificationTemplate();
+        globalDefault.setTitleTemplate("Platform default title");
+        globalDefault.setBodyTemplate("Platform default body");
+        when(templates.findByTenantIdAndTypeAndActiveTrue(tenantId, NotificationType.GOAL_ASSIGNED))
+                .thenReturn(Optional.empty());
+        when(templates.findByTenantIdIsNullAndTypeAndActiveTrue(NotificationType.GOAL_ASSIGNED))
+                .thenReturn(Optional.of(globalDefault));
+
+        service.send(
+                tenantId,
+                recipient,
+                NotificationType.GOAL_ASSIGNED,
+                "Default title",
+                "Default body",
+                null);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Notification.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("Platform default title");
+    }
+
+    @Test
+    void placeholdersInTheDefaultTextAreSubstitutedFromParams() {
+        UUID tenantId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+
+        service.send(
+                tenantId,
+                recipient,
+                NotificationType.GOAL_ASSIGNED,
+                "Goal assigned",
+                "A new goal has been assigned to you: {{goalName}}",
+                null,
+                Map.of("goalName", "Ship Q1 roadmap"));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Notification.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getBody())
+                .isEqualTo("A new goal has been assigned to you: Ship Q1 roadmap");
+    }
+
+    @Test
+    void unresolvedPlaceholdersAreLeftAsIsWhenNoParamProvided() {
+        UUID tenantId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+
+        service.send(
+                tenantId,
+                recipient,
+                NotificationType.GOAL_ASSIGNED,
+                "Goal assigned",
+                "Assigned: {{goalName}}",
+                null,
+                Map.of());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Notification.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getBody()).isEqualTo("Assigned: {{goalName}}");
     }
 }

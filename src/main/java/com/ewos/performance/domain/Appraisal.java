@@ -119,6 +119,16 @@ public class Appraisal extends AuditableEntity {
     @Column(name = "approval_workflow_instance_id")
     private UUID approvalWorkflowInstanceId;
 
+    /**
+     * Sprint 24B — set only for appraisals created by {@code AppraisalCycleLaunchService}'s bulk
+     * launch; null for individually-opened appraisals. No JPA association to {@link
+     * AppraisalCycleLaunchBatch}: a bulk launch can create tens of thousands of these in one run,
+     * and loading/cascading through an entity association at that volume is exactly the kind of
+     * overhead a plain id column avoids.
+     */
+    @Column(name = "launch_batch_id")
+    private UUID launchBatchId;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -356,6 +366,14 @@ public class Appraisal extends AuditableEntity {
 
     public void setApprovalWorkflowInstanceId(UUID v) {
         this.approvalWorkflowInstanceId = v;
+    }
+
+    public UUID getLaunchBatchId() {
+        return launchBatchId;
+    }
+
+    public void setLaunchBatchId(UUID v) {
+        this.launchBatchId = v;
     }
 
     public Instant getDeletedAt() {

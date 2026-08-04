@@ -1,8 +1,10 @@
 package com.ewos.payroll.domain;
 
 import com.ewos.employee.domain.Employee;
+import com.ewos.payroll.infrastructure.crypto.BankAccountFieldEncryptor;
 import com.ewos.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
@@ -15,10 +17,11 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
 /**
- * A bank account belonging to an employee. Payroll runs credit the primary account by default. The
- * raw account number is stored (encrypted at rest is the operator's responsibility — see the
- * ops-runbook for column-level KMS wiring) and a display-safe masked form is duplicated for
- * read-mostly access.
+ * A bank account belonging to an employee. Payroll runs credit the primary account by default.
+ * {@code accountNumber} and {@code routingCode} are encrypted at rest with AES-256-GCM via {@link
+ * BankAccountFieldEncryptor} (Codex CTO audit P0-2) — the database column only ever holds
+ * ciphertext; a display-safe masked form is duplicated onto {@code accountNumberMasked} for
+ * read-mostly access so callers never need to decrypt just to render a UI.
  */
 @Entity
 @Table(name = "employee_bank_accounts")
@@ -48,13 +51,15 @@ public class EmployeeBankAccount extends AuditableEntity {
     @Column(name = "account_holder_name", nullable = false, length = 256)
     private String accountHolderName;
 
-    @Column(name = "account_number", nullable = false, length = 64)
+    @Convert(converter = BankAccountFieldEncryptor.class)
+    @Column(name = "account_number", nullable = false, length = 255)
     private String accountNumber;
 
     @Column(name = "account_number_masked", nullable = false, length = 64)
     private String accountNumberMasked;
 
-    @Column(name = "routing_code", length = 64)
+    @Convert(converter = BankAccountFieldEncryptor.class)
+    @Column(name = "routing_code", length = 255)
     private String routingCode;
 
     @Column(name = "swift_bic", length = 16)

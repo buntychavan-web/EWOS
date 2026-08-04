@@ -2,14 +2,18 @@ package com.ewos.payroll.application;
 
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.CreatePayrollPeriodRequest;
+import com.ewos.payroll.api.dto.PayrollPeriodReopenLogResponse;
 import com.ewos.payroll.api.dto.PayrollPeriodResponse;
 import com.ewos.payroll.api.dto.UpdatePayrollPeriodRequest;
 import com.ewos.payroll.domain.PayrollPeriod;
+import com.ewos.payroll.domain.PayrollPeriodReopenLog;
 import com.ewos.payroll.domain.PayrollPeriodStatus;
 import com.ewos.payroll.domain.PayrollPolicy;
 import com.ewos.payroll.domain.events.PayrollEvent;
 import com.ewos.payroll.domain.events.PayrollEventType;
+import com.ewos.payroll.infrastructure.persistence.PayrollPeriodReopenLogRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollPeriodRepository;
+import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
@@ -26,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class PayrollPeriodService {
 
     private final PayrollPeriodRepository repository;
+    private final PayrollRunRepository runs;
+    private final PayrollPeriodReopenLogRepository reopenLog;
     private final PayrollPolicy policy;
     private final PayrollMapper mapper;
     private final ApplicationEventPublisher events;
@@ -34,11 +40,15 @@ public class PayrollPeriodService {
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollPeriodService(
             PayrollPeriodRepository repository,
+            PayrollRunRepository runs,
+            PayrollPeriodReopenLogRepository reopenLog,
             PayrollPolicy policy,
             PayrollMapper mapper,
             ApplicationEventPublisher events,
             ClientAccessGuard guard) {
         this.repository = repository;
+        this.runs = runs;
+        this.reopenLog = reopenLog;
         this.policy = policy;
         this.mapper = mapper;
         this.events = events;
@@ -122,12 +132,73 @@ public class PayrollPeriodService {
         PayrollPeriod p = require(tenantId, id);
         guard.requireAccessForCompany(p.getCompanyId());
         policy.assertClosable(p);
+        if (runs.existsNonTerminalRunForPeriod(tenantId, id)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Cannot close period: one or more payroll runs against it are not yet"
+                            + " FINALIZED or FROZEN");
+        }
         UUID actor = requireActor();
         p.setStatus(PayrollPeriodStatus.CLOSED);
         p.setClosedAt(Instant.now());
         p.setClosedBy(actor);
         publish(PayrollEventType.PERIOD_CLOSED, p);
         return mapper.toResponse(p);
+    }
+
+    /**
+     * Sprint 24L item 2 — {@code CLOSED → LOCKED}, with proper authorization ({@code
+     * PAYROLL_ADMIN}, enforced at the controller — a strictly higher bar than the {@code
+     * PAYROLL_ADMIN} that also gates {@link #close}) and a mandatory reason. Unlike {@link
+     * com.ewos.payroll.domain.PayrollRunReopenAuthorization} for a FROZEN run, this really is a
+     * direct status flip: a period carries no immutable financial data of its own to preserve —
+     * that data lives on its {@code PayrollRun}/{@code Payslip} rows, which this never touches.
+     * Every reopen is recorded in {@link PayrollPeriodReopenLog}, append-only, for a complete audit
+     * history.
+     */
+    public PayrollPeriodResponse reopen(
+            UUID tenantId, UUID id, com.ewos.payroll.api.dto.ReopenPayrollPeriodRequest request) {
+        PayrollPeriod p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
+        if (p.getStatus() != PayrollPeriodStatus.CLOSED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Only CLOSED periods can be reopened; current status is " + p.getStatus());
+        }
+        UUID actor = requireActor();
+        PayrollPeriodStatus previous = p.getStatus();
+        p.setStatus(PayrollPeriodStatus.LOCKED);
+
+        PayrollPeriodReopenLog log = new PayrollPeriodReopenLog();
+        log.setTenantId(tenantId);
+        log.setCompanyId(p.getCompanyId());
+        log.setPayrollPeriod(p);
+        log.setReason(request.reason());
+        log.setReopenedBy(actor);
+        log.setPreviousStatus(previous);
+        log.setNewStatus(PayrollPeriodStatus.LOCKED);
+        reopenLog.save(log);
+
+        publish(PayrollEventType.PERIOD_REOPENED, p);
+        return mapper.toResponse(p);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PayrollPeriodReopenLogResponse> reopenHistory(UUID tenantId, UUID id) {
+        PayrollPeriod p = require(tenantId, id);
+        guard.requireAccessForCompany(p.getCompanyId());
+        return reopenLog.findAllForPeriod(tenantId, id).stream()
+                .map(
+                        l ->
+                                new PayrollPeriodReopenLogResponse(
+                                        l.getId(),
+                                        l.getPayrollPeriod().getId(),
+                                        l.getReason(),
+                                        l.getReopenedBy(),
+                                        l.getReopenedAt(),
+                                        l.getPreviousStatus(),
+                                        l.getNewStatus()))
+                .toList();
     }
 
     @Transactional(readOnly = true)

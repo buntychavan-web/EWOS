@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Sprint 14.3 §4 — automatically queues a {@link com.ewos.dataexchange.domain.DataExchangeRecord}
  * from the platform's existing domain events. No second event mechanism: this listens on the same
- * {@link PayrollEvent} every other Payroll integration point already uses (see {@link
- * com.ewos.payroll.application.PayrollApprovalWorkflowListener}).
+ * {@link PayrollEvent} every other Payroll integration point already uses (see {@code
+ * com.ewos.payroll.application.PayrollApprovalService}).
  *
  * <p>Triggers on the two event types that represent data becoming final and ready to leave the
  * system — {@code RUN_FINALIZED} and {@code PAYSLIP_FINALIZED} — rather than every lifecycle event,

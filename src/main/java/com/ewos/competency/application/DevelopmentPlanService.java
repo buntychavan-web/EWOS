@@ -172,6 +172,27 @@ public class DevelopmentPlanService {
         return mapper.toResponse(require(tenantId, id));
     }
 
+    /**
+     * The employee id that owns the plan a given action belongs to, or {@code null} if the action
+     * has no plan/employee. Sprint 24D — supports the self-service ownership check on {@link
+     * #completeAction}, since {@link ActionResponse} carries no {@code employeeId} of its own.
+     */
+    @Transactional(readOnly = true)
+    public UUID employeeIdForAction(UUID tenantId, UUID actionId) {
+        DevelopmentAction a =
+                actions.findByIdAndTenantId(actionId, tenantId)
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Development action not found"));
+        if (a.getPlan() == null || a.getPlan().getEmployee() == null) {
+            return null;
+        }
+        guard.requireAccessForCompany(a.getPlan().getCompanyId());
+        return a.getPlan().getEmployee().getId();
+    }
+
     @Transactional(readOnly = true)
     public List<PlanResponse> forEmployee(UUID tenantId, UUID employeeId) {
         List<DevelopmentPlan> found = plans.findAllByTenantIdAndEmployeeId(tenantId, employeeId);

@@ -28,6 +28,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -147,6 +148,7 @@ public class TimesheetService {
                     HttpStatus.CONFLICT, "Only SUBMITTED timesheets can be approved");
         }
         UUID actor = requireActor();
+        requireManagerAuthorityUnlessAdmin(tenantId, ts, actor);
         ts.setStatus(TimesheetStatus.APPROVED);
         ts.setApprovedAt(Instant.now());
         ts.setApprovedBy(actor);
@@ -165,6 +167,7 @@ public class TimesheetService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Rejection reason is required");
         }
         UUID actor = requireActor();
+        requireManagerAuthorityUnlessAdmin(tenantId, ts, actor);
         ts.setStatus(TimesheetStatus.REJECTED);
         ts.setRejectedAt(Instant.now());
         ts.setRejectedBy(actor);
@@ -196,7 +199,8 @@ public class TimesheetService {
     @Transactional(readOnly = true)
     public List<TimesheetResponse> forEmployee(UUID tenantId, UUID employeeId) {
         List<Timesheet> found = timesheets.findAllForEmployee(tenantId, employeeId);
-        guard.requireAccessForCompanies(found.stream().map(Timesheet::getCompanyId).toList());
+        guard.requireAccessForCompanies(
+                found.stream().map(Timesheet::getCompanyId).toList(), employeeId);
         return found.stream().map(mapper::toResponse).toList();
     }
 
@@ -206,6 +210,42 @@ public class TimesheetService {
                 timesheets.findAllByTenantIdAndStatusOrderByPeriodStartDesc(tenantId, status);
         guard.requireAccessForCompanies(found.stream().map(Timesheet::getCompanyId).toList());
         return found.stream().map(mapper::toResponse).toList();
+    }
+
+    /**
+     * Sprint 24F audit fix — mirrors {@code LeaveRequestService.requireManagerAuthorityUnlessAdmin}
+     * exactly (Sprint 4's fix for the identical bug in Leave). {@code ATT_APPROVE} was a flat
+     * platform permission with no server-side check that the approver is actually the target
+     * employee's manager — a holder could approve or reject any timesheet tenant-wide. {@code
+     * ATT_ADMIN} holders (HR/tenant admins) are exempt, matching the admin-tier distinction the
+     * module already draws elsewhere (see {@code AttendancePolicyController}).
+     */
+    private void requireManagerAuthorityUnlessAdmin(UUID tenantId, Timesheet ts, UUID actorUserId) {
+        if (hasAuthority("ATT_ADMIN")) {
+            return;
+        }
+        Employee manager = ts.getEmployee().getManager();
+        if (manager == null) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "This timesheet has no manager on record — an administrator must decide it");
+        }
+        boolean isManager =
+                employees.findAllByUserIdAndTenantId(actorUserId, tenantId).stream()
+                        .anyMatch(e -> e.getId().equals(manager.getId()));
+        if (!isManager) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You are not this employee's manager");
+        }
+    }
+
+    private static boolean hasAuthority(String authority) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(authority::equals);
     }
 
     private TimesheetResponse createDraft(OpenTimesheetRequest request) {

@@ -5,10 +5,13 @@ import com.ewos.performance.api.dto.CreatePerformanceCycleRequest;
 import com.ewos.performance.api.dto.PerformanceCycleResponse;
 import com.ewos.performance.api.dto.UpdatePerformanceCycleRequest;
 import com.ewos.performance.domain.PerformanceCycle;
+import com.ewos.performance.domain.PerformanceCycleLifecyclePolicy;
 import com.ewos.performance.domain.PerformanceCycleStatus;
+import com.ewos.performance.domain.PerformanceCycleTransition;
 import com.ewos.performance.domain.events.PerformanceEvent;
 import com.ewos.performance.domain.events.PerformanceEventType;
 import com.ewos.performance.infrastructure.persistence.PerformanceCycleRepository;
+import com.ewos.performance.infrastructure.persistence.PerformanceCycleTransitionRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
@@ -24,16 +27,22 @@ import org.springframework.transaction.annotation.Transactional;
 public class PerformanceCycleService {
 
     private final PerformanceCycleRepository cycles;
+    private final PerformanceCycleTransitionRepository transitions;
+    private final PerformanceCycleLifecyclePolicy lifecycle;
     private final PerformanceMapper mapper;
     private final ApplicationEventPublisher events;
     private final ClientAccessGuard guard;
 
     public PerformanceCycleService(
             PerformanceCycleRepository cycles,
+            PerformanceCycleTransitionRepository transitions,
+            PerformanceCycleLifecyclePolicy lifecycle,
             PerformanceMapper mapper,
             ApplicationEventPublisher events,
             ClientAccessGuard guard) {
         this.cycles = cycles;
+        this.transitions = transitions;
+        this.lifecycle = lifecycle;
         this.mapper = mapper;
         this.events = events;
         this.guard = guard;
@@ -85,24 +94,38 @@ public class PerformanceCycleService {
     }
 
     public PerformanceCycleResponse transition(
-            UUID tenantId, UUID id, PerformanceCycleStatus target) {
+            UUID tenantId, UUID id, PerformanceCycleStatus target, String notes) {
         PerformanceCycle c = require(tenantId, id);
-        if (c.getStatus() == PerformanceCycleStatus.CLOSED
-                || c.getStatus() == PerformanceCycleStatus.CANCELLED) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Cycle is already terminal (status=" + c.getStatus() + ")");
-        }
+        PerformanceCycleStatus from = c.getStatus();
+        lifecycle.assertValidTransition(from, target);
         c.setStatus(target);
+
+        PerformanceCycleTransition record = new PerformanceCycleTransition();
+        record.setTenantId(tenantId);
+        record.setCycleId(c.getId());
+        record.setFromStatus(from);
+        record.setToStatus(target);
+        record.setNotes(notes);
+        record.setTransitionedBy(PerformanceSecurity.currentActor());
+        record.setTransitionedAt(Instant.now());
+        transitions.save(record);
+
         PerformanceEventType type =
                 switch (target) {
                     case CLOSED -> PerformanceEventType.CYCLE_CLOSED;
                     case CANCELLED -> PerformanceEventType.CYCLE_CANCELLED;
                     case OPEN -> PerformanceEventType.CYCLE_OPENED;
+                    case RELEASED -> PerformanceEventType.CYCLE_RELEASED;
                     default -> PerformanceEventType.CYCLE_ADVANCED;
                 };
         publish(type, c, target.name());
         return mapper.toResponse(c);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PerformanceCycleTransition> transitionHistory(UUID tenantId, UUID id) {
+        require(tenantId, id);
+        return transitions.findAllByTenantIdAndCycleIdOrderByTransitionedAtAsc(tenantId, id);
     }
 
     @Transactional(readOnly = true)

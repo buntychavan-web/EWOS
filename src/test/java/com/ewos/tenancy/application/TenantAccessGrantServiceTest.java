@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class TenantAccessGrantServiceTest {
@@ -32,6 +33,7 @@ class TenantAccessGrantServiceTest {
     @Mock TenantAccessGrantRepository repository;
     @Mock TenantRepository tenantRepository;
     @Mock TenantContext tenantContext;
+    @Mock ApplicationEventPublisher events;
 
     private TenantAccessGrantService service;
 
@@ -39,7 +41,7 @@ class TenantAccessGrantServiceTest {
     void setUp() {
         service =
                 new TenantAccessGrantService(
-                        repository, tenantRepository, tenantContext, new TenancyMapper());
+                        repository, tenantRepository, tenantContext, new TenancyMapper(), events);
     }
 
     @Test
@@ -66,6 +68,15 @@ class TenantAccessGrantServiceTest {
                 org.mockito.ArgumentCaptor.forClass(TenantAccessGrant.class);
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getGrantedBy()).isEqualTo(grantedBy);
+
+        org.mockito.ArgumentCaptor<com.ewos.tenancy.domain.events.TenancyEvent> eventCaptor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.ewos.tenancy.domain.events.TenancyEvent.class);
+        verify(events).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().eventType())
+                .isEqualTo(com.ewos.tenancy.domain.events.TenancyEventType.ACCESS_GRANTED);
+        assertThat(eventCaptor.getValue().userId()).isEqualTo(userId);
+        assertThat(eventCaptor.getValue().grantedTenantId()).isEqualTo(tenantId);
     }
 
     @Test
@@ -99,6 +110,14 @@ class TenantAccessGrantServiceTest {
         assertThat(response.revokedAt()).isNotNull();
         assertThat(response.revokedBy()).isEqualTo(revokedBy);
         assertThat(response.active()).isFalse();
+
+        org.mockito.ArgumentCaptor<com.ewos.tenancy.domain.events.TenancyEvent> eventCaptor =
+                org.mockito.ArgumentCaptor.forClass(
+                        com.ewos.tenancy.domain.events.TenancyEvent.class);
+        verify(events).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().eventType())
+                .isEqualTo(com.ewos.tenancy.domain.events.TenancyEventType.ACCESS_REVOKED);
+        assertThat(eventCaptor.getValue().userId()).isEqualTo(grant.getUserId());
     }
 
     @Test

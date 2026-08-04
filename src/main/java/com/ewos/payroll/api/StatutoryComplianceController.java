@@ -15,6 +15,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -125,6 +127,20 @@ public class StatutoryComplianceController {
     public StatutoryChallanResponse getById(
             @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
         return challans.getById(tenantId, id);
+    }
+
+    @GetMapping(value = "/challans/{id}/return-file", produces = "text/plain")
+    @PreAuthorize("hasAuthority('PAYROLL_ADMIN')")
+    @Operation(summary = "Download the EPFO ECR text file for a PF challan, ready to upload")
+    public ResponseEntity<String> returnFile(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID id) {
+        String body = challans.generateReturnFile(tenantId, id);
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"ecr-" + id + ".txt\"")
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(body);
     }
 
     @GetMapping("/challans")

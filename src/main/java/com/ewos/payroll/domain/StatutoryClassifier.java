@@ -19,16 +19,20 @@ public final class StatutoryClassifier {
 
     /** Immutable built-in classification: componentCode → (jurisdiction, statutoryCode). */
     private static final Map<String, StatutoryClassification> DEFAULTS =
-            Map.of(
-                    "PF", new StatutoryClassification("IN", "PF"),
-                    "PROVIDENT_FUND", new StatutoryClassification("IN", "PF"),
-                    "ESI", new StatutoryClassification("IN", "ESI"),
-                    "INCOME_TAX", new StatutoryClassification("GLOBAL", "INCOME_TAX"),
-                    "TDS", new StatutoryClassification("IN", "TDS"),
-                    "PROFESSIONAL_TAX", new StatutoryClassification("IN", "PT"),
-                    "SOCIAL_SECURITY", new StatutoryClassification("US", "SOCIAL_SECURITY"),
-                    "MEDICARE", new StatutoryClassification("US", "MEDICARE"),
-                    "FIT", new StatutoryClassification("US", "FIT"));
+            Map.ofEntries(
+                    Map.entry("PF", new StatutoryClassification("IN", "PF")),
+                    Map.entry("PROVIDENT_FUND", new StatutoryClassification("IN", "PF")),
+                    Map.entry("ESI", new StatutoryClassification("IN", "ESI")),
+                    Map.entry("INCOME_TAX", new StatutoryClassification("GLOBAL", "INCOME_TAX")),
+                    Map.entry("TDS", new StatutoryClassification("IN", "TDS")),
+                    Map.entry("PROFESSIONAL_TAX", new StatutoryClassification("IN", "PT")),
+                    Map.entry("LWF", new StatutoryClassification("IN", "LWF")),
+                    Map.entry("LABOUR_WELFARE_FUND", new StatutoryClassification("IN", "LWF")),
+                    Map.entry(
+                            "SOCIAL_SECURITY",
+                            new StatutoryClassification("US", "SOCIAL_SECURITY")),
+                    Map.entry("MEDICARE", new StatutoryClassification("US", "MEDICARE")),
+                    Map.entry("FIT", new StatutoryClassification("US", "FIT")));
 
     public Optional<StatutoryClassification> classify(String componentCode) {
         if (componentCode == null) {

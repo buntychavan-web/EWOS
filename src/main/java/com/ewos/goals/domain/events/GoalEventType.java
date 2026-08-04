@@ -12,5 +12,9 @@ public enum GoalEventType {
     GOAL_UNDER_REVIEW,
     GOAL_REVIEWED,
     GOAL_COMPLETED,
-    GOAL_CANCELLED
+    GOAL_CANCELLED,
+
+    // Sprint 24E — published by GoalReminderJob, not by GoalService.
+    GOAL_DUE_REMINDER,
+    GOAL_OVERDUE
 }

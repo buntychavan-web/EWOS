@@ -1,19 +1,30 @@
 package com.ewos.payroll.application;
 
+import com.ewos.employee.domain.Employee;
 import com.ewos.payroll.api.PayrollMapper;
 import com.ewos.payroll.api.dto.RollUpChallanRequest;
 import com.ewos.payroll.api.dto.StatutoryChallanResponse;
+import com.ewos.payroll.domain.EmployeePayrollProfile;
+import com.ewos.payroll.domain.FiscalYear;
+import com.ewos.payroll.domain.PfConfiguration;
+import com.ewos.payroll.domain.PfEcrFileExporter;
+import com.ewos.payroll.domain.PfEcrFileExporter.PfEcrRow;
 import com.ewos.payroll.domain.StatutoryChallan;
 import com.ewos.payroll.domain.StatutoryChallanStatus;
 import com.ewos.payroll.domain.StatutoryDeduction;
+import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryChallanRepository;
 import com.ewos.payroll.infrastructure.persistence.StatutoryDeductionRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -32,16 +43,25 @@ public class StatutoryChallanService {
 
     private final StatutoryChallanRepository challans;
     private final StatutoryDeductionRepository deductions;
+    private final EmployeePayrollProfileRepository employeePayrollProfiles;
+    private final StatutoryConfigResolver statutoryConfigResolver;
+    private final PfEcrFileExporter pfEcrFileExporter;
     private final PayrollMapper mapper;
     private final ClientAccessGuard guard;
 
     public StatutoryChallanService(
             StatutoryChallanRepository challans,
             StatutoryDeductionRepository deductions,
+            EmployeePayrollProfileRepository employeePayrollProfiles,
+            StatutoryConfigResolver statutoryConfigResolver,
+            PfEcrFileExporter pfEcrFileExporter,
             PayrollMapper mapper,
             ClientAccessGuard guard) {
         this.challans = challans;
         this.deductions = deductions;
+        this.employeePayrollProfiles = employeePayrollProfiles;
+        this.statutoryConfigResolver = statutoryConfigResolver;
+        this.pfEcrFileExporter = pfEcrFileExporter;
         this.mapper = mapper;
         this.guard = guard;
     }
@@ -176,6 +196,89 @@ public class StatutoryChallanService {
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    /**
+     * Renders the EPFO Electronic Challan-cum-Return text file for a PF challan — the file a
+     * company actually uploads to the EPFO unified portal, as opposed to {@link #file} which only
+     * records that a filing happened after the fact. Available regardless of challan status: a
+     * filer needs the file's content in hand before they can file it and pass a reference to {@link
+     * #file}.
+     */
+    @Transactional(readOnly = true)
+    public String generateReturnFile(UUID tenantId, UUID id) {
+        StatutoryChallan c = require(tenantId, id);
+        guard.requireAccessForCompany(c.getCompanyId());
+        if (!"PF".equalsIgnoreCase(c.getCode())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Return file generation is only supported for PF challans today, not "
+                            + c.getCode());
+        }
+
+        LocalDate asOf = firstDayOf(c.getPeriodMonth());
+        PfConfiguration pfConfig =
+                statutoryConfigResolver
+                        .resolve(
+                                tenantId,
+                                c.getCompanyId(),
+                                asOf,
+                                FiscalYear.labelFor(asOf),
+                                Set.of())
+                        .pfConfiguration();
+
+        List<StatutoryDeduction> rows = deductions.findAllForChallan(tenantId, id);
+        List<UUID> employeeIds =
+                rows.stream().map(d -> d.getEmployee().getId()).distinct().toList();
+        Map<UUID, EmployeePayrollProfile> profileByEmployee = new HashMap<>();
+        for (EmployeePayrollProfile p :
+                employeePayrollProfiles.findAllActiveForEmployees(tenantId, employeeIds)) {
+            profileByEmployee.put(p.getEmployee().getId(), p);
+        }
+
+        List<PfEcrRow> ecrRows = new ArrayList<>(rows.size());
+        for (StatutoryDeduction d : rows) {
+            Employee e = d.getEmployee();
+            EmployeePayrollProfile profile = profileByEmployee.get(e.getId());
+            String uan =
+                    profile == null
+                            ? ""
+                            : PayrollMapper.readIdentifiers(profile.getStatutoryIdentifiersJson())
+                                    .getOrDefault("UAN", "");
+            String memberName = fullName(e);
+            BigDecimal grossWages = d.getTaxableBase();
+            BigDecimal epfWages =
+                    pfConfig == null ? grossWages : grossWages.min(pfConfig.getWageCeiling());
+            // EDLI shares the EPF scheme's EPS wage ceiling by statute — not a separate cap.
+            BigDecimal epsAndEdliWages =
+                    pfConfig == null ? grossWages : grossWages.min(pfConfig.getEpsWageCeiling());
+            BigDecimal epfContributionRemitted =
+                    d.getEmployerContribution().subtract(d.getEpsContribution());
+            ecrRows.add(
+                    new PfEcrRow(
+                            uan,
+                            memberName,
+                            grossWages,
+                            epfWages,
+                            epsAndEdliWages,
+                            epsAndEdliWages,
+                            epfContributionRemitted,
+                            d.getEpsContribution(),
+                            d.getEmployeeContribution()));
+        }
+        return pfEcrFileExporter.export(ecrRows);
+    }
+
+    private static String fullName(Employee e) {
+        String first = e.getFirstName() == null ? "" : e.getFirstName();
+        String last = e.getLastName() == null ? "" : e.getLastName();
+        return (first + " " + last).trim();
+    }
+
+    private static LocalDate firstDayOf(int periodMonth) {
+        int year = periodMonth / 100;
+        int month = periodMonth % 100;
+        return LocalDate.of(year, month, 1);
     }
 
     private StatutoryChallan require(UUID tenantId, UUID id) {

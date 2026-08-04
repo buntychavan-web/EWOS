@@ -55,6 +55,25 @@ public class FinalSettlement extends AuditableEntity {
     @Column(name = "gratuity_amount", nullable = false, precision = 18, scale = 4)
     private BigDecimal gratuityAmount = BigDecimal.ZERO;
 
+    /**
+     * What {@link com.ewos.payroll.application.GratuityCalculationService} produced — for audit.
+     */
+    @Column(name = "gratuity_calculated_amount", precision = 18, scale = 4)
+    private BigDecimal gratuityCalculatedAmount;
+
+    @Column(name = "gratuity_overridden", nullable = false)
+    private boolean gratuityOverridden;
+
+    @Column(name = "gratuity_override_reason", length = 512)
+    private String gratuityOverrideReason;
+
+    /** Waives the minimum-continuous-service rule — only valid for DEATH or DISABLEMENT. */
+    @Column(name = "gratuity_eligibility_waived", nullable = false)
+    private boolean gratuityEligibilityWaived;
+
+    @Column(name = "gratuity_waiver_reason", length = 64)
+    private String gratuityWaiverReason;
+
     @Column(name = "notice_pay_recovery", nullable = false, precision = 18, scale = 4)
     private BigDecimal noticePayRecovery = BigDecimal.ZERO;
 
@@ -162,6 +181,46 @@ public class FinalSettlement extends AuditableEntity {
 
     public void setGratuityAmount(BigDecimal gratuityAmount) {
         this.gratuityAmount = gratuityAmount;
+    }
+
+    public BigDecimal getGratuityCalculatedAmount() {
+        return gratuityCalculatedAmount;
+    }
+
+    public void setGratuityCalculatedAmount(BigDecimal gratuityCalculatedAmount) {
+        this.gratuityCalculatedAmount = gratuityCalculatedAmount;
+    }
+
+    public boolean isGratuityOverridden() {
+        return gratuityOverridden;
+    }
+
+    public void setGratuityOverridden(boolean gratuityOverridden) {
+        this.gratuityOverridden = gratuityOverridden;
+    }
+
+    public String getGratuityOverrideReason() {
+        return gratuityOverrideReason;
+    }
+
+    public void setGratuityOverrideReason(String gratuityOverrideReason) {
+        this.gratuityOverrideReason = gratuityOverrideReason;
+    }
+
+    public boolean isGratuityEligibilityWaived() {
+        return gratuityEligibilityWaived;
+    }
+
+    public void setGratuityEligibilityWaived(boolean gratuityEligibilityWaived) {
+        this.gratuityEligibilityWaived = gratuityEligibilityWaived;
+    }
+
+    public String getGratuityWaiverReason() {
+        return gratuityWaiverReason;
+    }
+
+    public void setGratuityWaiverReason(String gratuityWaiverReason) {
+        this.gratuityWaiverReason = gratuityWaiverReason;
     }
 
     public BigDecimal getNoticePayRecovery() {

@@ -20,4 +20,5 @@ public record ArrearResponse(
         LocalDate forPeriodEnd,
         boolean applied,
         Instant appliedAt,
+        UUID bulkUploadBatchId,
         long versionNo) {}

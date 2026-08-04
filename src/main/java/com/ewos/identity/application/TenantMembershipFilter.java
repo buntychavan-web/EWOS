@@ -21,4 +21,13 @@ public interface TenantMembershipFilter {
      * dropped, not errored — this is a narrowing filter, not a validation.
      */
     Set<UUID> filterToTenant(Set<UUID> userIds, UUID tenantId);
+
+    /**
+     * Sprint 24F — every user id with an active membership in {@code tenantId}. Used by {@code
+     * UserService} to scope user management (list/get/update/enable-disable/reset-password/delete)
+     * to the caller's own tenant, the same gap {@link #filterToTenant} already closed for Role
+     * Usage Impact Analysis (Sprint 1.4 Finding 1) but that was never applied to {@code
+     * UserService} itself.
+     */
+    Set<UUID> userIdsForTenant(UUID tenantId);
 }

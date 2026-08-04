@@ -3,9 +3,11 @@ package com.ewos.attendance.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ewos.attendance.api.dto.AttendancePolicyResponse;
+import com.ewos.attendance.api.dto.HolidayResponse;
 import com.ewos.attendance.api.dto.TimeEntryResponse;
 import com.ewos.attendance.api.dto.TimesheetResponse;
 import com.ewos.attendance.domain.AttendancePolicy;
+import com.ewos.attendance.domain.Holiday;
 import com.ewos.attendance.domain.TimeEntry;
 import com.ewos.attendance.domain.TimeEntrySource;
 import com.ewos.attendance.domain.TimeEventType;
@@ -89,5 +91,21 @@ class AttendanceMapperTest {
         assertThat(r.overtimeHours()).isEqualByComparingTo("2.00");
         assertThat(r.status()).isEqualTo(TimesheetStatus.SUBMITTED);
         assertThat(r.workflowInstanceId()).isNotNull();
+    }
+
+    @Test
+    void holidayMapsAllFields() {
+        Holiday h = new Holiday();
+        h.setId(UUID.randomUUID());
+        h.setTenantId(UUID.randomUUID());
+        h.setCompanyId(UUID.randomUUID());
+        h.setHolidayDate(LocalDate.of(2026, 1, 26));
+        h.setName("Republic Day");
+        h.setRecurringAnnually(true);
+
+        HolidayResponse r = mapper.toResponse(h);
+        assertThat(r.holidayDate()).isEqualTo(LocalDate.of(2026, 1, 26));
+        assertThat(r.name()).isEqualTo("Republic Day");
+        assertThat(r.recurringAnnually()).isTrue();
     }
 }

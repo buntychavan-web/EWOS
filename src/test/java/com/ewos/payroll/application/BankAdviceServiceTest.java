@@ -209,6 +209,35 @@ class BankAdviceServiceTest {
     }
 
     @Test
+    void generateCapturesTheRealAccountNumberNotJustTheMaskedOne() {
+        Payslip slip = payslip(new BigDecimal("500.00"));
+        EmployeeBankAccount account = new EmployeeBankAccount();
+        account.setId(UUID.randomUUID());
+        account.setAccountNumber("1234567890123");
+        account.setAccountNumberMasked("*********0123");
+        when(runs.findByIdAndTenantId(runId, tenantId))
+                .thenReturn(Optional.of(run(PayrollRunStatus.FINALIZED)));
+        when(payslips.findAllForRun(tenantId, runId)).thenReturn(List.of(slip));
+        when(bankAccounts.findPrimaryForEmployee(tenantId, slip.getEmployee().getId()))
+                .thenReturn(Optional.of(account));
+
+        var response = service.generate(request("ADV-1"));
+
+        var instruction = response.instructions().get(0);
+        assertThat(instruction.accountNumberMasked()).isEqualTo("*********0123");
+
+        java.util.List<PaymentInstruction> saved = capturedInstructions(response.id());
+        assertThat(saved.get(0).getAccountNumberSnapshot()).isEqualTo("1234567890123");
+    }
+
+    private java.util.List<PaymentInstruction> capturedInstructions(UUID adviceId) {
+        org.mockito.ArgumentCaptor<BankAdvice> captor =
+                org.mockito.ArgumentCaptor.forClass(BankAdvice.class);
+        verify(advices).save(captor.capture());
+        return captor.getValue().getInstructions();
+    }
+
+    @Test
     void acknowledgeRejectsAnAdviceThatIsNotGenerated() {
         BankAdvice a = new BankAdvice();
         a.setId(UUID.randomUUID());

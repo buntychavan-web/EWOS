@@ -63,6 +63,7 @@ public class InterviewPanelService {
                                 () ->
                                         new ApiException(
                                                 HttpStatus.BAD_REQUEST, "Employee not found"));
+        assertPanelistAvailable(tenantId, round, req.employeeId());
 
         InterviewParticipant p = new InterviewParticipant();
         p.setTenantId(tenantId);
@@ -116,6 +117,38 @@ public class InterviewPanelService {
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    /**
+     * If the round already occupies a real calendar slot (SCHEDULED / RESCHEDULED / IN_PROGRESS),
+     * rejects adding a panelist who is already booked elsewhere at that time.
+     */
+    private void assertPanelistAvailable(UUID tenantId, InterviewRound round, UUID employeeId) {
+        if (!InterviewRoundService.LIVE_STATUSES.contains(round.getStatus())
+                || round.getScheduledStart() == null
+                || round.getScheduledEnd() == null) {
+            return;
+        }
+        List<InterviewParticipant> conflicts =
+                participants.findOverlapping(
+                        tenantId,
+                        List.of(employeeId),
+                        round.getId(),
+                        InterviewRoundService.LIVE_STATUSES,
+                        round.getScheduledStart(),
+                        round.getScheduledEnd());
+        if (!conflicts.isEmpty()) {
+            InterviewRound conflictingRound = conflicts.get(0).getRound();
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Employee is already booked on interview round \""
+                            + conflictingRound.getName()
+                            + "\" ("
+                            + conflictingRound.getScheduledStart()
+                            + " - "
+                            + conflictingRound.getScheduledEnd()
+                            + ")");
+        }
     }
 
     private void publish(InterviewEventType type, InterviewRound r, String detail) {

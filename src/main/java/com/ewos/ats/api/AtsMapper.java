@@ -60,6 +60,12 @@ public class AtsMapper {
                 c.getGithubUrl(),
                 c.getPortfolioUrl(),
                 c.getSummary(),
+                c.isConsentGiven(),
+                c.getConsentGivenAt(),
+                c.getConsentWithdrawnAt(),
+                c.getConsentSource(),
+                c.getRetentionPolicyCode(),
+                c.getRetentionExpiresAt(),
                 c.getVersionNo());
     }
 

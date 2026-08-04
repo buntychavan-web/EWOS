@@ -6,6 +6,7 @@ import com.ewos.ats.api.dto.ChangeCandidateStatusRequest;
 import com.ewos.ats.api.dto.CreateCandidateRequest;
 import com.ewos.ats.api.dto.CreateCandidateResult;
 import com.ewos.ats.api.dto.DuplicateCandidateMatchResponse;
+import com.ewos.ats.api.dto.RecordCandidateConsentRequest;
 import com.ewos.ats.api.dto.UpdateCandidateRequest;
 import com.ewos.ats.domain.Candidate;
 import com.ewos.ats.domain.CandidateNumberGenerator;
@@ -183,6 +184,60 @@ public class CandidateService {
                     default -> AtsEventType.CANDIDATE_STATUS_CHANGED;
                 };
         publish(type, c, req.reason());
+        return mapper.toResponse(c);
+    }
+
+    /**
+     * Records a consent decision (given or withdrawn) and, optionally, the retention basis that
+     * follows from it. {@code consentSource} must be present when granting consent — the service
+     * has no reasonable default for how consent was captured. Withdrawing consent that was never
+     * given is rejected: there is nothing to withdraw.
+     */
+    public CandidateResponse recordConsent(
+            UUID tenantId, UUID id, RecordCandidateConsentRequest req) {
+        Candidate c = require(tenantId, id);
+        if (Boolean.TRUE.equals(req.consentGiven())) {
+            if (req.consentSource() == null) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST, "consentSource is required when granting consent");
+            }
+            c.setConsentGiven(true);
+            c.setConsentGivenAt(Instant.now());
+            c.setConsentWithdrawnAt(null);
+            c.setConsentSource(req.consentSource());
+            timeline.record(
+                    c,
+                    null,
+                    TimelineEventType.CANDIDATE_CONSENT_RECORDED,
+                    "Consent recorded (" + req.consentSource() + ")",
+                    null);
+            publish(AtsEventType.CANDIDATE_CONSENT_RECORDED, c, req.consentSource().toString());
+        } else {
+            if (!c.isConsentGiven()) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Consent has not been given yet — nothing to withdraw");
+            }
+            c.setConsentGiven(false);
+            c.setConsentWithdrawnAt(Instant.now());
+            timeline.record(
+                    c,
+                    null,
+                    TimelineEventType.CANDIDATE_CONSENT_WITHDRAWN,
+                    "Consent withdrawn",
+                    null);
+            publish(AtsEventType.CANDIDATE_CONSENT_WITHDRAWN, c, null);
+        }
+        if (req.retentionExpiresAt() != null && req.retentionExpiresAt().isBefore(Instant.now())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "retentionExpiresAt must not be in the past");
+        }
+        if (req.retentionPolicyCode() != null) {
+            c.setRetentionPolicyCode(req.retentionPolicyCode());
+        }
+        if (req.retentionExpiresAt() != null) {
+            c.setRetentionExpiresAt(req.retentionExpiresAt());
+        }
         return mapper.toResponse(c);
     }
 

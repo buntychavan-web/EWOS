@@ -20,6 +20,7 @@ public record AttendancePolicyResponse(
         BigDecimal overtimeMultiplier,
         int periodLengthDays,
         boolean active,
+        boolean sandwichLeavePolicyEnabled,
         Instant createdAt,
         Instant updatedAt,
         UUID createdBy,

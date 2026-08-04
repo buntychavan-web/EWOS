@@ -65,6 +65,7 @@ class PayComponentServiceTest {
                 new BigDecimal("40"),
                 true,
                 true,
+                true,
                 1);
     }
 
@@ -105,6 +106,7 @@ class PayComponentServiceTest {
                         null,
                         null,
                         null,
+                        null,
                         null);
         when(repository.existsByTenantIdAndCodeIgnoreCase(tenantId, "BONUS")).thenReturn(false);
 
@@ -125,7 +127,7 @@ class PayComponentServiceTest {
 
         UpdatePayComponentRequest req =
                 new UpdatePayComponentRequest(
-                        "DA", null, null, null, null, null, null, null, null, null);
+                        "DA", null, null, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> service.update(tenantId, id, req))
                 .isInstanceOf(ApiException.class)
@@ -145,6 +147,7 @@ class PayComponentServiceTest {
                 new UpdatePayComponentRequest(
                         "hra",
                         "House Rent Allowance",
+                        null,
                         null,
                         null,
                         null,
@@ -174,7 +177,17 @@ class PayComponentServiceTest {
 
         UpdatePayComponentRequest req =
                 new UpdatePayComponentRequest(
-                        null, null, null, null, null, null, new BigDecimal("50"), null, null, null);
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("50"),
+                        null,
+                        null,
+                        null,
+                        null);
 
         var response = service.update(tenantId, id, req);
 
@@ -194,7 +207,7 @@ class PayComponentServiceTest {
                                         id,
                                         new UpdatePayComponentRequest(
                                                 null, null, null, null, null, null, null, null,
-                                                null, null)))
+                                                null, null, null)))
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);

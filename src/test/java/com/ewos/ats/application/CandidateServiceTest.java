@@ -2,18 +2,24 @@ package com.ewos.ats.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ewos.ats.api.AtsMapper;
+import com.ewos.ats.api.dto.RecordCandidateConsentRequest;
 import com.ewos.ats.domain.Candidate;
+import com.ewos.ats.domain.CandidateConsentSource;
 import com.ewos.ats.domain.CandidateNumberGenerator;
 import com.ewos.ats.domain.DuplicateCandidateDetector;
+import com.ewos.ats.domain.events.AtsEvent;
 import com.ewos.ats.infrastructure.persistence.CandidateRepository;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,5 +107,97 @@ class CandidateServiceTest {
 
         verify(guard, org.mockito.Mockito.never())
                 .requireAccessForCompany(org.mockito.ArgumentMatchers.any());
+    }
+
+    private Candidate candidateWithGuardBypass(UUID tenant, UUID id, UUID company) {
+        Candidate c = new Candidate();
+        c.setId(id);
+        c.setTenantId(tenant);
+        c.setCompanyId(company);
+        when(candidates.findByIdAndTenantId(id, tenant)).thenReturn(Optional.of(c));
+        return c;
+    }
+
+    @Test
+    void recordConsentRejectsGrantingWithoutSource() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        candidateWithGuardBypass(tenant, id, UUID.randomUUID());
+
+        var req = new RecordCandidateConsentRequest(true, null, null, null);
+
+        assertThatThrownBy(() -> service.recordConsent(tenant, id, req))
+                .isInstanceOf(ApiException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void recordConsentGrantsAndPublishesEvent() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        candidateWithGuardBypass(tenant, id, UUID.randomUUID());
+
+        var req =
+                new RecordCandidateConsentRequest(
+                        true, CandidateConsentSource.APPLICATION_FORM, "STANDARD-3Y", null);
+
+        var resp = service.recordConsent(tenant, id, req);
+
+        assertThat(resp.consentGiven()).isTrue();
+        assertThat(resp.consentGivenAt()).isNotNull();
+        assertThat(resp.consentSource()).isEqualTo(CandidateConsentSource.APPLICATION_FORM);
+        assertThat(resp.retentionPolicyCode()).isEqualTo("STANDARD-3Y");
+        verify(timeline).record(any(), any(), any(), any(), any());
+        verify(events).publishEvent(any(AtsEvent.class));
+    }
+
+    @Test
+    void recordConsentRejectsWithdrawingWhenNeverGiven() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        candidateWithGuardBypass(tenant, id, UUID.randomUUID());
+
+        var req = new RecordCandidateConsentRequest(false, null, null, null);
+
+        assertThatThrownBy(() -> service.recordConsent(tenant, id, req))
+                .isInstanceOf(ApiException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void recordConsentWithdrawsPreviouslyGivenConsent() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        Candidate c = candidateWithGuardBypass(tenant, id, UUID.randomUUID());
+        c.setConsentGiven(true);
+        c.setConsentGivenAt(Instant.now());
+
+        var resp =
+                service.recordConsent(
+                        tenant, id, new RecordCandidateConsentRequest(false, null, null, null));
+
+        assertThat(resp.consentGiven()).isFalse();
+        assertThat(resp.consentWithdrawnAt()).isNotNull();
+    }
+
+    @Test
+    void recordConsentRejectsPastRetentionExpiry() {
+        UUID tenant = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        candidateWithGuardBypass(tenant, id, UUID.randomUUID());
+
+        var req =
+                new RecordCandidateConsentRequest(
+                        true,
+                        CandidateConsentSource.MANUAL_ENTRY,
+                        null,
+                        Instant.now().minus(1, ChronoUnit.DAYS));
+
+        assertThatThrownBy(() -> service.recordConsent(tenant, id, req))
+                .isInstanceOf(ApiException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

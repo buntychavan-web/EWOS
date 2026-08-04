@@ -52,6 +52,18 @@ public class EmployeePayrollProfile extends AuditableEntity {
     @Column(name = "country_code", nullable = false, length = 2)
     private String countryCode;
 
+    @Column(name = "state_code", length = 8)
+    private String stateCode;
+
+    @Column(name = "is_international_worker", nullable = false)
+    private boolean internationalWorker;
+
+    @Column(name = "vpf_enabled", nullable = false)
+    private boolean vpfEnabled;
+
+    @Column(name = "vpf_percentage", nullable = false, precision = 7, scale = 4)
+    private java.math.BigDecimal vpfPercentage = java.math.BigDecimal.ZERO;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "statutory_identifiers", nullable = false, columnDefinition = "jsonb")
     private String statutoryIdentifiersJson = "{}";
@@ -118,6 +130,38 @@ public class EmployeePayrollProfile extends AuditableEntity {
 
     public void setCountryCode(String countryCode) {
         this.countryCode = countryCode;
+    }
+
+    public String getStateCode() {
+        return stateCode;
+    }
+
+    public void setStateCode(String stateCode) {
+        this.stateCode = stateCode;
+    }
+
+    public boolean isInternationalWorker() {
+        return internationalWorker;
+    }
+
+    public void setInternationalWorker(boolean internationalWorker) {
+        this.internationalWorker = internationalWorker;
+    }
+
+    public boolean isVpfEnabled() {
+        return vpfEnabled;
+    }
+
+    public void setVpfEnabled(boolean vpfEnabled) {
+        this.vpfEnabled = vpfEnabled;
+    }
+
+    public java.math.BigDecimal getVpfPercentage() {
+        return vpfPercentage;
+    }
+
+    public void setVpfPercentage(java.math.BigDecimal vpfPercentage) {
+        this.vpfPercentage = vpfPercentage == null ? java.math.BigDecimal.ZERO : vpfPercentage;
     }
 
     public String getStatutoryIdentifiersJson() {

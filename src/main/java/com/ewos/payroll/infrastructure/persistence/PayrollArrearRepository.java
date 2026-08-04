@@ -44,4 +44,10 @@ public interface PayrollArrearRepository extends JpaRepository<PayrollArrear, UU
                     + "and a.employee.id = :employeeId order by a.createdAt desc")
     List<PayrollArrear> findAllForEmployee(
             @Param("tenantId") UUID tenantId, @Param("employeeId") UUID employeeId);
+
+    @Query(
+            "select a from PayrollArrear a where a.tenantId = :tenantId "
+                    + "and a.bulkUploadBatchId = :batchId order by a.createdAt asc")
+    List<PayrollArrear> findAllForBulkBatch(
+            @Param("tenantId") UUID tenantId, @Param("batchId") UUID batchId);
 }

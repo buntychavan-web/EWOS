@@ -17,6 +17,7 @@ public record PayComponentResponse(
         BigDecimal defaultAmount,
         BigDecimal defaultPercentage,
         boolean taxable,
+        boolean recurring,
         boolean active,
         int sortOrder,
         Instant createdAt,

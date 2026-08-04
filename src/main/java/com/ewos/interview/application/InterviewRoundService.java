@@ -12,6 +12,7 @@ import com.ewos.interview.api.dto.RecordInterviewDecisionRequest;
 import com.ewos.interview.api.dto.ScheduleInterviewRoundRequest;
 import com.ewos.interview.domain.CalendarIntegration;
 import com.ewos.interview.domain.InterviewNotifier;
+import com.ewos.interview.domain.InterviewParticipant;
 import com.ewos.interview.domain.InterviewPolicy;
 import com.ewos.interview.domain.InterviewRound;
 import com.ewos.interview.domain.InterviewStatus;
@@ -25,7 +26,9 @@ import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -35,6 +38,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class InterviewRoundService {
+
+    /**
+     * Round statuses that occupy a real calendar slot and therefore count as a scheduling conflict
+     * for a panelist.
+     */
+    static final Set<InterviewStatus> LIVE_STATUSES =
+            EnumSet.of(
+                    InterviewStatus.SCHEDULED,
+                    InterviewStatus.RESCHEDULED,
+                    InterviewStatus.IN_PROGRESS);
 
     private final InterviewRoundRepository rounds;
     private final InterviewParticipantRepository participants;
@@ -120,11 +133,13 @@ public class InterviewRoundService {
             UUID tenantId, UUID roundId, ScheduleInterviewRoundRequest req) {
         InterviewRound r = require(tenantId, roundId);
         policy.assertSchedulable(r, req.scheduledStart(), req.scheduledEnd());
+        List<UUID> panel = panelEmployeeIds(tenantId, r.getId());
+        assertNoSchedulingConflicts(
+                tenantId, r.getId(), panel, req.scheduledStart(), req.scheduledEnd());
         r.setScheduledStart(req.scheduledStart());
         r.setScheduledEnd(req.scheduledEnd());
         r.setStatus(InterviewStatus.SCHEDULED);
 
-        List<UUID> panel = panelEmployeeIds(tenantId, r.getId());
         String extRef = calendar.scheduleRound(r, panel);
         if (extRef != null) {
             r.setExternalCalendarRef(extRef);
@@ -138,11 +153,13 @@ public class InterviewRoundService {
             UUID tenantId, UUID roundId, ScheduleInterviewRoundRequest req) {
         InterviewRound r = require(tenantId, roundId);
         policy.assertReschedulable(r, req.scheduledStart(), req.scheduledEnd());
+        List<UUID> panel = panelEmployeeIds(tenantId, r.getId());
+        assertNoSchedulingConflicts(
+                tenantId, r.getId(), panel, req.scheduledStart(), req.scheduledEnd());
         r.setScheduledStart(req.scheduledStart());
         r.setScheduledEnd(req.scheduledEnd());
         r.setStatus(InterviewStatus.RESCHEDULED);
 
-        List<UUID> panel = panelEmployeeIds(tenantId, r.getId());
         String extRef = calendar.rescheduleRound(r, panel);
         if (extRef != null) {
             r.setExternalCalendarRef(extRef);
@@ -266,6 +283,35 @@ public class InterviewRoundService {
                 .findAllByTenantIdAndRoundIdOrderByCreatedAtAsc(tenantId, roundId)
                 .forEach(p -> ids.add(p.getEmployee().getId()));
         return ids;
+    }
+
+    /**
+     * Rejects a schedule/reschedule if any current panelist already has a live (SCHEDULED /
+     * RESCHEDULED / IN_PROGRESS) round elsewhere whose window overlaps {@code [start, end)}.
+     */
+    private void assertNoSchedulingConflicts(
+            UUID tenantId, UUID roundId, List<UUID> panelEmployeeIds, Instant start, Instant end) {
+        if (panelEmployeeIds.isEmpty()) {
+            return;
+        }
+        List<InterviewParticipant> conflicts =
+                participants.findOverlapping(
+                        tenantId, panelEmployeeIds, roundId, LIVE_STATUSES, start, end);
+        if (!conflicts.isEmpty()) {
+            InterviewParticipant conflict = conflicts.get(0);
+            InterviewRound conflictingRound = conflict.getRound();
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Panelist "
+                            + conflict.getEmployee().getId()
+                            + " is already booked on interview round \""
+                            + conflictingRound.getName()
+                            + "\" ("
+                            + conflictingRound.getScheduledStart()
+                            + " - "
+                            + conflictingRound.getScheduledEnd()
+                            + ")");
+        }
     }
 
     private Employee resolveEmployee(UUID tenantId, UUID employeeId) {

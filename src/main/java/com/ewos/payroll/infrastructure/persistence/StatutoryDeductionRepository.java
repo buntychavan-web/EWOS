@@ -43,4 +43,10 @@ public interface StatutoryDeductionRepository extends JpaRepository<StatutoryDed
             @Param("tenantId") UUID tenantId,
             @Param("employeeId") UUID employeeId,
             @Param("periodMonth") int periodMonth);
+
+    @Query(
+            "select d from StatutoryDeduction d where d.tenantId = :tenantId "
+                    + "and d.statutoryChallan.id = :challanId order by d.employee.employeeNumber")
+    List<StatutoryDeduction> findAllForChallan(
+            @Param("tenantId") UUID tenantId, @Param("challanId") UUID challanId);
 }

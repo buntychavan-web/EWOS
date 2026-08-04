@@ -37,9 +37,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class JobApplicationService {
 
-    /** Workflow subject-type binding application progression to a workflow definition. */
-    public static final String SUBJECT_TYPE = "ats.application";
-
     private final JobApplicationRepository applications;
     private final CandidateService candidates;
     private final JobRequisitionRepository requisitions;

@@ -77,6 +77,10 @@ class EmployeePayrollProfileServiceTest {
                 payGroupId,
                 "NEW",
                 "IN",
+                "KA",
+                null,
+                null,
+                null,
                 Map.of("PAN", "ABCDE1234F"),
                 effectiveFrom,
                 null);

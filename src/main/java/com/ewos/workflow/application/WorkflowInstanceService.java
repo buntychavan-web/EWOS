@@ -71,6 +71,26 @@ public class WorkflowInstanceService {
 
     public WorkflowInstanceResponse start(StartInstanceRequest request) {
         guard.requireAccessForCompany(request.companyId());
+        return startAfterGuard(request);
+    }
+
+    /**
+     * Sprint 21 UAT — self-service counterpart of {@link #start(StartInstanceRequest)}. Used only
+     * by callers that already verified the caller's access to this exact record themselves (e.g.
+     * {@code LeaveRequestService#submit}/{@code TimesheetService#submit}, right after their own
+     * subject-level {@code ClientAccessGuard} check, passing the record's own, server-resolved
+     * employee — never a client-supplied value). This overload is a plain Java method, not a {@link
+     * StartInstanceRequest} field, so it is unreachable from {@code WorkflowInstanceController},
+     * which only ever calls the single-arg overload above: an HTTP caller can never smuggle an
+     * arbitrary employeeId through this path to bypass the Chinese Wall for a company/subject they
+     * don't actually own.
+     */
+    public WorkflowInstanceResponse start(StartInstanceRequest request, UUID subjectEmployeeId) {
+        guard.requireAccessForCompany(request.companyId(), subjectEmployeeId);
+        return startAfterGuard(request);
+    }
+
+    private WorkflowInstanceResponse startAfterGuard(StartInstanceRequest request) {
         WorkflowDefinition def = definitions.require(request.tenantId(), request.definitionId());
         if (!def.isActive()) {
             throw new ApiException(HttpStatus.CONFLICT, "Workflow definition is inactive");

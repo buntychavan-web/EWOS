@@ -34,24 +34,67 @@ public final class PayrollCalculator {
             BigDecimal lopDays) {}
 
     /**
-     * Simple compute — no LOP, no arrears. Retained for backward compatibility with WP-009 callers
-     * and tests.
+     * Employee-side statutory deduction amounts, already resolved by the statutory calculation
+     * services (PF/ESI/PT/LWF/TDS) against the current pay period's wage. The calculator only plugs
+     * these numbers into whichever {@code STATUTORY_*} components the employee's compensation
+     * declares — it never computes a statutory rule itself, so no statutory value is hardcoded
+     * here.
      */
-    public ComputedPayslip compute(EmployeeCompensation compensation) {
-        return compute(compensation, BigDecimal.ZERO, BigDecimal.ZERO, List.of());
+    public record StatutoryAmounts(
+            BigDecimal pfEmployeeAmount,
+            BigDecimal esiEmployeeAmount,
+            BigDecimal professionalTaxAmount,
+            BigDecimal lwfEmployeeAmount,
+            BigDecimal tdsAmount) {
+
+        public static StatutoryAmounts zero() {
+            return new StatutoryAmounts(
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO);
+        }
     }
 
     /**
-     * Compute payslip lines from a compensation record with optional LOP and arrears. If {@code
-     * lopDays > 0} and {@code workingDays > 0} the basic-per-period is reduced by the ratio {@code
-     * (workingDays - lopDays) / workingDays} before percentage components resolve against it. Each
-     * arrear is appended as an extra earning/deduction line after the standard components.
+     * Simple compute — no LOP, no arrears, no statutory deductions. Retained for backward
+     * compatibility with WP-009 callers and tests.
+     */
+    public ComputedPayslip compute(EmployeeCompensation compensation) {
+        return compute(
+                compensation, BigDecimal.ZERO, BigDecimal.ZERO, List.of(), StatutoryAmounts.zero());
+    }
+
+    /**
+     * Compute payslip lines from a compensation record with optional LOP and arrears, and no
+     * statutory deductions. Retained for callers that don't yet resolve a statutory snapshot.
      */
     public ComputedPayslip compute(
             EmployeeCompensation compensation,
             BigDecimal lopDays,
             BigDecimal workingDays,
             List<PayrollArrear> arrears) {
+        return compute(compensation, lopDays, workingDays, arrears, StatutoryAmounts.zero());
+    }
+
+    /**
+     * Compute payslip lines from a compensation record with optional LOP, arrears, and resolved
+     * statutory deduction amounts. If {@code lopDays > 0} and {@code workingDays > 0} the
+     * basic-per-period is reduced by the ratio {@code (workingDays - lopDays) / workingDays} before
+     * percentage components resolve against it. Each arrear is appended as an extra
+     * earning/deduction line after the standard components. Any {@code STATUTORY_*} component
+     * present on the compensation is filled from {@code statutory} rather than from the
+     * compensation line itself.
+     */
+    public ComputedPayslip compute(
+            EmployeeCompensation compensation,
+            BigDecimal lopDays,
+            BigDecimal workingDays,
+            List<PayrollArrear> arrears,
+            StatutoryAmounts statutory) {
+        StatutoryAmounts resolvedStatutory =
+                statutory == null ? StatutoryAmounts.zero() : statutory;
         BigDecimal originalBasic = scale(compensation.getBasicSalary());
         BigDecimal basic = reduceForLop(originalBasic, workingDays, lopDays);
         List<PayslipLine> lines = new ArrayList<>();
@@ -83,7 +126,8 @@ public final class PayrollCalculator {
                                         .divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP));
                 pctApplied = pct;
             } else {
-                amount = scale(cl.getAmount());
+                amount =
+                        scale(resolveAmount(component.getCalculationType(), cl, resolvedStatutory));
                 pctApplied = BigDecimal.ZERO;
             }
             lines.add(snapshotLine(component, amount, pctApplied));
@@ -113,6 +157,20 @@ public final class PayrollCalculator {
                 net.max(BigDecimal.ZERO),
                 basic,
                 lopDays == null ? BigDecimal.ZERO : lopDays);
+    }
+
+    private static BigDecimal resolveAmount(
+            PayComponentCalculationType type,
+            EmployeeCompensationLine cl,
+            StatutoryAmounts statutory) {
+        return switch (type) {
+            case STATUTORY_PF -> statutory.pfEmployeeAmount();
+            case STATUTORY_ESI -> statutory.esiEmployeeAmount();
+            case STATUTORY_PT -> statutory.professionalTaxAmount();
+            case STATUTORY_LWF -> statutory.lwfEmployeeAmount();
+            case STATUTORY_TDS -> statutory.tdsAmount();
+            default -> cl.getAmount();
+        };
     }
 
     private static BigDecimal reduceForLop(
@@ -172,5 +230,36 @@ public final class PayrollCalculator {
 
     private static BigDecimal scale(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Sums a computed payslip's one-time/variable EARNING lines (Sprint 24K §8.3) — a
+     * bonus/incentive component explicitly flagged {@code recurring = false}, or an arrear line
+     * (which never carries a {@link PayComponent} reference and is identified by its {@code
+     * "ARREAR_"} code prefix instead). The implicit basic-salary line also has no {@link
+     * PayComponent} reference but is always recurring, so the absence of a component alone is never
+     * treated as a one-time signal. Shared by {@code PayrollRunService} (real runs) and {@code
+     * PayrollSimulationService} (dry runs) so the recurring/one-time split logic exists in exactly
+     * one place.
+     */
+    public static BigDecimal oneTimeGross(ComputedPayslip payslip) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (PayslipLine line : payslip.lines()) {
+            if (line.getKind() != PayComponentKind.EARNING) {
+                continue;
+            }
+            if (isOneTimeLine(line)) {
+                total = total.add(line.getAmount());
+            }
+        }
+        return total;
+    }
+
+    private static boolean isOneTimeLine(PayslipLine line) {
+        if (line.getPayComponent() != null) {
+            return !line.getPayComponent().isRecurring();
+        }
+        String code = line.getComponentCodeSnapshot();
+        return code != null && code.startsWith("ARREAR_");
     }
 }

@@ -129,7 +129,8 @@ public class LeaveBalanceService {
     @Transactional(readOnly = true)
     public List<BalanceResponse> balancesForEmployee(UUID tenantId, UUID employeeId, int year) {
         List<LeaveBalance> found = balances.findAllForEmployeeAndYear(tenantId, employeeId, year);
-        guard.requireAccessForCompanies(found.stream().map(LeaveBalance::getCompanyId).toList());
+        guard.requireAccessForCompanies(
+                found.stream().map(LeaveBalance::getCompanyId).toList(), employeeId);
         return found.stream().map(mapper::toResponse).toList();
     }
 

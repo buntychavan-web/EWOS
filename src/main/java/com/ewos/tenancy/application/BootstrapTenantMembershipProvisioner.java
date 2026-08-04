@@ -28,12 +28,18 @@ public class BootstrapTenantMembershipProvisioner implements DefaultTenantMember
     @Override
     @Transactional
     public void ensureDefaultMembership(UUID userId) {
+        ensureMembership(userId, BOOTSTRAP_TENANT_ID);
+    }
+
+    @Override
+    @Transactional
+    public void ensureMembership(UUID userId, UUID tenantId) {
         if (memberships.findByUserId(userId).isPresent()) {
             return;
         }
         UserTenantMembership membership = new UserTenantMembership();
         membership.setUserId(userId);
-        membership.setTenantId(BOOTSTRAP_TENANT_ID);
+        membership.setTenantId(tenantId);
         membership.setPrimary(true);
         memberships.save(membership);
     }

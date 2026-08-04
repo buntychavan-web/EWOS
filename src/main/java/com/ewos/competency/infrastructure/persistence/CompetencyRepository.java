@@ -13,5 +13,9 @@ public interface CompetencyRepository extends JpaRepository<Competency, UUID> {
     boolean existsByTenantIdAndCompanyIdAndCodeIgnoreCase(
             UUID tenantId, UUID companyId, String code);
 
+    /** Sprint 24E — resolves a competency_code cell from an import CSV row to its competency. */
+    Optional<Competency> findByTenantIdAndCompanyIdAndCodeIgnoreCase(
+            UUID tenantId, UUID companyId, String code);
+
     List<Competency> findAllByTenantIdAndCompanyIdAndActiveTrue(UUID tenantId, UUID companyId);
 }

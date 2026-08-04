@@ -40,6 +40,8 @@ import java.util.TreeMap;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -126,6 +128,10 @@ public class AppraisalService {
 
     public AppraisalResponse submitSelf(UUID tenantId, UUID id, SelfAssessmentRequest req) {
         Appraisal a = require(tenantId, id);
+        requireOwnershipUnlessAdmin(
+                tenantId,
+                a.getEmployee(),
+                "You may only submit a self assessment for your own appraisal");
         lifecycle.assertSelfSubmittable(a);
         lifecycle.assertRatingInScale(req.rating(), a.getTemplate());
         a.setSelfRating(req.rating());
@@ -139,6 +145,8 @@ public class AppraisalService {
 
     public AppraisalResponse submitManager(UUID tenantId, UUID id, ManagerAssessmentRequest req) {
         Appraisal a = require(tenantId, id);
+        requireOwnershipUnlessAdmin(
+                tenantId, a.getManagerEmployee(), "You are not this appraisal's manager");
         lifecycle.assertManagerSubmittable(a);
         lifecycle.assertRatingInScale(req.rating(), a.getTemplate());
         a.setManagerRating(req.rating());
@@ -152,6 +160,8 @@ public class AppraisalService {
 
     public AppraisalResponse submitReviewer(UUID tenantId, UUID id, ReviewerAssessmentRequest req) {
         Appraisal a = require(tenantId, id);
+        requireOwnershipUnlessAdmin(
+                tenantId, a.getReviewerEmployee(), "You are not this appraisal's reviewer");
         lifecycle.assertReviewerSubmittable(a);
         lifecycle.assertRatingInScale(req.rating(), a.getTemplate());
         a.setReviewerRating(req.rating());
@@ -259,6 +269,71 @@ public class AppraisalService {
         return mapper.toResponse(require(tenantId, id));
     }
 
+    /**
+     * Sprint 24A self-service: every appraisal belonging to {@code employeeId}, across cycles.
+     * {@code companyId} is resolved from the employee record rather than the appraisals themselves
+     * since an employee with zero appraisals yet must still pass the access check cleanly.
+     */
+    @Transactional(readOnly = true)
+    public List<AppraisalResponse> forEmployee(UUID tenantId, UUID employeeId) {
+        Employee employee = requireEmployee(tenantId, employeeId);
+        guard.requireAccessForCompany(employee.getCompanyId(), employeeId);
+        return appraisals
+                .findAllByTenantIdAndEmployeeIdOrderByCreatedAtDesc(tenantId, employeeId)
+                .stream()
+                .map(mapper::toResponse)
+                .toList();
+    }
+
+    /**
+     * Sprint 24A self-service: a single appraisal, visible only to its own employee, manager, or
+     * reviewer. Returns 404 rather than 403 for a non-participant caller so the endpoint never
+     * confirms another employee's appraisal exists.
+     */
+    @Transactional(readOnly = true)
+    public AppraisalResponse forParticipant(UUID tenantId, UUID id, UUID callerEmployeeId) {
+        Appraisal a =
+                appraisals
+                        .findByIdAndTenantId(id, tenantId)
+                        .filter(candidate -> isParticipant(candidate, callerEmployeeId))
+                        .orElseThrow(
+                                () ->
+                                        new ApiException(
+                                                HttpStatus.NOT_FOUND, "Appraisal not found"));
+        guard.requireAccessForCompany(a.getCompanyId(), callerEmployeeId);
+        return mapper.toResponse(a);
+    }
+
+    /** Sprint 24A self-service: appraisals awaiting the caller's own manager assessment. */
+    @Transactional(readOnly = true)
+    public List<AppraisalResponse> pendingForManager(UUID tenantId, UUID managerEmployeeId) {
+        return appraisals
+                .findAllByTenantIdAndManagerEmployeeIdAndStatus(
+                        tenantId, managerEmployeeId, AppraisalStatus.PENDING_MANAGER)
+                .stream()
+                .map(mapper::toResponse)
+                .toList();
+    }
+
+    /** Sprint 24A self-service: appraisals awaiting the caller's own reviewer assessment. */
+    @Transactional(readOnly = true)
+    public List<AppraisalResponse> pendingForReviewer(UUID tenantId, UUID reviewerEmployeeId) {
+        return appraisals
+                .findAllByTenantIdAndReviewerEmployeeIdAndStatus(
+                        tenantId, reviewerEmployeeId, AppraisalStatus.PENDING_REVIEWER)
+                .stream()
+                .map(mapper::toResponse)
+                .toList();
+    }
+
+    private static boolean isParticipant(Appraisal a, UUID employeeId) {
+        return a.getEmployee().getId().equals(employeeId)
+                || (a.getManagerEmployee() != null
+                        && a.getManagerEmployee().getId().equals(employeeId))
+                || (a.getReviewerEmployee() != null
+                        && a.getReviewerEmployee().getId().equals(employeeId));
+    }
+
     @Transactional(readOnly = true)
     public List<AppraisalResponse> forCycle(UUID tenantId, UUID cycleId) {
         cycles.require(tenantId, cycleId);
@@ -338,6 +413,50 @@ public class AppraisalService {
         return employees
                 .findByIdAndTenantId(employeeId, tenantId)
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Employee not found"));
+    }
+
+    /**
+     * Sprint 24A: {@code PERF_APPRAISE_SELF}/{@code _MANAGER}/{@code _REVIEWER} are, by design,
+     * broadly-granted permissions (every employee needs the first, every manager the second, every
+     * reviewer the third) with no server-side check that the caller is the specific employee,
+     * manager, or reviewer named on the target appraisal — a holder could otherwise submit a rating
+     * onto any employee's appraisal in the company. Mirrors {@code
+     * LeaveRequestService.requireManagerAuthorityUnlessAdmin} exactly, including the {@code
+     * PERF_ADMIN} bypass for HR/tenant admins correcting data on another employee's behalf.
+     */
+    private void requireOwnershipUnlessAdmin(UUID tenantId, Employee subject, String message) {
+        if (hasAuthority("PERF_ADMIN")) {
+            return;
+        }
+        if (subject == null) {
+            throw new ApiException(HttpStatus.FORBIDDEN, message);
+        }
+        UUID actor = requireActor();
+        boolean isSubject =
+                employees.findAllByUserIdAndTenantId(actor, tenantId).stream()
+                        .anyMatch(e -> e.getId().equals(subject.getId()));
+        if (!isSubject) {
+            throw new ApiException(HttpStatus.FORBIDDEN, message);
+        }
+    }
+
+    private static UUID requireActor() {
+        UUID actor = PerformanceSecurity.currentActor();
+        if (actor == null) {
+            throw new ApiException(
+                    HttpStatus.UNAUTHORIZED, "Authenticated user required for this action");
+        }
+        return actor;
+    }
+
+    private static boolean hasAuthority(String authority) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(authority::equals);
     }
 
     private void recordRating(
