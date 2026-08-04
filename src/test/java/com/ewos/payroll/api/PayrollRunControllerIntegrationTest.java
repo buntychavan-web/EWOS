@@ -18,6 +18,7 @@ import com.ewos.leave.domain.LeaveType;
 import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.leave.infrastructure.persistence.LeaveTypeRepository;
 import com.ewos.payroll.api.dto.StartPayrollRunRequest;
+import com.ewos.payroll.domain.EmployeeBankAccount;
 import com.ewos.payroll.domain.EmployeeCompensation;
 import com.ewos.payroll.domain.PayComponentKind;
 import com.ewos.payroll.domain.PayrollArrear;
@@ -25,6 +26,7 @@ import com.ewos.payroll.domain.PayrollFrequency;
 import com.ewos.payroll.domain.PayrollPeriod;
 import com.ewos.payroll.domain.PayrollPeriodStatus;
 import com.ewos.payroll.domain.Payslip;
+import com.ewos.payroll.infrastructure.persistence.EmployeeBankAccountRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeeCompensationRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollPeriodRepository;
@@ -69,6 +71,7 @@ class PayrollRunControllerIntegrationTest extends AbstractIntegrationTest {
     @Autowired BootstrapProperties bootstrapProperties;
     @Autowired EmployeeRepository employees;
     @Autowired EmployeeCompensationRepository compensations;
+    @Autowired EmployeeBankAccountRepository bankAccounts;
     @Autowired PayrollPeriodRepository periods;
     @Autowired LeaveTypeRepository leaveTypes;
     @Autowired LeaveRequestRepository leaveRequests;
@@ -100,6 +103,7 @@ class PayrollRunControllerIntegrationTest extends AbstractIntegrationTest {
         compensation.setCurrency("INR");
         compensation.setActive(true);
         compensations.save(compensation);
+        newBankAccount(employee);
 
         PayrollPeriod period = new PayrollPeriod();
         period.setTenantId(DEFAULT_TENANT_ID);
@@ -271,6 +275,21 @@ class PayrollRunControllerIntegrationTest extends AbstractIntegrationTest {
         compensation.setCurrency("INR");
         compensation.setActive(true);
         compensations.save(compensation);
+        newBankAccount(employee);
+    }
+
+    private void newBankAccount(Employee employee) {
+        EmployeeBankAccount account = new EmployeeBankAccount();
+        account.setTenantId(DEFAULT_TENANT_ID);
+        account.setCompanyId(DEFAULT_COMPANY_ID);
+        account.setEmployee(employee);
+        account.setBankName("Regression Test Bank");
+        account.setAccountHolderName(employee.getFirstName() + " " + employee.getLastName());
+        account.setAccountNumber("000123456789" + SEQ.incrementAndGet());
+        account.setAccountNumberMasked("XXXX6789");
+        account.setCountryCode("IN");
+        account.setCurrency("INR");
+        bankAccounts.save(account);
     }
 
     private String adminAccessToken() throws Exception {
