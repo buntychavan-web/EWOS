@@ -161,6 +161,7 @@ public class BankAdviceService {
         p.setBankNameSnapshot(b.getBankName());
         p.setAccountHolderSnapshot(b.getAccountHolderName());
         p.setAccountNumberMasked(b.getAccountNumberMasked());
+        p.setAccountNumberSnapshot(b.getAccountNumber());
         p.setRoutingCodeSnapshot(b.getRoutingCode());
         p.setSwiftBicSnapshot(b.getSwiftBic());
         p.setStatus(PaymentInstructionStatus.PENDING);

@@ -5,9 +5,16 @@ import org.springframework.stereotype.Component;
 
 /**
  * CSV writer for bank advices. Emits a header row followed by one row per pending payment
- * instruction: {@code adviceNumber, employeeNumber, accountHolder, accountNumberMasked,
- * routingCode, swiftBic, amount, currency, status}. Fields are RFC-4180 quoted only when they
- * contain a comma, quote, or newline; embedded quotes are escaped by doubling.
+ * instruction: {@code adviceNumber, employeeNumber, accountHolder, accountNumber, routingCode,
+ * swiftBic, amount, currency, status}. Fields are RFC-4180 quoted only when they contain a comma,
+ * quote, or newline; embedded quotes are escaped by doubling.
+ *
+ * <p>{@code account_number} carries the real account number ({@link
+ * PaymentInstruction#getAccountNumberSnapshot()}), not the masked display value — a bank cannot
+ * actually credit an employee from a masked number. This export endpoint requires {@code
+ * PAYROLL_ADMIN} ({@code BankAdviceController#export}), a strictly higher bar than the {@code
+ * PAYROLL_READ} every other bank-advice read requires, distinct from the masked-only {@code
+ * PaymentInstructionResponse} every ordinary API response uses.
  */
 @Component
 public final class BankAdviceCsvExporter {
@@ -31,7 +38,7 @@ public final class BankAdviceCsvExporter {
                     .append(',')
                     .append(csv(p.getAccountHolderSnapshot()))
                     .append(',')
-                    .append(csv(p.getAccountNumberMasked()))
+                    .append(csv(nullSafe(p.getAccountNumberSnapshot())))
                     .append(',')
                     .append(csv(nullSafe(p.getRoutingCodeSnapshot())))
                     .append(',')

@@ -40,6 +40,7 @@ import com.ewos.payroll.domain.events.PayrollEventType;
 import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
+import com.ewos.payroll.infrastructure.persistence.PayrollApprovalRequestRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
@@ -78,6 +79,10 @@ import org.springframework.transaction.annotation.Transactional;
  *       per active-compensation employee in the company (consuming LOP from approved unpaid leave
  *       and pending arrears), then lands in {@code COMPLETED} with aggregate totals.
  *   <li>{@link #finalizeRun(UUID, UUID)} — flips every payslip on the run to {@code FINALIZED}.
+ *       Sprint 24L Payroll Maker-Checker: unconditionally refuses the run's own preparer as
+ *       finalizer (true separation of duties), and — when the company has an active {@code
+ *       PayrollApprovalPolicy} — refuses to finalize until {@code PayrollApprovalService} records a
+ *       fully-{@code APPROVED} {@code PayrollApprovalRequest} for this run.
  *   <li>{@link #freeze(UUID, UUID)} — terminal lock; no supplementary or corrective run may adjust
  *       this run's payslips.
  * </ul>
@@ -111,6 +116,7 @@ public class PayrollRunService {
     private final EmployeeTaxDeclarationRepository taxDeclarations;
     private final PayrollValidator validator;
     private final TdsAdjustmentLogRepository tdsAdjustmentLogs;
+    private final PayrollApprovalRequestRepository approvalRequests;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
@@ -136,7 +142,8 @@ public class PayrollRunService {
             EmployeeEsiEnrollmentRepository esiEnrollments,
             EmployeeTaxDeclarationRepository taxDeclarations,
             PayrollValidator validator,
-            TdsAdjustmentLogRepository tdsAdjustmentLogs) {
+            TdsAdjustmentLogRepository tdsAdjustmentLogs,
+            PayrollApprovalRequestRepository approvalRequests) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -160,6 +167,7 @@ public class PayrollRunService {
         this.taxDeclarations = taxDeclarations;
         this.validator = validator;
         this.tdsAdjustmentLogs = tdsAdjustmentLogs;
+        this.approvalRequests = approvalRequests;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
@@ -466,6 +474,27 @@ public class PayrollRunService {
         guard.requireAccessForCompany(run.getCompanyId());
         policy.assertFinalizable(run);
         UUID actor = requireActor();
+        if (actor.equals(run.getStartedBy())) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "Payroll preparer cannot finalize their own payroll run — true separation of"
+                            + " duties requires a different person to finalize it");
+        }
+        approvalRequests
+                .findStatusForRun(tenantId, id)
+                .ifPresent(
+                        status -> {
+                            if (status
+                                    != com.ewos.payroll.domain.PayrollApprovalRequestStatus
+                                            .APPROVED) {
+                                throw new ApiException(
+                                        HttpStatus.CONFLICT,
+                                        "This run requires maker-checker approval before it can"
+                                                + " be finalized (current approval status: "
+                                                + status
+                                                + ")");
+                            }
+                        });
         Instant now = Instant.now();
         for (Payslip p : payslips.findAllForRun(tenantId, run.getId())) {
             p.setStatus(PayslipStatus.FINALIZED);

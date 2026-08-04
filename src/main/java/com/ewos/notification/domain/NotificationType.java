@@ -89,5 +89,11 @@ public enum NotificationType {
     // Sprint 24F — Tenancy. See
     // com.ewos.tenancy.application.TenancyNotificationEventListener.
     TENANT_ACCESS_GRANTED,
-    TENANT_ACCESS_REVOKED
+    TENANT_ACCESS_REVOKED,
+
+    // Sprint 24L — Payroll Maker-Checker. See
+    // com.ewos.payroll.application.PayrollApprovalNotificationListener.
+    PAYROLL_APPROVAL_PENDING,
+    PAYROLL_APPROVAL_FULLY_APPROVED,
+    PAYROLL_APPROVAL_REJECTED
 }

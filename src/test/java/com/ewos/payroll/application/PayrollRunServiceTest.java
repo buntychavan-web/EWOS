@@ -27,6 +27,7 @@ import com.ewos.payroll.domain.TdsAdjustmentType;
 import com.ewos.payroll.infrastructure.persistence.EmployeeEsiEnrollmentRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeePayrollProfileRepository;
 import com.ewos.payroll.infrastructure.persistence.EmployeeTaxDeclarationRepository;
+import com.ewos.payroll.infrastructure.persistence.PayrollApprovalRequestRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollArrearRepository;
 import com.ewos.payroll.infrastructure.persistence.PayrollRunRepository;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
@@ -77,6 +78,7 @@ class PayrollRunServiceTest {
     @Mock EmployeeTaxDeclarationRepository taxDeclarations;
     @Mock PayrollValidator validator;
     @Mock TdsAdjustmentLogRepository tdsAdjustmentLogs;
+    @Mock PayrollApprovalRequestRepository approvalRequests;
 
     private PayrollRunService service;
 
@@ -106,7 +108,8 @@ class PayrollRunServiceTest {
                         esiEnrollments,
                         taxDeclarations,
                         validator,
-                        tdsAdjustmentLogs);
+                        tdsAdjustmentLogs,
+                        approvalRequests);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -535,6 +538,71 @@ class PayrollRunServiceTest {
         assertThat(run.getFinalizedBy()).isNotNull();
     }
 
+    @Test
+    void finalizeRunRejectsThePreparerFinalizingTheirOwnRun() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID preparer =
+                UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+        PayrollRun run = new PayrollRun();
+        run.setId(id);
+        run.setCompanyId(companyId);
+        run.setStatus(PayrollRunStatus.COMPLETED);
+        run.setStartedBy(preparer);
+        when(runs.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(run));
+
+        assertThatThrownBy(() -> service.finalizeRun(tenantId, id))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("cannot finalize their own")
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        org.mockito.Mockito.verifyNoInteractions(payslips);
+    }
+
+    @Test
+    void finalizeRunRejectedWhilePendingMakerCheckerApproval() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        PayrollRun run = new PayrollRun();
+        run.setId(id);
+        run.setCompanyId(companyId);
+        run.setStatus(PayrollRunStatus.COMPLETED);
+        run.setStartedBy(UUID.randomUUID());
+        when(runs.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(run));
+        when(approvalRequests.findStatusForRun(tenantId, id))
+                .thenReturn(
+                        Optional.of(com.ewos.payroll.domain.PayrollApprovalRequestStatus.PENDING));
+
+        assertThatThrownBy(() -> service.finalizeRun(tenantId, id))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("maker-checker approval")
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void finalizeRunAllowedOnceMakerCheckerApprovalIsApproved() {
+        UUID tenantId = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        PayrollRun run = new PayrollRun();
+        run.setId(id);
+        run.setCompanyId(companyId);
+        run.setStatus(PayrollRunStatus.COMPLETED);
+        run.setStartedBy(UUID.randomUUID());
+        when(runs.findByIdAndTenantId(id, tenantId)).thenReturn(Optional.of(run));
+        when(approvalRequests.findStatusForRun(tenantId, id))
+                .thenReturn(
+                        Optional.of(com.ewos.payroll.domain.PayrollApprovalRequestStatus.APPROVED));
+        when(payslips.findAllForRun(tenantId, id)).thenReturn(List.of());
+
+        service.finalizeRun(tenantId, id);
+
+        assertThat(run.getStatus()).isEqualTo(PayrollRunStatus.FINALIZED);
+    }
+
     // --- freeze ---
 
     @Test
@@ -642,7 +710,8 @@ class PayrollRunServiceTest {
                         esiEnrollments,
                         taxDeclarations,
                         validator,
-                        tdsAdjustmentLogs);
+                        tdsAdjustmentLogs,
+                        approvalRequests);
 
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();

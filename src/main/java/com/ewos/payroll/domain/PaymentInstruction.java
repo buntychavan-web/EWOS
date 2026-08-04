@@ -1,8 +1,10 @@
 package com.ewos.payroll.domain;
 
 import com.ewos.employee.domain.Employee;
+import com.ewos.payroll.infrastructure.crypto.BankAccountFieldEncryptor;
 import com.ewos.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -18,6 +20,13 @@ import java.util.UUID;
 /**
  * One payment row on a {@link BankAdvice}. Bank identifiers are snapshotted onto the row so the
  * remittance trail survives future edits to the employee bank account.
+ *
+ * <p>{@code accountNumberSnapshot} carries the real account number (AES-256-GCM encrypted at rest
+ * via {@link BankAccountFieldEncryptor}, same as {@link EmployeeBankAccount#getAccountNumber()})
+ * for the bank file export pipeline, which cannot actually move money using only {@code
+ * accountNumberMasked}. Bank advice fix, Sprint 24L: {@code PaymentInstructionResponse}
+ * deliberately exposes only {@code accountNumberMasked} — never this field — so every user-facing
+ * API response stays masked exactly as before.
  */
 @Entity
 @Table(name = "payment_instructions")
@@ -53,6 +62,10 @@ public class PaymentInstruction extends AuditableEntity {
 
     @Column(name = "account_number_masked", nullable = false, length = 64)
     private String accountNumberMasked;
+
+    @Convert(converter = BankAccountFieldEncryptor.class)
+    @Column(name = "account_number_snapshot", length = 255)
+    private String accountNumberSnapshot;
 
     @Column(name = "routing_code_snapshot", length = 64)
     private String routingCodeSnapshot;
@@ -153,6 +166,14 @@ public class PaymentInstruction extends AuditableEntity {
 
     public void setAccountNumberMasked(String accountNumberMasked) {
         this.accountNumberMasked = accountNumberMasked;
+    }
+
+    public String getAccountNumberSnapshot() {
+        return accountNumberSnapshot;
+    }
+
+    public void setAccountNumberSnapshot(String accountNumberSnapshot) {
+        this.accountNumberSnapshot = accountNumberSnapshot;
     }
 
     public String getRoutingCodeSnapshot() {

@@ -22,8 +22,15 @@ import org.springframework.transaction.annotation.Transactional;
  * Run, without modifying or duplicating any of those modules' own state. The "one row per run"
  * shape mirrors {@code DataExchangeAutoCreateListener}'s convention that a finalized run produces
  * exactly one {@code PAYROLL_RUN_EXPORT} data exchange record under correlation id {@code
- * PAYROLL_RUN:<runId>}, and {@code PayrollApprovalWorkflowListener}'s convention that the client
- * approval workflow instance's subject is {@code (PAYROLL_RUN, runId)}.
+ * PAYROLL_RUN:<runId>}, and (historically) the now-removed {@code
+ * PayrollApprovalWorkflowListener}'s convention that the client approval workflow instance's
+ * subject was {@code (PAYROLL_RUN, runId)}.
+ *
+ * <p><b>Known follow-up:</b> Sprint 24L replaced that workflow-engine-based approval with {@code
+ * PayrollApprovalService}'s dedicated maker-checker domain, so {@code clientApprovalInstanceStatus}
+ * / {@code clientApprovalStateCode} below will be {@code null} for every run submitted through the
+ * new mechanism — this dashboard was not in Sprint 24L's scope to rewire onto {@code
+ * PayrollApprovalRequest}.
  */
 @Service
 @Transactional(readOnly = true)

@@ -20,14 +20,10 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * ran the payroll run — the same "notify the requester their async job finished" pattern {@code
  * PerformanceNotificationEventListener} uses for {@code CYCLE_LAUNCH_COMPLETED}.
  *
- * <p><b>Deliberately not covered — a real gap, not an oversight:</b> "payroll run awaiting
- * approval" has no listener here. {@link PayrollApprovalWorkflowListener} assigns that approval
- * task to the {@code CLIENT_ADMIN} <i>role</i>, not a specific user, and {@code
- * WorkflowNotificationListener}'s own javadoc is explicit that a role-assigned task's holders are
- * "the owning module's concern, not the engine's" — Payroll has no role-holder-fan-out notification
- * primitive today (nothing in the platform does), so building one correctly (scoped to the run's
- * client/company, not leaking across tenants) is out of scope for this pass. Tracked as a follow-up
- * rather than shipped half-verified.
+ * <p><b>"Payroll run awaiting approval" notifications</b> are handled separately by {@link
+ * PayrollApprovalNotificationListener} (Sprint 24L), not here — that class resolves the current
+ * approval level's role to concrete users via {@code ApproverResolver} and notifies each one
+ * directly, closing the role-holder-fan-out gap this class used to document as an open follow-up.
  *
  * <p>{@code COMPONENT_CHANGED}, {@code PERIOD_OPENED/LOCKED/CLOSED}, {@code COMPENSATION_CHANGED},
  * {@code RUN_STARTED}, {@code RUN_COMPLETED} (the workflow-start trigger, not a human-facing
