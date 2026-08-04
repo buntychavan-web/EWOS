@@ -1,26 +1,18 @@
 package com.ewos.attendance.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record AttendancePolicyResponse(
+public record HolidayResponse(
         UUID id,
         UUID tenantId,
         UUID companyId,
-        String code,
+        LocalDate holidayDate,
         String name,
-        String description,
-        BigDecimal standardHoursPerDay,
-        BigDecimal standardHoursPerWeek,
-        String workingDays,
-        int graceMinutes,
-        BigDecimal overtimeMultiplier,
-        int periodLengthDays,
-        boolean active,
-        boolean sandwichLeavePolicyEnabled,
+        boolean recurringAnnually,
         Instant createdAt,
         Instant updatedAt,
         UUID createdBy,

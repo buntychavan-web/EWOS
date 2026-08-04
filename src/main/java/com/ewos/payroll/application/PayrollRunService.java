@@ -1,5 +1,7 @@
 package com.ewos.payroll.application;
 
+import com.ewos.attendance.application.AttendanceLopService;
+import com.ewos.attendance.domain.AttendanceLopCalculator;
 import com.ewos.employee.domain.Employee;
 import com.ewos.leave.domain.LeaveRequest;
 import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
@@ -78,7 +80,9 @@ import org.springframework.transaction.annotation.Transactional;
  *       found (Codex CTO audit P0-3 — the report was previously recorded for audit but never
  *       enforced), otherwise transitions to {@code PROCESSING}, generates a {@code DRAFT} payslip
  *       per active-compensation employee in the company (consuming LOP from approved unpaid leave
- *       and pending arrears), then lands in {@code COMPLETED} with aggregate totals.
+ *       and pending arrears — plus, once the company has configured an {@code AttendancePolicy},
+ *       additional LOP from real attendance exceptions via {@code AttendanceLopService}, Sprint 24L
+ *       item 3), then lands in {@code COMPLETED} with aggregate totals.
  *   <li>{@link #finalizeRun(UUID, UUID)} — flips every payslip on the run to {@code FINALIZED}.
  *       Sprint 24L Payroll Maker-Checker: unconditionally refuses the run's own preparer as
  *       finalizer (true separation of duties), and — when the company has an active {@code
@@ -119,6 +123,7 @@ public class PayrollRunService {
     private final TdsAdjustmentLogRepository tdsAdjustmentLogs;
     private final PayrollApprovalRequestRepository approvalRequests;
     private final PayrollRunReopenAuthorizationRepository reopenAuthorizations;
+    private final AttendanceLopService attendanceLop;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public PayrollRunService(
@@ -146,7 +151,8 @@ public class PayrollRunService {
             PayrollValidator validator,
             TdsAdjustmentLogRepository tdsAdjustmentLogs,
             PayrollApprovalRequestRepository approvalRequests,
-            PayrollRunReopenAuthorizationRepository reopenAuthorizations) {
+            PayrollRunReopenAuthorizationRepository reopenAuthorizations,
+            AttendanceLopService attendanceLop) {
         this.runs = runs;
         this.payslips = payslips;
         this.periods = periods;
@@ -172,6 +178,7 @@ public class PayrollRunService {
         this.tdsAdjustmentLogs = tdsAdjustmentLogs;
         this.approvalRequests = approvalRequests;
         this.reopenAuthorizations = reopenAuthorizations;
+        this.attendanceLop = attendanceLop;
     }
 
     public PayrollRunResponse start(StartPayrollRunRequest request) {
@@ -335,6 +342,23 @@ public class PayrollRunService {
                                     .stream()
                                     .collect(Collectors.groupingBy(lr -> lr.getEmployee().getId()));
 
+            Map<UUID, Set<LocalDate>> leaveDatesByEmployee =
+                    leavesByEmployee.entrySet().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            Map.Entry::getKey,
+                                            e -> leaveDatesInPeriod(e.getValue(), period)));
+            Optional<Map<UUID, AttendanceLopCalculator.Result>> attendanceOutcomes =
+                    employeeIds.isEmpty()
+                            ? Optional.empty()
+                            : attendanceLop.computeForRun(
+                                    run.getTenantId(),
+                                    run.getCompanyId(),
+                                    period.getPeriodStart(),
+                                    period.getPeriodEnd(),
+                                    employeeIds,
+                                    leaveDatesByEmployee);
+
             Map<UUID, List<PayrollArrear>> arrearsByEmployee =
                     employeeIds.isEmpty()
                             ? Map.of()
@@ -416,6 +440,16 @@ public class PayrollRunService {
                 BigDecimal lopDays =
                         lop.computeLopDays(
                                 unpaidOnly, period.getPeriodStart(), period.getPeriodEnd());
+                // Sprint 24L item 3: additive on top of leave-driven LOP above — surfaces
+                // unexplained absences/half-days/missing punches that raw attendance data
+                // reveals but no leave request covers. Zero when the company has not opted in
+                // by configuring an AttendancePolicy (attendanceOutcomes is then empty).
+                BigDecimal attendanceLopDays =
+                        attendanceOutcomes
+                                .map(m -> m.get(emp.getId()))
+                                .map(AttendanceLopCalculator.Result::lopDays)
+                                .orElse(BigDecimal.ZERO);
+                lopDays = lopDays.add(attendanceLopDays);
 
                 List<PayrollArrear> pendingArrears =
                         arrearsByEmployee.getOrDefault(emp.getId(), List.of());
@@ -493,6 +527,32 @@ public class PayrollRunService {
         run.setStatus(PayrollRunStatus.COMPLETED);
         run.setCompletedAt(Instant.now());
         publishRun(PayrollEventType.RUN_COMPLETED, run);
+    }
+
+    /**
+     * Every calendar day (clipped to the payroll period) covered by any approved leave request —
+     * paid or unpaid. Fed to {@code AttendanceLopService} so it never double-counts a day the leave
+     * module already owns.
+     */
+    private static Set<LocalDate> leaveDatesInPeriod(
+            List<LeaveRequest> approvedLeaves, PayrollPeriod period) {
+        Set<LocalDate> dates = new java.util.HashSet<>();
+        for (LeaveRequest r : approvedLeaves) {
+            LocalDate from =
+                    r.getStartDate().isBefore(period.getPeriodStart())
+                            ? period.getPeriodStart()
+                            : r.getStartDate();
+            LocalDate to =
+                    r.getEndDate().isAfter(period.getPeriodEnd())
+                            ? period.getPeriodEnd()
+                            : r.getEndDate();
+            LocalDate cursor = from;
+            while (!cursor.isAfter(to)) {
+                dates.add(cursor);
+                cursor = cursor.plusDays(1);
+            }
+        }
+        return dates;
     }
 
     public PayrollRunResponse finalizeRun(UUID tenantId, UUID id) {

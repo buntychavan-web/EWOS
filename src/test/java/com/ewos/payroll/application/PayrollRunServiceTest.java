@@ -81,6 +81,7 @@ class PayrollRunServiceTest {
     @Mock TdsAdjustmentLogRepository tdsAdjustmentLogs;
     @Mock PayrollApprovalRequestRepository approvalRequests;
     @Mock PayrollRunReopenAuthorizationRepository reopenAuthorizations;
+    @Mock com.ewos.attendance.application.AttendanceLopService attendanceLop;
 
     private PayrollRunService service;
 
@@ -112,7 +113,8 @@ class PayrollRunServiceTest {
                         validator,
                         tdsAdjustmentLogs,
                         approvalRequests,
-                        reopenAuthorizations);
+                        reopenAuthorizations,
+                        attendanceLop);
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
@@ -757,7 +759,8 @@ class PayrollRunServiceTest {
                         validator,
                         tdsAdjustmentLogs,
                         approvalRequests,
-                        reopenAuthorizations);
+                        reopenAuthorizations,
+                        attendanceLop);
 
         UUID tenantId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();

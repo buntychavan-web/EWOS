@@ -18,4 +18,5 @@ public record UpdateAttendancePolicyRequest(
         @Min(0) Integer graceMinutes,
         @DecimalMin("1.00") BigDecimal overtimeMultiplier,
         @Min(1) @Max(31) Integer periodLengthDays,
-        Boolean active) {}
+        Boolean active,
+        Boolean sandwichLeavePolicyEnabled) {}

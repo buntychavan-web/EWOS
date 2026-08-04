@@ -19,6 +19,12 @@ import org.hibernate.annotations.SQLRestriction;
  * <p>Working days are stored as a comma-separated list of ISO short codes (MON,TUE,...) rather than
  * a bitmask so the SQL is readable and future timezone-aware operations can join on the day name
  * without a decode step.
+ *
+ * <p>Sprint 24L item 3: a company only gets attendance-driven loss-of-pay once one of these rows
+ * exists for it (see {@code com.ewos.attendance.application.AttendanceLopService}) — opt-in,
+ * backward compatible with the pre-existing leave-only LOP calculation. {@link
+ * #sandwichLeavePolicyEnabled} further opts that company into the sandwich rule (a weekly-off or
+ * holiday run flanked on both sides by an LOP day is itself LOP).
  */
 @Entity
 @Table(name = "attendance_policies")
@@ -62,6 +68,9 @@ public class AttendancePolicy extends AuditableEntity {
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    @Column(name = "sandwich_leave_policy_enabled", nullable = false)
+    private boolean sandwichLeavePolicyEnabled;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
@@ -164,6 +173,14 @@ public class AttendancePolicy extends AuditableEntity {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public boolean isSandwichLeavePolicyEnabled() {
+        return sandwichLeavePolicyEnabled;
+    }
+
+    public void setSandwichLeavePolicyEnabled(boolean sandwichLeavePolicyEnabled) {
+        this.sandwichLeavePolicyEnabled = sandwichLeavePolicyEnabled;
     }
 
     public Instant getDeletedAt() {
