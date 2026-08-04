@@ -165,6 +165,9 @@ public class PayrollApprovalService {
         }
     }
 
+    // Used via method reference (PayrollApprovalService::toLevel above) — PMD's
+    // UnusedPrivateMethod doesn't resolve method-reference call sites in this version.
+    @SuppressWarnings("PMD.UnusedPrivateMethod")
     private static PayrollApprovalLevel toLevel(PayrollApprovalLevelRequest request) {
         PayrollApprovalLevel level = new PayrollApprovalLevel();
         level.setLevelNumber(request.levelNumber());
@@ -414,6 +417,9 @@ public class PayrollApprovalService {
                 r.getDecidedAt());
     }
 
+    // Used via method reference (PayrollApprovalService::toDecisionResponse above) — PMD's
+    // UnusedPrivateMethod doesn't resolve method-reference call sites in this version.
+    @SuppressWarnings("PMD.UnusedPrivateMethod")
     private static PayrollApprovalDecisionResponse toDecisionResponse(PayrollApprovalDecision d) {
         return new PayrollApprovalDecisionResponse(
                 d.getId(),

@@ -184,6 +184,9 @@ public class EmployeeLoanService {
                 l.getNotes());
     }
 
+    // Used via method reference (EmployeeLoanService::toInstallmentResponse above) — PMD's
+    // UnusedPrivateMethod doesn't resolve method-reference call sites in this version.
+    @SuppressWarnings("PMD.UnusedPrivateMethod")
     private static LoanInstallmentResponse toInstallmentResponse(LoanScheduleInstallment i) {
         return new LoanInstallmentResponse(
                 i.getId(),
