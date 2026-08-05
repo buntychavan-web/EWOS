@@ -48,6 +48,27 @@ class CsvIntegrationAdapterTest {
     }
 
     @Test
+    void neutralizesAFormulaInjectionAttemptInThePayload(@TempDir Path dir) throws IOException {
+        String configJson =
+                "{\"outputDirectory\": \"" + dir.toString().replace("\\", "\\\\") + "\"}";
+        IntegrationExecutionContext ctx =
+                new IntegrationExecutionContext(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "PAYROLL_RUN_EXPORT",
+                        "PAYROLL_RUN:injection",
+                        "=cmd|'/c calc'!A1",
+                        configJson);
+
+        adapter.execute(ctx);
+
+        Path file = dir.resolve("PAYROLL_RUN_injection.csv");
+        String written = Files.readString(file);
+        assertThat(written).doesNotContain("\"=cmd");
+        assertThat(written).contains("\"'=cmd");
+    }
+
+    @Test
     void failsWithConfigurationClassificationWhenOutputDirectoryMissing() {
         IntegrationExecutionContext ctx =
                 new IntegrationExecutionContext(

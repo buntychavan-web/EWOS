@@ -97,7 +97,7 @@ public final class XlsxWriter {
                         .append(columnRef(colIndex))
                         .append(rowIndex)
                         .append("\" t=\"inlineStr\"><is><t>")
-                        .append(escapeXml(cell))
+                        .append(escapeXml(SpreadsheetFormulaGuard.neutralize(cell)))
                         .append("</t></is></c>");
                 colIndex++;
             }

@@ -228,6 +228,15 @@ public class WorkflowInstanceService {
         return instance;
     }
 
+    /**
+     * Package-private, used by {@link WorkflowTaskService#complete} to serialize concurrent
+     * ANY/ALL-mode sibling-task completions against the same instance — see {@link
+     * WorkflowInstanceRepository#lockForUpdate} for why.
+     */
+    void lockForUpdate(UUID id) {
+        instances.lockForUpdate(id);
+    }
+
     private void maybeAutoAdvance(WorkflowInstance instance) {
         // Bounded loop; workflow definitions must be acyclic on auto transitions.
         for (int hop = 0; hop < 32; hop++) {

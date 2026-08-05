@@ -177,8 +177,18 @@ public class ProbationService {
                             + r.getStatus()
                             + ")");
         }
+        // Approval is the terminal outcome of the submit-confirmation workflow — it must actually
+        // confirm the employee, the same way the direct confirm() shortcut does, or the record is
+        // left stuck in PENDING_APPROVAL forever with no further action able to move it (this was
+        // a real production bug: approve() only recorded notes and an event, never a status
+        // change). The confirmation letter is still attached separately via
+        // issueConfirmationLetter(), exactly as it is for the confirm() path.
+        r.setStatus(ProbationStatus.CONFIRMED);
+        r.setConfirmedAt(Instant.now());
+        r.setConfirmedBy(ProbationSecurity.currentActor());
         r.setOutcomeNotes(req == null ? null : req.notes());
         publish(ProbationEventType.CONFIRMATION_APPROVED, r, req == null ? null : req.notes());
+        publish(ProbationEventType.PROBATION_CONFIRMED, r, null);
         return mapper.toResponse(r);
     }
 

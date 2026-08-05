@@ -55,16 +55,17 @@ public class WorkflowDefinitionService {
     }
 
     @CacheEvict(value = DEF_CACHE, allEntries = true)
-    public WorkflowDefinitionResponse create(CreateWorkflowDefinitionRequest request) {
+    public WorkflowDefinitionResponse create(
+            UUID tenantId, CreateWorkflowDefinitionRequest request) {
         int version = request.definitionVersion() != null ? request.definitionVersion() : 1;
         if (repository.existsByTenantIdAndCodeIgnoreCaseAndDefinitionVersion(
-                request.tenantId(), request.code(), version)) {
+                tenantId, request.code(), version)) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "Workflow definition '" + request.code() + "' v" + version + " already exists");
         }
         WorkflowDefinition def = new WorkflowDefinition();
-        def.setTenantId(request.tenantId());
+        def.setTenantId(tenantId);
         def.setCode(request.code());
         def.setName(request.name());
         def.setDescription(request.description());

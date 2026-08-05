@@ -49,6 +49,7 @@ public class RestIntegrationAdapter implements IntegrationAdapter {
         try {
             JsonNode config = readConfig(context.configJson());
             url = requireText(config, "url");
+            OutboundUrlGuard.assertSafe(url);
             method =
                     config.has("method")
                             ? HttpMethod.valueOf(config.get("method").asText())

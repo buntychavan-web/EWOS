@@ -194,6 +194,13 @@ public class WorkflowTaskService {
             return mapper.toResponse(task);
         }
 
+        // ANY/ALL modes decide whether to advance the instance based on the state of every
+        // sibling task, so this must serialize against any other concurrent completion of a
+        // sibling task in the same state — otherwise two siblings completed at nearly the same
+        // time can each see the other as still open and neither advances the instance (see
+        // WorkflowInstanceRepository#lockForUpdate).
+        instanceService.lockForUpdate(task.getInstance().getId());
+
         List<WorkflowTask> openSiblings =
                 siblingsInState(task, List.of(WorkflowTaskStatus.OPEN, WorkflowTaskStatus.CLAIMED));
         if (mode == WorkflowApprovalMode.ANY) {

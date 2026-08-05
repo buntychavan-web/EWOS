@@ -36,8 +36,9 @@ public class WorkflowDefinitionController {
     @PreAuthorize("hasAuthority('WF_WRITE')")
     @Operation(summary = "Publish a new workflow definition")
     public ResponseEntity<WorkflowDefinitionResponse> create(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
             @Valid @RequestBody CreateWorkflowDefinitionRequest request) {
-        WorkflowDefinitionResponse created = service.create(request);
+        WorkflowDefinitionResponse created = service.create(tenantId, request);
         return ResponseEntity.created(URI.create("/api/v1/workflow/definitions/" + created.id()))
                 .body(created);
     }

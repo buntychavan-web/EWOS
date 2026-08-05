@@ -60,7 +60,7 @@ public class CsvIntegrationAdapter implements IntegrationAdapter {
         if (value == null) {
             return "";
         }
-        String escaped = value.replace("\"", "\"\"");
+        String escaped = SpreadsheetFormulaGuard.neutralize(value).replace("\"", "\"\"");
         return "\"" + escaped + "\"";
     }
 

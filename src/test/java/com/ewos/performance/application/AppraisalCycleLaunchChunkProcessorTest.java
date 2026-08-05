@@ -74,8 +74,8 @@ class AppraisalCycleLaunchChunkProcessorTest {
         when(appraisals.findAllByTenantIdAndCycleIdAndEmployeeIdIn(
                         tenantId, cycle.getId(), List.of(alreadyHas, needsOne)))
                 .thenReturn(List.of(alreadyHas));
-        when(employees.findByIdAndTenantId(needsOne, tenantId))
-                .thenReturn(Optional.of(employee(needsOne, UUID.randomUUID())));
+        when(employees.findAllByIdInAndTenantId(List.of(alreadyHas, needsOne), tenantId))
+                .thenReturn(List.of(employee(needsOne, UUID.randomUUID())));
 
         processor.processChunk(tenantId, batchId, cycle, template, List.of(alreadyHas, needsOne));
 
@@ -97,9 +97,8 @@ class AppraisalCycleLaunchChunkProcessorTest {
         when(batches.findByIdAndTenantId(batchId, tenantId)).thenReturn(Optional.of(batch));
         when(appraisals.findAllByTenantIdAndCycleIdAndEmployeeIdIn(any(), any(), anyList()))
                 .thenReturn(List.of());
-        when(employees.findByIdAndTenantId(vanished, tenantId)).thenReturn(Optional.empty());
-        when(employees.findByIdAndTenantId(ok, tenantId))
-                .thenReturn(Optional.of(employee(ok, UUID.randomUUID())));
+        when(employees.findAllByIdInAndTenantId(List.of(vanished, ok), tenantId))
+                .thenReturn(List.of(employee(ok, UUID.randomUUID())));
 
         processor.processChunk(tenantId, batchId, cycle, template, List.of(vanished, ok));
 
