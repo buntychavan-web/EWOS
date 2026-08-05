@@ -53,8 +53,11 @@ class TimeEntryRepositoryIntegrationTest extends AbstractIntegrationTest {
         employee = employees.save(employee);
 
         // Seed well beyond RECENT_LIMIT rows spread over a decade, as a long-tenured employee's
-        // real clock-event history would look like.
-        Instant now = Instant.now();
+        // real clock-event history would look like. Truncated to microseconds: Postgres
+        // TIMESTAMPTZ (and the JDBC round trip) only preserves microsecond precision, so an
+        // untruncated Instant.now() (nanosecond precision) would never compare equal to the value
+        // read back after a save/fetch cycle.
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         int totalRows = TimeEntryRepository.RECENT_LIMIT + 25;
         for (int i = 0; i < totalRows; i++) {
             TimeEntry entry = new TimeEntry();
