@@ -112,6 +112,15 @@ public class FinalSettlement extends AuditableEntity {
     @Column(name = "notes", length = 2048)
     private String notes;
 
+    /**
+     * Optional link back to the exit-module resignation that triggered this settlement (Sprint 26).
+     * Plain id, not a {@code @ManyToOne} — Payroll has no compile-time dependency on the exit
+     * module, matching how {@code companyId} and other cross-module references are held elsewhere
+     * in this codebase.
+     */
+    @Column(name = "resignation_id")
+    private UUID resignationId;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -317,6 +326,14 @@ public class FinalSettlement extends AuditableEntity {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public UUID getResignationId() {
+        return resignationId;
+    }
+
+    public void setResignationId(UUID resignationId) {
+        this.resignationId = resignationId;
     }
 
     public Instant getDeletedAt() {

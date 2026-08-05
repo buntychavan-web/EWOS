@@ -99,4 +99,14 @@ public class FinalSettlementController {
             @RequestParam FinalSettlementStatus status) {
         return service.byStatus(tenantId, companyId, status);
     }
+
+    @GetMapping("/by-resignation/{resignationId}")
+    @PreAuthorize("hasAuthority('PAYROLL_READ')")
+    @Operation(summary = "Fetch the settlement linked to an exit-module resignation, if any")
+    public ResponseEntity<FinalSettlementResponse> byResignation(
+            @RequestHeader("X-Tenant-Id") UUID tenantId, @PathVariable UUID resignationId) {
+        return service.findByResignation(tenantId, resignationId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
 }

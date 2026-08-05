@@ -393,6 +393,7 @@ public final class PayrollMapper {
                 s.getSettledBy(),
                 s.getSettlementRun() != null ? s.getSettlementRun().getId() : null,
                 s.getNotes(),
+                s.getResignationId(),
                 s.getVersionNo());
     }
 

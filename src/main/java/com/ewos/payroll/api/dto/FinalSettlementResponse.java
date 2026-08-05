@@ -33,4 +33,5 @@ public record FinalSettlementResponse(
         UUID settledBy,
         UUID settlementRunId,
         String notes,
+        UUID resignationId,
         long versionNo) {}

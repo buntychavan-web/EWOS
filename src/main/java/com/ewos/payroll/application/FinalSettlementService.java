@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -95,10 +96,18 @@ public class FinalSettlementService {
             throw new ApiException(
                     HttpStatus.CONFLICT, "A live settlement already exists for this employee");
         }
+        if (request.resignationId() != null
+                && repository
+                        .findLiveForResignation(request.tenantId(), request.resignationId())
+                        .isPresent()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "A live settlement already exists for this resignation");
+        }
         FinalSettlement s = new FinalSettlement();
         s.setTenantId(request.tenantId());
         s.setCompanyId(request.companyId());
         s.setEmployee(employee);
+        s.setResignationId(request.resignationId());
         s.setTerminationDate(request.terminationDate());
         s.setLastWorkingDate(request.lastWorkingDate());
         s.setUnusedLeaveDays(zero(request.unusedLeaveDays()));
@@ -219,6 +228,22 @@ public class FinalSettlementService {
         FinalSettlement s = require(tenantId, id);
         guard.requireAccessForCompany(s.getCompanyId());
         return mapper.toResponse(s);
+    }
+
+    /**
+     * Sprint 26 — Exit integration: the settlement linked to a resignation, if one has been
+     * created. Read-only lookup; Exit never creates or drives a settlement itself, it only reads
+     * this to show F&F progress alongside the resignation.
+     */
+    @Transactional(readOnly = true)
+    public Optional<FinalSettlementResponse> findByResignation(UUID tenantId, UUID resignationId) {
+        return repository
+                .findLiveForResignation(tenantId, resignationId)
+                .map(
+                        s -> {
+                            guard.requireAccessForCompany(s.getCompanyId());
+                            return mapper.toResponse(s);
+                        });
     }
 
     @Transactional(readOnly = true)
