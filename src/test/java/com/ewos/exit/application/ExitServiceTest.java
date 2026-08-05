@@ -12,6 +12,8 @@ import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.exit.api.ExitMapper;
 import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
+import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
+import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
 import com.ewos.exit.api.dto.ClearanceResponse;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateAlumniRequest;
@@ -20,13 +22,16 @@ import com.ewos.exit.api.dto.CreateKtItemRequest;
 import com.ewos.exit.api.dto.CreateResignationRequest;
 import com.ewos.exit.api.dto.DocumentResponse;
 import com.ewos.exit.api.dto.ExitDashboardResponse;
+import com.ewos.exit.api.dto.ExtendNoticeRequest;
 import com.ewos.exit.api.dto.InterviewResponse;
 import com.ewos.exit.api.dto.IssueDocumentRequest;
 import com.ewos.exit.api.dto.KtItemResponse;
 import com.ewos.exit.api.dto.RecordInterviewRequest;
 import com.ewos.exit.api.dto.ResignationResponse;
+import com.ewos.exit.api.dto.StartGardenLeaveRequest;
 import com.ewos.exit.api.dto.UpdateAlumniRequest;
 import com.ewos.exit.api.dto.UpdateClearanceRequest;
+import com.ewos.exit.api.dto.WaiveNoticeRequest;
 import com.ewos.exit.domain.AlumniRecord;
 import com.ewos.exit.domain.ClearanceDepartment;
 import com.ewos.exit.domain.ClearanceStatus;
@@ -47,6 +52,7 @@ import com.ewos.exit.infrastructure.persistence.KnowledgeTransferItemRepository;
 import com.ewos.exit.infrastructure.persistence.ResignationRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -292,6 +298,147 @@ class ExitServiceTest {
                 service.applyBuyout(tenantId, r.getId(), new ApplyBuyoutRequest(5, null));
 
         assertThat(resp.buyoutDays()).isEqualTo(5);
+    }
+
+    @Test
+    void applyNoticeRecoveryStoresTheAmount() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.applyNoticeRecovery(
+                        tenantId, r.getId(), new ApplyNoticeRecoveryRequest(new BigDecimal("500")));
+
+        assertThat(resp.noticeRecoveryAmount()).isEqualByComparingTo("500");
+    }
+
+    @Test
+    void applyNoticeRecoveryRejectsOnAClosedResignation() {
+        Resignation r = resignation(ResignationStatus.EXITED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThatThrownBy(
+                        () ->
+                                service.applyNoticeRecovery(
+                                        tenantId,
+                                        r.getId(),
+                                        new ApplyNoticeRecoveryRequest(new BigDecimal("500"))))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("closed resignation");
+    }
+
+    @Test
+    void waiveNoticePullsTheEndDateForwardToToday() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(30));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.waiveNotice(
+                        tenantId, r.getId(), new WaiveNoticeRequest("mutual agreement"));
+
+        assertThat(resp.noticeWaived()).isTrue();
+        assertThat(resp.noticeWaiverReason()).isEqualTo("mutual agreement");
+        assertThat(resp.noticeEndDate()).isEqualTo(LocalDate.now());
+    }
+
+    @Test
+    void startGardenLeaveRejectsAnEndDateAfterTheNoticeEndDate() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(10));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThatThrownBy(
+                        () ->
+                                service.startGardenLeave(
+                                        tenantId,
+                                        r.getId(),
+                                        new StartGardenLeaveRequest(
+                                                LocalDate.now(), LocalDate.now().plusDays(20))))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("beyond the notice period");
+    }
+
+    @Test
+    void startGardenLeaveAcceptsAValidWindow() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(10));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.startGardenLeave(
+                        tenantId,
+                        r.getId(),
+                        new StartGardenLeaveRequest(LocalDate.now(), LocalDate.now().plusDays(5)));
+
+        assertThat(resp.gardenLeaveStartDate()).isEqualTo(LocalDate.now());
+        assertThat(resp.gardenLeaveEndDate()).isEqualTo(LocalDate.now().plusDays(5));
+    }
+
+    @Test
+    void extendNoticeRejectsADateNotAfterTheCurrentEndDate() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(10));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThatThrownBy(
+                        () ->
+                                service.extendNotice(
+                                        tenantId,
+                                        r.getId(),
+                                        new ExtendNoticeRequest(
+                                                LocalDate.now().plusDays(5), "manager request")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("after the current notice end date");
+    }
+
+    @Test
+    void extendNoticeMovesTheEndDateOut() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(10));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.extendNotice(
+                        tenantId,
+                        r.getId(),
+                        new ExtendNoticeRequest(LocalDate.now().plusDays(20), "handover overrun"));
+
+        assertThat(resp.noticeEndDate()).isEqualTo(LocalDate.now().plusDays(20));
+        assertThat(resp.noticeExtensionReason()).isEqualTo("handover overrun");
+    }
+
+    @Test
+    void approveEarlyReleaseRejectsADateNotBeforeTheCurrentEndDate() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(10));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThatThrownBy(
+                        () ->
+                                service.approveEarlyRelease(
+                                        tenantId,
+                                        r.getId(),
+                                        new ApproveEarlyReleaseRequest(
+                                                LocalDate.now().plusDays(10), "urgent need")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("earlier than the current notice end date");
+    }
+
+    @Test
+    void approveEarlyReleasePullsTheEndDateForward() {
+        Resignation r = resignation(ResignationStatus.IN_NOTICE);
+        r.setNoticeEndDate(LocalDate.now().plusDays(10));
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.approveEarlyRelease(
+                        tenantId,
+                        r.getId(),
+                        new ApproveEarlyReleaseRequest(LocalDate.now().plusDays(3), "urgent need"));
+
+        assertThat(resp.noticeEndDate()).isEqualTo(LocalDate.now().plusDays(3));
+        assertThat(resp.earlyReleaseReason()).isEqualTo("urgent need");
     }
 
     @Test

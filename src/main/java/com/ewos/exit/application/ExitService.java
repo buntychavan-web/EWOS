@@ -6,6 +6,8 @@ import com.ewos.exit.api.ExitMapper;
 import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.AlumniResponse;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
+import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
+import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
 import com.ewos.exit.api.dto.ClearanceResponse;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateAlumniRequest;
@@ -14,13 +16,16 @@ import com.ewos.exit.api.dto.CreateKtItemRequest;
 import com.ewos.exit.api.dto.CreateResignationRequest;
 import com.ewos.exit.api.dto.DocumentResponse;
 import com.ewos.exit.api.dto.ExitDashboardResponse;
+import com.ewos.exit.api.dto.ExtendNoticeRequest;
 import com.ewos.exit.api.dto.InterviewResponse;
 import com.ewos.exit.api.dto.IssueDocumentRequest;
 import com.ewos.exit.api.dto.KtItemResponse;
 import com.ewos.exit.api.dto.RecordInterviewRequest;
 import com.ewos.exit.api.dto.ResignationResponse;
+import com.ewos.exit.api.dto.StartGardenLeaveRequest;
 import com.ewos.exit.api.dto.UpdateAlumniRequest;
 import com.ewos.exit.api.dto.UpdateClearanceRequest;
+import com.ewos.exit.api.dto.WaiveNoticeRequest;
 import com.ewos.exit.domain.AlumniRecord;
 import com.ewos.exit.domain.ClearanceStatus;
 import com.ewos.exit.domain.ExitClearance;
@@ -186,6 +191,99 @@ public class ExitService {
         r.setBuyoutDays(req.buyoutDays());
         r.setBuyoutAmount(req.buyoutAmount());
         publish(ExitEventType.BUYOUT_APPLIED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Recovers pay from the employee for notice shortfall — the opposite direction of buyout. */
+    public ResignationResponse applyNoticeRecovery(
+            UUID tenantId, UUID id, ApplyNoticeRecoveryRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot apply notice recovery on a closed resignation");
+        }
+        r.setNoticeRecoveryAmount(req.amount());
+        publish(ExitEventType.NOTICE_RECOVERY_APPLIED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Waives the remaining notice period entirely — the employee may exit immediately. */
+    public ResignationResponse waiveNotice(UUID tenantId, UUID id, WaiveNoticeRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot waive notice on a closed resignation");
+        }
+        r.setNoticeWaived(true);
+        r.setNoticeWaiverReason(req.reason());
+        LocalDate today = LocalDate.now();
+        if (r.getNoticeEndDate() == null || r.getNoticeEndDate().isAfter(today)) {
+            r.setNoticeEndDate(today);
+        }
+        publish(ExitEventType.NOTICE_WAIVED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Records a garden-leave window within the notice period. */
+    public ResignationResponse startGardenLeave(
+            UUID tenantId, UUID id, StartGardenLeaveRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot start garden leave on a closed resignation");
+        }
+        if (req.startDate().isAfter(req.endDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Garden leave start date must not be after end date");
+        }
+        if (r.getNoticeEndDate() != null && req.endDate().isAfter(r.getNoticeEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Garden leave end date cannot extend beyond the notice period end date");
+        }
+        r.setGardenLeaveStartDate(req.startDate());
+        r.setGardenLeaveEndDate(req.endDate());
+        publish(ExitEventType.GARDEN_LEAVE_STARTED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Extends the notice period end date. */
+    public ResignationResponse extendNotice(UUID tenantId, UUID id, ExtendNoticeRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot extend notice on a closed resignation");
+        }
+        if (r.getNoticeEndDate() != null && !req.newNoticeEndDate().isAfter(r.getNoticeEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "New notice end date must be after the current notice end date");
+        }
+        r.setNoticeEndDate(req.newNoticeEndDate());
+        r.setNoticeExtensionReason(req.reason());
+        publish(ExitEventType.NOTICE_EXTENDED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Approves an earlier-than-scheduled last working day. */
+    public ResignationResponse approveEarlyRelease(
+            UUID tenantId, UUID id, ApproveEarlyReleaseRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot approve early release on a closed resignation");
+        }
+        if (req.newLastDay().isBefore(LocalDate.now())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "New last day cannot be in the past");
+        }
+        if (r.getNoticeEndDate() != null && !req.newLastDay().isBefore(r.getNoticeEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "New last day must be earlier than the current notice end date");
+        }
+        r.setNoticeEndDate(req.newLastDay());
+        r.setEarlyReleaseReason(req.reason());
+        publish(ExitEventType.EARLY_RELEASE_APPROVED, r, null, null, null, null);
         return mapper.toResponse(r);
     }
 

@@ -66,6 +66,28 @@ public class Resignation extends AuditableEntity {
     @Column(name = "buyout_amount", precision = 14, scale = 2)
     private BigDecimal buyoutAmount;
 
+    /** Recovered from the employee for notice shortfall — the opposite direction of buyout. */
+    @Column(name = "notice_recovery_amount", precision = 14, scale = 2)
+    private BigDecimal noticeRecoveryAmount;
+
+    @Column(name = "notice_waived", nullable = false)
+    private boolean noticeWaived;
+
+    @Column(name = "notice_waiver_reason", length = 2000)
+    private String noticeWaiverReason;
+
+    @Column(name = "garden_leave_start_date")
+    private LocalDate gardenLeaveStartDate;
+
+    @Column(name = "garden_leave_end_date")
+    private LocalDate gardenLeaveEndDate;
+
+    @Column(name = "notice_extension_reason", length = 2000)
+    private String noticeExtensionReason;
+
+    @Column(name = "early_release_reason", length = 2000)
+    private String earlyReleaseReason;
+
     @Column(name = "accepted_at")
     private Instant acceptedAt;
 
@@ -198,6 +220,62 @@ public class Resignation extends AuditableEntity {
 
     public void setBuyoutAmount(BigDecimal v) {
         this.buyoutAmount = v;
+    }
+
+    public BigDecimal getNoticeRecoveryAmount() {
+        return noticeRecoveryAmount;
+    }
+
+    public void setNoticeRecoveryAmount(BigDecimal v) {
+        this.noticeRecoveryAmount = v;
+    }
+
+    public boolean isNoticeWaived() {
+        return noticeWaived;
+    }
+
+    public void setNoticeWaived(boolean v) {
+        this.noticeWaived = v;
+    }
+
+    public String getNoticeWaiverReason() {
+        return noticeWaiverReason;
+    }
+
+    public void setNoticeWaiverReason(String v) {
+        this.noticeWaiverReason = v;
+    }
+
+    public LocalDate getGardenLeaveStartDate() {
+        return gardenLeaveStartDate;
+    }
+
+    public void setGardenLeaveStartDate(LocalDate v) {
+        this.gardenLeaveStartDate = v;
+    }
+
+    public LocalDate getGardenLeaveEndDate() {
+        return gardenLeaveEndDate;
+    }
+
+    public void setGardenLeaveEndDate(LocalDate v) {
+        this.gardenLeaveEndDate = v;
+    }
+
+    public String getNoticeExtensionReason() {
+        return noticeExtensionReason;
+    }
+
+    public void setNoticeExtensionReason(String v) {
+        this.noticeExtensionReason = v;
+    }
+
+    public String getEarlyReleaseReason() {
+        return earlyReleaseReason;
+    }
+
+    public void setEarlyReleaseReason(String v) {
+        this.earlyReleaseReason = v;
     }
 
     public Instant getAcceptedAt() {

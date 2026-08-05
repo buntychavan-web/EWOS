@@ -2,10 +2,15 @@ package com.ewos.exit.api;
 
 import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
+import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
+import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateResignationRequest;
 import com.ewos.exit.api.dto.ExitDashboardResponse;
+import com.ewos.exit.api.dto.ExtendNoticeRequest;
 import com.ewos.exit.api.dto.ResignationResponse;
+import com.ewos.exit.api.dto.StartGardenLeaveRequest;
+import com.ewos.exit.api.dto.WaiveNoticeRequest;
 import com.ewos.exit.application.ExitService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -91,6 +96,56 @@ public class ResignationController {
             @PathVariable UUID id,
             @Valid @RequestBody ApplyBuyoutRequest req) {
         return exit.applyBuyout(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/notice-recovery")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Recover pay from the employee for a notice-period shortfall")
+    public ResignationResponse applyNoticeRecovery(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ApplyNoticeRecoveryRequest req) {
+        return exit.applyNoticeRecovery(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/notice-waiver")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Waive the remaining notice period")
+    public ResignationResponse waiveNotice(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody WaiveNoticeRequest req) {
+        return exit.waiveNotice(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/garden-leave")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Record a garden-leave window within the notice period")
+    public ResignationResponse startGardenLeave(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody StartGardenLeaveRequest req) {
+        return exit.startGardenLeave(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/notice-extension")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Extend the notice period end date")
+    public ResignationResponse extendNotice(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ExtendNoticeRequest req) {
+        return exit.extendNotice(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/early-release")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Approve an earlier-than-scheduled last working day")
+    public ResignationResponse approveEarlyRelease(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ApproveEarlyReleaseRequest req) {
+        return exit.approveEarlyRelease(tenantId, id, req);
     }
 
     @PostMapping("/{id}/withdraw")
