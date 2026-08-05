@@ -52,7 +52,13 @@ import com.ewos.exit.infrastructure.persistence.KnowledgeTransferItemRepository;
 import com.ewos.exit.infrastructure.persistence.ResignationRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
+import com.ewos.workflow.application.WorkflowDefinitionService;
+import com.ewos.workflow.application.WorkflowInstanceService;
+import com.ewos.workflow.domain.WorkflowDefinition;
+import com.ewos.workflow.domain.WorkflowInstanceStatus;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -81,6 +87,8 @@ class ExitServiceTest {
     @Mock EmployeeRepository employees;
     @Mock ApplicationEventPublisher events;
     @Mock ClientAccessGuard guard;
+    @Mock WorkflowDefinitionService workflowDefinitions;
+    @Mock WorkflowInstanceService workflowInstances;
 
     private ExitService service;
 
@@ -102,7 +110,9 @@ class ExitServiceTest {
                         new ResignationLifecyclePolicy(),
                         new ExitMapper(),
                         events,
-                        guard);
+                        guard,
+                        workflowDefinitions,
+                        workflowInstances);
     }
 
     private Employee employee() {
@@ -111,6 +121,34 @@ class ExitServiceTest {
         e.setTenantId(tenantId);
         e.setCompanyId(companyId);
         return e;
+    }
+
+    private WorkflowInstanceResponse workflowInstanceResponse(UUID instanceId) {
+        return workflowInstanceResponseWithStatus(instanceId, WorkflowInstanceStatus.RUNNING);
+    }
+
+    private WorkflowInstanceResponse workflowInstanceResponseWithStatus(
+            UUID instanceId, WorkflowInstanceStatus status) {
+        return new WorkflowInstanceResponse(
+                instanceId,
+                tenantId,
+                companyId,
+                UUID.randomUUID(),
+                "exit-approval",
+                1,
+                ExitService.WORKFLOW_SUBJECT_TYPE,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "PENDING",
+                status,
+                Instant.now(),
+                null,
+                null,
+                Instant.now(),
+                Instant.now(),
+                null,
+                null,
+                0L);
     }
 
     private Resignation resignation(ResignationStatus status) {
@@ -253,9 +291,106 @@ class ExitServiceTest {
     }
 
     @Test
+    void submitLeavesTheWorkflowInstanceUnsetWhenNoDefinitionIsConfigured() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(resignations.findByTenantIdAndEmployeeIdAndStatusNot(
+                        tenantId, employeeId, ResignationStatus.WITHDRAWN))
+                .thenReturn(Optional.empty());
+        when(resignations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(workflowDefinitions.tryFindEffective(tenantId, ExitService.WORKFLOW_SUBJECT_TYPE))
+                .thenReturn(Optional.empty());
+
+        ResignationResponse resp =
+                service.submit(
+                        tenantId,
+                        new CreateResignationRequest(
+                                companyId,
+                                employeeId,
+                                ResignationType.HR_INITIATED,
+                                LocalDate.now(),
+                                "career",
+                                30));
+
+        assertThat(resp.exitWorkflowInstanceId()).isNull();
+        verify(workflowInstances, never()).start(any());
+    }
+
+    @Test
+    void submitAttachesAWorkflowInstanceWhenADefinitionIsConfigured() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(resignations.findByTenantIdAndEmployeeIdAndStatusNot(
+                        tenantId, employeeId, ResignationStatus.WITHDRAWN))
+                .thenReturn(Optional.empty());
+        when(resignations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        UUID definitionId = UUID.randomUUID();
+        WorkflowDefinition definition = new WorkflowDefinition();
+        definition.setId(definitionId);
+        when(workflowDefinitions.tryFindEffective(tenantId, ExitService.WORKFLOW_SUBJECT_TYPE))
+                .thenReturn(Optional.of(definition));
+        UUID instanceId = UUID.randomUUID();
+        when(workflowInstances.start(any())).thenReturn(workflowInstanceResponse(instanceId));
+
+        ResignationResponse resp =
+                service.submit(
+                        tenantId,
+                        new CreateResignationRequest(
+                                companyId,
+                                employeeId,
+                                ResignationType.HR_INITIATED,
+                                LocalDate.now(),
+                                "career",
+                                30));
+
+        assertThat(resp.exitWorkflowInstanceId()).isEqualTo(instanceId);
+    }
+
+    @Test
     void acceptTransitionsSubmittedToAccepted() {
         Resignation r = resignation(ResignationStatus.SUBMITTED);
         when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        ResignationResponse resp =
+                service.accept(
+                        tenantId,
+                        r.getId(),
+                        new AcceptResignationRequest(LocalDate.now(), null, null));
+
+        assertThat(resp.status()).isEqualTo(ResignationStatus.ACCEPTED);
+    }
+
+    @Test
+    void acceptRejectsWhenTheAttachedWorkflowIsStillRunning() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        UUID instanceId = UUID.randomUUID();
+        r.setExitWorkflowInstanceId(instanceId);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(workflowInstances.getById(tenantId, instanceId))
+                .thenReturn(
+                        workflowInstanceResponseWithStatus(
+                                instanceId, WorkflowInstanceStatus.RUNNING));
+
+        assertThatThrownBy(
+                        () ->
+                                service.accept(
+                                        tenantId,
+                                        r.getId(),
+                                        new AcceptResignationRequest(LocalDate.now(), null, null)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("still running");
+    }
+
+    @Test
+    void acceptSucceedsWhenTheAttachedWorkflowHasCompleted() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        UUID instanceId = UUID.randomUUID();
+        r.setExitWorkflowInstanceId(instanceId);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(workflowInstances.getById(tenantId, instanceId))
+                .thenReturn(
+                        workflowInstanceResponseWithStatus(
+                                instanceId, WorkflowInstanceStatus.COMPLETED));
 
         ResignationResponse resp =
                 service.accept(

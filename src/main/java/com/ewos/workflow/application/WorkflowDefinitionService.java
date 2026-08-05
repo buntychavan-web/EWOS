@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -157,10 +158,7 @@ public class WorkflowDefinitionService {
      */
     @Transactional(readOnly = true)
     public WorkflowDefinition findEffective(UUID tenantId, String subjectType) {
-        Instant now = Instant.now();
-        return repository.findActiveByTenantAndSubjectType(tenantId, subjectType).stream()
-                .filter(d -> d.isEffectiveAt(now))
-                .findFirst()
+        return tryFindEffective(tenantId, subjectType)
                 .orElseThrow(
                         () ->
                                 new ApiException(
@@ -168,6 +166,20 @@ public class WorkflowDefinitionService {
                                         "No active workflow definition is configured for '"
                                                 + subjectType
                                                 + "' yet — contact an administrator"));
+    }
+
+    /**
+     * Same lookup as {@link #findEffective(UUID, String)}, but for callers where an approval
+     * workflow is optional rather than mandatory (Sprint 26 — exit resignations: a tenant that
+     * hasn't configured one should fall back to the pre-workflow direct-approval path, not fail the
+     * submission).
+     */
+    @Transactional(readOnly = true)
+    public Optional<WorkflowDefinition> tryFindEffective(UUID tenantId, String subjectType) {
+        Instant now = Instant.now();
+        return repository.findActiveByTenantAndSubjectType(tenantId, subjectType).stream()
+                .filter(d -> d.isEffectiveAt(now))
+                .findFirst();
     }
 
     @Transactional(readOnly = true)

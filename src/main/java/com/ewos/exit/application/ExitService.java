@@ -47,9 +47,16 @@ import com.ewos.exit.infrastructure.persistence.KnowledgeTransferItemRepository;
 import com.ewos.exit.infrastructure.persistence.ResignationRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import com.ewos.workflow.api.dto.StartInstanceRequest;
+import com.ewos.workflow.application.WorkflowDefinitionService;
+import com.ewos.workflow.application.WorkflowInstanceService;
+import com.ewos.workflow.domain.WorkflowDefinition;
+import com.ewos.workflow.domain.WorkflowInstanceStatus;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -59,6 +66,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class ExitService {
+
+    /** Subject type this module registers with the workflow engine for approval routing. */
+    static final String WORKFLOW_SUBJECT_TYPE = "exit.resignation";
 
     private final ResignationRepository resignations;
     private final ExitClearanceRepository clearances;
@@ -71,7 +81,10 @@ public class ExitService {
     private final ExitMapper mapper;
     private final ApplicationEventPublisher events;
     private final ClientAccessGuard guard;
+    private final WorkflowDefinitionService workflowDefinitions;
+    private final WorkflowInstanceService workflowInstances;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public ExitService(
             ResignationRepository resignations,
             ExitClearanceRepository clearances,
@@ -83,7 +96,9 @@ public class ExitService {
             ResignationLifecyclePolicy lifecycle,
             ExitMapper mapper,
             ApplicationEventPublisher events,
-            ClientAccessGuard guard) {
+            ClientAccessGuard guard,
+            WorkflowDefinitionService workflowDefinitions,
+            WorkflowInstanceService workflowInstances) {
         this.resignations = resignations;
         this.clearances = clearances;
         this.ktItems = ktItems;
@@ -95,6 +110,8 @@ public class ExitService {
         this.mapper = mapper;
         this.events = events;
         this.guard = guard;
+        this.workflowDefinitions = workflowDefinitions;
+        this.workflowInstances = workflowInstances;
     }
 
     // Resignation ------------------------------------------------------------
@@ -149,13 +166,49 @@ public class ExitService {
         r.setNoticePeriodDays(req.noticePeriodDays());
         r.setStatus(ResignationStatus.SUBMITTED);
         r = resignations.save(r);
+        attachApprovalWorkflow(tenantId, r);
         publish(ExitEventType.RESIGNATION_SUBMITTED, r, null, null, null, null);
         return mapper.toResponse(r);
+    }
+
+    /**
+     * Attaches a multi-level approval workflow instance when the tenant has configured one for
+     * {@value #WORKFLOW_SUBJECT_TYPE} (Sprint 26). Reuses the generic workflow engine rather than a
+     * bespoke approval chain, matching how Leave/Timesheet/Probation attach theirs. Deliberately
+     * optional: a tenant without a configured definition falls back to the pre-Sprint-26
+     * direct-approval path in {@link #accept}, so this never blocks a submission.
+     */
+    private void attachApprovalWorkflow(UUID tenantId, Resignation r) {
+        Optional<WorkflowDefinition> definition =
+                workflowDefinitions.tryFindEffective(tenantId, WORKFLOW_SUBJECT_TYPE);
+        if (definition.isEmpty()) {
+            return;
+        }
+        var instance =
+                workflowInstances.start(
+                        new StartInstanceRequest(
+                                tenantId,
+                                r.getCompanyId(),
+                                definition.get().getId(),
+                                WORKFLOW_SUBJECT_TYPE,
+                                r.getId(),
+                                WORKFLOW_SUBJECT_TYPE + ":" + r.getId()));
+        r.setExitWorkflowInstanceId(instance.id());
     }
 
     public ResignationResponse accept(UUID tenantId, UUID id, AcceptResignationRequest req) {
         Resignation r = requireResignation(tenantId, id);
         lifecycle.assertTransition(r.getStatus(), ResignationStatus.ACCEPTED);
+        if (r.getExitWorkflowInstanceId() != null) {
+            WorkflowInstanceStatus status =
+                    workflowInstances.getById(tenantId, r.getExitWorkflowInstanceId()).status();
+            if (status != WorkflowInstanceStatus.COMPLETED) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Cannot accept — the approval workflow for this resignation is still "
+                                + status.name().toLowerCase(Locale.ROOT));
+            }
+        }
         r.setStatus(ResignationStatus.ACCEPTED);
         r.setAcceptedAt(Instant.now());
         r.setAcceptedBy(ExitSecurity.currentActor());
