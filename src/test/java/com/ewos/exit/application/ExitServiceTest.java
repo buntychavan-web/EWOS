@@ -38,6 +38,7 @@ import com.ewos.exit.domain.RehireEligibility;
 import com.ewos.exit.domain.Resignation;
 import com.ewos.exit.domain.ResignationLifecyclePolicy;
 import com.ewos.exit.domain.ResignationStatus;
+import com.ewos.exit.domain.ResignationType;
 import com.ewos.exit.infrastructure.persistence.AlumniRecordRepository;
 import com.ewos.exit.infrastructure.persistence.ExitClearanceRepository;
 import com.ewos.exit.infrastructure.persistence.ExitDocumentRepository;
@@ -130,10 +131,17 @@ class ExitServiceTest {
 
         ResignationResponse resp =
                 service.submit(
+                        tenantId,
                         new CreateResignationRequest(
-                                tenantId, companyId, employeeId, LocalDate.now(), "career", 30));
+                                companyId,
+                                employeeId,
+                                ResignationType.HR_INITIATED,
+                                LocalDate.now(),
+                                "career",
+                                30));
 
         assertThat(resp.status()).isEqualTo(ResignationStatus.SUBMITTED);
+        assertThat(resp.resignationType()).isEqualTo(ResignationType.HR_INITIATED);
         verify(guard).requireAccessForCompany(companyId);
     }
 
@@ -146,10 +154,11 @@ class ExitServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.submit(
+                                        tenantId,
                                         new CreateResignationRequest(
-                                                tenantId,
                                                 companyId,
                                                 employeeId,
+                                                ResignationType.HR_INITIATED,
                                                 LocalDate.now(),
                                                 "career",
                                                 30)))
@@ -167,15 +176,74 @@ class ExitServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.submit(
+                                        tenantId,
                                         new CreateResignationRequest(
-                                                tenantId,
                                                 companyId,
                                                 employeeId,
+                                                ResignationType.HR_INITIATED,
                                                 LocalDate.now(),
                                                 "career",
                                                 30)))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("already has an open resignation");
+    }
+
+    @Test
+    void submitRejectsSelfResignationTypeOnTheHrFacingPath() {
+        assertThatThrownBy(
+                        () ->
+                                service.submit(
+                                        tenantId,
+                                        new CreateResignationRequest(
+                                                companyId,
+                                                employeeId,
+                                                ResignationType.SELF_RESIGNATION,
+                                                LocalDate.now(),
+                                                "career",
+                                                30)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("self-service endpoint");
+        verify(employees, never()).findByIdAndTenantId(any(), any());
+    }
+
+    @Test
+    void submitSelfRejectsANonSelfResignationType() {
+        assertThatThrownBy(
+                        () ->
+                                service.submitSelf(
+                                        tenantId,
+                                        new CreateResignationRequest(
+                                                companyId,
+                                                employeeId,
+                                                ResignationType.TERMINATION,
+                                                LocalDate.now(),
+                                                "career",
+                                                30)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("SELF_RESIGNATION");
+    }
+
+    @Test
+    void submitSelfCreatesASelfResignation() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(resignations.findByTenantIdAndEmployeeIdAndStatusNot(
+                        tenantId, employeeId, ResignationStatus.WITHDRAWN))
+                .thenReturn(Optional.empty());
+        when(resignations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ResignationResponse resp =
+                service.submitSelf(
+                        tenantId,
+                        new CreateResignationRequest(
+                                companyId,
+                                employeeId,
+                                ResignationType.SELF_RESIGNATION,
+                                LocalDate.now(),
+                                "career",
+                                30));
+
+        assertThat(resp.resignationType()).isEqualTo(ResignationType.SELF_RESIGNATION);
     }
 
     @Test

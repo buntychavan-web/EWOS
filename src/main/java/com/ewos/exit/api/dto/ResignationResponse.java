@@ -2,6 +2,7 @@ package com.ewos.exit.api.dto;
 
 import com.ewos.exit.domain.RehireEligibility;
 import com.ewos.exit.domain.ResignationStatus;
+import com.ewos.exit.domain.ResignationType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -12,6 +13,7 @@ public record ResignationResponse(
         UUID tenantId,
         UUID companyId,
         UUID employeeId,
+        ResignationType resignationType,
         Instant submittedAt,
         UUID submittedBy,
         LocalDate intendedLastDay,

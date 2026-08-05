@@ -37,10 +37,16 @@ public class ResignationController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('EXIT_WRITE')")
-    @Operation(summary = "Submit a resignation")
+    @Operation(
+            summary = "Record a resignation or separation on an employee's behalf",
+            description =
+                    "For HR-initiated, manager-initiated, retirement, termination, death, or"
+                            + " absconding cases. Employee self-service submissions use"
+                            + " POST /api/v1/exit/self-service/resignations instead.")
     public ResponseEntity<ResignationResponse> submit(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
             @Valid @RequestBody CreateResignationRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(exit.submit(req));
+        return ResponseEntity.status(HttpStatus.CREATED).body(exit.submit(tenantId, req));
     }
 
     @GetMapping("/{id}")

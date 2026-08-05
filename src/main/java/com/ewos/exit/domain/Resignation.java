@@ -35,6 +35,10 @@ public class Resignation extends AuditableEntity {
     @JoinColumn(name = "employee_id", nullable = false, updatable = false)
     private Employee employee;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "resignation_type", nullable = false, length = 32, updatable = false)
+    private ResignationType resignationType = ResignationType.SELF_RESIGNATION;
+
     @Column(name = "submitted_at", nullable = false)
     private Instant submittedAt = Instant.now();
 
@@ -114,6 +118,14 @@ public class Resignation extends AuditableEntity {
 
     public void setEmployee(Employee v) {
         this.employee = v;
+    }
+
+    public ResignationType getResignationType() {
+        return resignationType;
+    }
+
+    public void setResignationType(ResignationType v) {
+        this.resignationType = v;
     }
 
     public Instant getSubmittedAt() {

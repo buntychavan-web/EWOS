@@ -31,6 +31,7 @@ import com.ewos.exit.domain.RehireEligibility;
 import com.ewos.exit.domain.Resignation;
 import com.ewos.exit.domain.ResignationLifecyclePolicy;
 import com.ewos.exit.domain.ResignationStatus;
+import com.ewos.exit.domain.ResignationType;
 import com.ewos.exit.domain.events.ExitEvent;
 import com.ewos.exit.domain.events.ExitEventType;
 import com.ewos.exit.infrastructure.persistence.AlumniRecordRepository;
@@ -93,16 +94,36 @@ public class ExitService {
 
     // Resignation ------------------------------------------------------------
 
-    public ResignationResponse submit(CreateResignationRequest req) {
+    public ResignationResponse submit(UUID tenantId, CreateResignationRequest req) {
+        if (req.resignationType() == ResignationType.SELF_RESIGNATION) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "resignationType SELF_RESIGNATION can only be submitted through the"
+                            + " self-service endpoint");
+        }
+        return doSubmit(tenantId, req);
+    }
+
+    /** Reserved for {@code ExitSelfService} — always forces {@code SELF_RESIGNATION}. */
+    ResignationResponse submitSelf(UUID tenantId, CreateResignationRequest req) {
+        if (req.resignationType() != ResignationType.SELF_RESIGNATION) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Self-service submissions must use resignationType SELF_RESIGNATION");
+        }
+        return doSubmit(tenantId, req);
+    }
+
+    private ResignationResponse doSubmit(UUID tenantId, CreateResignationRequest req) {
         guard.requireAccessForCompany(req.companyId());
-        Employee employee = requireEmployee(req.tenantId(), req.employeeId());
+        Employee employee = requireEmployee(tenantId, req.employeeId());
         if (!employee.getCompanyId().equals(req.companyId())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "Employee does not belong to the given company");
         }
         resignations
                 .findByTenantIdAndEmployeeIdAndStatusNot(
-                        req.tenantId(), req.employeeId(), ResignationStatus.WITHDRAWN)
+                        tenantId, req.employeeId(), ResignationStatus.WITHDRAWN)
                 .ifPresent(
                         existing -> {
                             if (lifecycle.isOpen(existing.getStatus())) {
@@ -112,9 +133,10 @@ public class ExitService {
                             }
                         });
         Resignation r = new Resignation();
-        r.setTenantId(req.tenantId());
+        r.setTenantId(tenantId);
         r.setCompanyId(req.companyId());
         r.setEmployee(employee);
+        r.setResignationType(req.resignationType());
         r.setSubmittedAt(Instant.now());
         r.setSubmittedBy(ExitSecurity.currentActor());
         r.setIntendedLastDay(req.intendedLastDay());
