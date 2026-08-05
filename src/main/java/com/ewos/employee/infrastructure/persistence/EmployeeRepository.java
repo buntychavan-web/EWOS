@@ -42,6 +42,14 @@ public interface EmployeeRepository
     List<Employee> findAllByUserIdIn(@Param("userIds") Collection<UUID> userIds);
 
     /**
+     * Sprint 25B production-readiness audit — batch form of {@code findByIdAndTenantId} for {@code
+     * AppraisalCycleLaunchChunkProcessor}, whose bulk-launch chunks (up to 2,000 employees at a
+     * time, for a job explicitly designed for 100k+ employees) were resolving one employee at a
+     * time in a loop, one round trip per id.
+     */
+    List<Employee> findAllByIdInAndTenantId(Collection<UUID> ids, UUID tenantId);
+
+    /**
      * Sprint 24B — id-only projection (no column beyond the key is ever needed by the bulk-launch
      * caller) backing {@code AppraisalCycleLaunchService}'s eligibility resolution. {@code
      * orgUnitIds} must be either {@code null} (no org-unit filter — matches every company employee)
