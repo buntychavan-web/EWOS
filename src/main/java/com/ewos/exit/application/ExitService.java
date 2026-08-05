@@ -8,6 +8,7 @@ import com.ewos.exit.api.dto.AlumniResponse;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
 import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
 import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
+import com.ewos.exit.api.dto.AssignSuccessorRequest;
 import com.ewos.exit.api.dto.ClearanceResponse;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateAlumniRequest;
@@ -32,6 +33,7 @@ import com.ewos.exit.domain.ExitClearance;
 import com.ewos.exit.domain.ExitDocument;
 import com.ewos.exit.domain.ExitInterview;
 import com.ewos.exit.domain.KnowledgeTransferItem;
+import com.ewos.exit.domain.KtItemType;
 import com.ewos.exit.domain.RehireEligibility;
 import com.ewos.exit.domain.Resignation;
 import com.ewos.exit.domain.ResignationLifecyclePolicy;
@@ -376,6 +378,32 @@ public class ExitService {
         return mapper.toResponse(r);
     }
 
+    /**
+     * Designates the employee who takes over this role during knowledge transfer (Sprint 26 item
+     * 7). Independent of the per-{@link KnowledgeTransferItem} {@code transferredTo} field, which
+     * can route individual KT items to different people; this is the one overall successor for the
+     * resignation.
+     */
+    public ResignationResponse assignSuccessor(UUID tenantId, UUID id, AssignSuccessorRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot assign a successor on a closed resignation");
+        }
+        Employee successor = requireEmployee(tenantId, req.successorEmployeeId());
+        if (!successor.getCompanyId().equals(r.getCompanyId())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Successor does not belong to the same company");
+        }
+        if (r.getEmployee() != null && successor.getId().equals(r.getEmployee().getId())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Successor cannot be the exiting employee");
+        }
+        r.setSuccessorEmployeeId(successor.getId());
+        publish(ExitEventType.SUCCESSOR_ASSIGNED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
     public ResignationResponse withdraw(UUID tenantId, UUID id) {
         Resignation r = requireResignation(tenantId, id);
         lifecycle.assertTransition(r.getStatus(), ResignationStatus.WITHDRAWN);
@@ -513,6 +541,7 @@ public class ExitService {
         KnowledgeTransferItem k = new KnowledgeTransferItem();
         k.setTenantId(tenantId);
         k.setResignation(r);
+        k.setItemType(req.itemType() != null ? req.itemType() : KtItemType.TASK);
         k.setTopic(req.topic());
         k.setDescription(req.description());
         k.setTransferredTo(req.transferredTo());

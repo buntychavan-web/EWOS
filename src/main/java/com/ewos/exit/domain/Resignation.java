@@ -97,6 +97,10 @@ public class Resignation extends AuditableEntity {
     @Column(name = "exit_workflow_instance_id")
     private UUID exitWorkflowInstanceId;
 
+    /** Employee designated to take over this role during knowledge transfer (Sprint 26). */
+    @Column(name = "successor_employee_id")
+    private UUID successorEmployeeId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
     private ResignationStatus status = ResignationStatus.SUBMITTED;
@@ -300,6 +304,14 @@ public class Resignation extends AuditableEntity {
 
     public void setExitWorkflowInstanceId(UUID v) {
         this.exitWorkflowInstanceId = v;
+    }
+
+    public UUID getSuccessorEmployeeId() {
+        return successorEmployeeId;
+    }
+
+    public void setSuccessorEmployeeId(UUID v) {
+        this.successorEmployeeId = v;
     }
 
     public ResignationStatus getStatus() {

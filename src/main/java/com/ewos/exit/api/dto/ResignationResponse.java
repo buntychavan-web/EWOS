@@ -33,6 +33,7 @@ public record ResignationResponse(
         Instant acceptedAt,
         UUID acceptedBy,
         UUID exitWorkflowInstanceId,
+        UUID successorEmployeeId,
         ResignationStatus status,
         LocalDate actualLastDay,
         RehireEligibility rehireEligibility,

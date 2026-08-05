@@ -4,6 +4,7 @@ import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
 import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
 import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
+import com.ewos.exit.api.dto.AssignSuccessorRequest;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateResignationRequest;
 import com.ewos.exit.api.dto.ExitDashboardResponse;
@@ -146,6 +147,16 @@ public class ResignationController {
             @PathVariable UUID id,
             @Valid @RequestBody ApproveEarlyReleaseRequest req) {
         return exit.approveEarlyRelease(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/successor")
+    @PreAuthorize("hasAuthority('EXIT_WRITE')")
+    @Operation(summary = "Assign the employee who succeeds this role during knowledge transfer")
+    public ResignationResponse assignSuccessor(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody AssignSuccessorRequest req) {
+        return exit.assignSuccessor(tenantId, id, req);
     }
 
     @PostMapping("/{id}/withdraw")

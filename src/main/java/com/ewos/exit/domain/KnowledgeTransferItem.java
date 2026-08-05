@@ -3,6 +3,8 @@ package com.ewos.exit.domain;
 import com.ewos.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -29,6 +31,10 @@ public class KnowledgeTransferItem extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "resignation_id", nullable = false, updatable = false)
     private Resignation resignation;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "item_type", nullable = false, length = 32)
+    private KtItemType itemType = KtItemType.TASK;
 
     @Column(name = "topic", nullable = false, length = 512)
     private String topic;
@@ -72,6 +78,14 @@ public class KnowledgeTransferItem extends AuditableEntity {
 
     public void setResignation(Resignation v) {
         this.resignation = v;
+    }
+
+    public KtItemType getItemType() {
+        return itemType;
+    }
+
+    public void setItemType(KtItemType v) {
+        this.itemType = v;
     }
 
     public String getTopic() {

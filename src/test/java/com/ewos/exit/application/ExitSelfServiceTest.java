@@ -68,6 +68,7 @@ class ExitSelfServiceTest {
                 null,
                 null,
                 null,
+                null,
                 ResignationStatus.SUBMITTED,
                 null,
                 null,

@@ -16,6 +16,7 @@ import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
 import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
 import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
+import com.ewos.exit.api.dto.AssignSuccessorRequest;
 import com.ewos.exit.api.dto.ClearanceResponse;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateAlumniRequest;
@@ -43,6 +44,7 @@ import com.ewos.exit.domain.ExitClearance;
 import com.ewos.exit.domain.ExitDocument;
 import com.ewos.exit.domain.ExitDocumentType;
 import com.ewos.exit.domain.KnowledgeTransferItem;
+import com.ewos.exit.domain.KtItemType;
 import com.ewos.exit.domain.RehireEligibility;
 import com.ewos.exit.domain.Resignation;
 import com.ewos.exit.domain.ResignationLifecyclePolicy;
@@ -831,9 +833,114 @@ class ExitServiceTest {
 
         KtItemResponse resp =
                 service.addKtItem(
-                        tenantId, r.getId(), new CreateKtItemRequest("topic", "desc", null, null));
+                        tenantId,
+                        r.getId(),
+                        new CreateKtItemRequest(null, "topic", "desc", null, null));
 
         assertThat(resp.completed()).isFalse();
+    }
+
+    @Test
+    void addKtItemDefaultsItemTypeToTaskWhenOmitted() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(ktItems.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        KtItemResponse resp =
+                service.addKtItem(
+                        tenantId,
+                        r.getId(),
+                        new CreateKtItemRequest(null, "topic", "desc", null, null));
+
+        assertThat(resp.itemType()).isEqualTo(KtItemType.TASK);
+    }
+
+    @Test
+    void addKtItemHonorsAnExplicitItemType() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(ktItems.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        KtItemResponse resp =
+                service.addKtItem(
+                        tenantId,
+                        r.getId(),
+                        new CreateKtItemRequest(
+                                KtItemType.CLIENT_HANDOVER, "Acme account", "desc", null, null));
+
+        assertThat(resp.itemType()).isEqualTo(KtItemType.CLIENT_HANDOVER);
+    }
+
+    // Successor -----------------------------------------------------------
+
+    @Test
+    void assignSuccessorStoresTheSuccessorEmployeeId() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        UUID successorId = UUID.randomUUID();
+        Employee successor = employee();
+        successor.setId(successorId);
+        when(employees.findByIdAndTenantId(successorId, tenantId))
+                .thenReturn(Optional.of(successor));
+
+        ResignationResponse resp =
+                service.assignSuccessor(
+                        tenantId, r.getId(), new AssignSuccessorRequest(successorId));
+
+        assertThat(resp.successorEmployeeId()).isEqualTo(successorId);
+    }
+
+    @Test
+    void assignSuccessorRejectsAnEmployeeFromADifferentCompany() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        UUID successorId = UUID.randomUUID();
+        Employee successor = employee();
+        successor.setId(successorId);
+        successor.setCompanyId(UUID.randomUUID());
+        when(employees.findByIdAndTenantId(successorId, tenantId))
+                .thenReturn(Optional.of(successor));
+
+        assertThatThrownBy(
+                        () ->
+                                service.assignSuccessor(
+                                        tenantId,
+                                        r.getId(),
+                                        new AssignSuccessorRequest(successorId)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("same company");
+    }
+
+    @Test
+    void assignSuccessorRejectsTheExitingEmployeeThemselves() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(r.getEmployee()));
+
+        assertThatThrownBy(
+                        () ->
+                                service.assignSuccessor(
+                                        tenantId,
+                                        r.getId(),
+                                        new AssignSuccessorRequest(employeeId)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("cannot be the exiting employee");
+    }
+
+    @Test
+    void assignSuccessorRejectsOnAClosedResignation() {
+        Resignation r = resignation(ResignationStatus.EXITED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+
+        assertThatThrownBy(
+                        () ->
+                                service.assignSuccessor(
+                                        tenantId,
+                                        r.getId(),
+                                        new AssignSuccessorRequest(UUID.randomUUID())))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("closed resignation");
     }
 
     @Test
