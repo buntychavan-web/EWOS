@@ -33,6 +33,14 @@ public class ExitClearance extends AuditableEntity {
     @Column(name = "department", nullable = false, length = 32)
     private ClearanceDepartment department;
 
+    /**
+     * Optional asset/document name distinguishing multiple clearance items within the same
+     * department (Sprint 26 — e.g. "Laptop" and "Mobile" both routed to IT). Null preserves the
+     * pre-Sprint-26 shape of one clearance item per department.
+     */
+    @Column(name = "item_name", length = 200)
+    private String itemName;
+
     @Column(name = "owner_employee_id")
     private UUID ownerEmployeeId;
 
@@ -78,6 +86,14 @@ public class ExitClearance extends AuditableEntity {
 
     public void setDepartment(ClearanceDepartment v) {
         this.department = v;
+    }
+
+    public String getItemName() {
+        return itemName;
+    }
+
+    public void setItemName(String v) {
+        this.itemName = v;
     }
 
     public UUID getOwnerEmployeeId() {

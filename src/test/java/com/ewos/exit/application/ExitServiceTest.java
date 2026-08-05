@@ -2,8 +2,10 @@ package com.ewos.exit.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +37,8 @@ import com.ewos.exit.api.dto.WaiveNoticeRequest;
 import com.ewos.exit.domain.AlumniRecord;
 import com.ewos.exit.domain.ClearanceDepartment;
 import com.ewos.exit.domain.ClearanceStatus;
+import com.ewos.exit.domain.ExitChecklistItemTemplate;
+import com.ewos.exit.domain.ExitChecklistTemplate;
 import com.ewos.exit.domain.ExitClearance;
 import com.ewos.exit.domain.ExitDocument;
 import com.ewos.exit.domain.ExitDocumentType;
@@ -66,6 +70,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -89,6 +94,7 @@ class ExitServiceTest {
     @Mock ClientAccessGuard guard;
     @Mock WorkflowDefinitionService workflowDefinitions;
     @Mock WorkflowInstanceService workflowInstances;
+    @Mock ExitChecklistTemplateService checklistTemplates;
 
     private ExitService service;
 
@@ -112,7 +118,8 @@ class ExitServiceTest {
                         events,
                         guard,
                         workflowDefinitions,
-                        workflowInstances);
+                        workflowInstances,
+                        checklistTemplates);
     }
 
     private Employee employee() {
@@ -402,6 +409,69 @@ class ExitServiceTest {
     }
 
     @Test
+    void acceptDoesNotGenerateClearancesWhenNoChecklistTemplateIsConfigured() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.findAllByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(List.of());
+        when(checklistTemplates.resolveEffective(tenantId, companyId, null))
+                .thenReturn(Optional.empty());
+
+        service.accept(
+                tenantId, r.getId(), new AcceptResignationRequest(LocalDate.now(), null, null));
+
+        verify(clearances, never()).save(any());
+    }
+
+    @Test
+    void acceptGeneratesClearancesFromTheEffectiveChecklistTemplate() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.findAllByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(List.of());
+        UUID templateId = UUID.randomUUID();
+        ExitChecklistTemplate template = new ExitChecklistTemplate();
+        template.setId(templateId);
+        when(checklistTemplates.resolveEffective(tenantId, companyId, null))
+                .thenReturn(Optional.of(template));
+        ExitChecklistItemTemplate laptop = new ExitChecklistItemTemplate();
+        laptop.setDepartment(ClearanceDepartment.IT);
+        laptop.setItemName("Laptop");
+        laptop.setSortOrder(0);
+        ExitChecklistItemTemplate idCard = new ExitChecklistItemTemplate();
+        idCard.setDepartment(ClearanceDepartment.ADMIN);
+        idCard.setItemName("ID Card");
+        idCard.setSortOrder(1);
+        when(checklistTemplates.itemsOf(tenantId, templateId)).thenReturn(List.of(laptop, idCard));
+        when(clearances.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.accept(
+                tenantId, r.getId(), new AcceptResignationRequest(LocalDate.now(), null, null));
+
+        ArgumentCaptor<ExitClearance> captor = ArgumentCaptor.forClass(ExitClearance.class);
+        verify(clearances, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(ExitClearance::getDepartment, ExitClearance::getItemName)
+                .containsExactly(
+                        tuple(ClearanceDepartment.IT, "Laptop"),
+                        tuple(ClearanceDepartment.ADMIN, "ID Card"));
+    }
+
+    @Test
+    void acceptDoesNotRegenerateClearancesWhenSomeAlreadyExist() {
+        Resignation r = resignation(ResignationStatus.SUBMITTED);
+        when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(clearances.findAllByTenantIdAndResignationId(tenantId, r.getId()))
+                .thenReturn(List.of(new ExitClearance()));
+
+        service.accept(
+                tenantId, r.getId(), new AcceptResignationRequest(LocalDate.now(), null, null));
+
+        verify(checklistTemplates, never()).resolveEffective(any(), any(), any());
+        verify(clearances, never()).save(any());
+    }
+
+    @Test
     void startNoticeTransitionsAcceptedToInNotice() {
         Resignation r = resignation(ResignationStatus.ACCEPTED);
         when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
@@ -668,8 +738,8 @@ class ExitServiceTest {
     void addClearanceRejectsADuplicateDepartment() {
         Resignation r = resignation(ResignationStatus.SUBMITTED);
         when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
-        when(clearances.findByTenantIdAndResignationIdAndDepartment(
-                        tenantId, r.getId(), ClearanceDepartment.IT))
+        when(clearances.findByTenantIdAndResignationIdAndDepartmentAndItemName(
+                        tenantId, r.getId(), ClearanceDepartment.IT, null))
                 .thenReturn(Optional.of(new ExitClearance()));
 
         assertThatThrownBy(
@@ -678,7 +748,7 @@ class ExitServiceTest {
                                         tenantId,
                                         r.getId(),
                                         new CreateClearanceRequest(
-                                                ClearanceDepartment.IT, null, null)))
+                                                ClearanceDepartment.IT, null, null, null)))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("already exists");
     }
@@ -687,8 +757,8 @@ class ExitServiceTest {
     void addClearanceCreatesAPendingClearance() {
         Resignation r = resignation(ResignationStatus.SUBMITTED);
         when(resignations.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
-        when(clearances.findByTenantIdAndResignationIdAndDepartment(
-                        tenantId, r.getId(), ClearanceDepartment.FINANCE))
+        when(clearances.findByTenantIdAndResignationIdAndDepartmentAndItemName(
+                        tenantId, r.getId(), ClearanceDepartment.FINANCE, null))
                 .thenReturn(Optional.empty());
         when(clearances.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -696,7 +766,7 @@ class ExitServiceTest {
                 service.addClearance(
                         tenantId,
                         r.getId(),
-                        new CreateClearanceRequest(ClearanceDepartment.FINANCE, null, "n"));
+                        new CreateClearanceRequest(ClearanceDepartment.FINANCE, null, null, "n"));
 
         assertThat(resp.status()).isEqualTo(ClearanceStatus.PENDING);
     }

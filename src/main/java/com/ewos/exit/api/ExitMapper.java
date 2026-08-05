@@ -56,6 +56,7 @@ public class ExitMapper {
                 c.getTenantId(),
                 c.getResignation() == null ? null : c.getResignation().getId(),
                 c.getDepartment(),
+                c.getItemName(),
                 c.getOwnerEmployeeId(),
                 c.getStatus(),
                 c.getClearedAt(),

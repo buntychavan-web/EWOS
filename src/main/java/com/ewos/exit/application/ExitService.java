@@ -83,6 +83,7 @@ public class ExitService {
     private final ClientAccessGuard guard;
     private final WorkflowDefinitionService workflowDefinitions;
     private final WorkflowInstanceService workflowInstances;
+    private final ExitChecklistTemplateService checklistTemplates;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public ExitService(
@@ -98,7 +99,8 @@ public class ExitService {
             ApplicationEventPublisher events,
             ClientAccessGuard guard,
             WorkflowDefinitionService workflowDefinitions,
-            WorkflowInstanceService workflowInstances) {
+            WorkflowInstanceService workflowInstances,
+            ExitChecklistTemplateService checklistTemplates) {
         this.resignations = resignations;
         this.clearances = clearances;
         this.ktItems = ktItems;
@@ -112,6 +114,7 @@ public class ExitService {
         this.guard = guard;
         this.workflowDefinitions = workflowDefinitions;
         this.workflowInstances = workflowInstances;
+        this.checklistTemplates = checklistTemplates;
     }
 
     // Resignation ------------------------------------------------------------
@@ -216,8 +219,41 @@ public class ExitService {
             r.setNoticeStartDate(req.noticeStartDate());
             r.setNoticeEndDate(req.noticeEndDate());
         }
+        autoPopulateClearanceChecklist(tenantId, r);
         publish(ExitEventType.RESIGNATION_ACCEPTED, r, null, null, null, null);
         return mapper.toResponse(r);
+    }
+
+    /**
+     * Generates clearance items from the effective checklist template (Sprint 26) once a
+     * resignation is accepted. Skipped entirely when no template is configured for the
+     * company/org-unit — the pre-Sprint-26 manual {@link #addClearance} flow keeps working
+     * unchanged — and skipped when clearances already exist for this resignation, so it never
+     * overwrites entries HR added by hand.
+     */
+    private void autoPopulateClearanceChecklist(UUID tenantId, Resignation r) {
+        if (!clearances.findAllByTenantIdAndResignationId(tenantId, r.getId()).isEmpty()) {
+            return;
+        }
+        UUID orgUnitId =
+                r.getEmployee() == null || r.getEmployee().getPrimaryOrgUnit() == null
+                        ? null
+                        : r.getEmployee().getPrimaryOrgUnit().getId();
+        checklistTemplates
+                .resolveEffective(tenantId, r.getCompanyId(), orgUnitId)
+                .ifPresent(
+                        template -> {
+                            for (var item :
+                                    checklistTemplates.itemsOf(tenantId, template.getId())) {
+                                ExitClearance c = new ExitClearance();
+                                c.setTenantId(tenantId);
+                                c.setResignation(r);
+                                c.setDepartment(item.getDepartment());
+                                c.setItemName(item.getItemName());
+                                c.setStatus(ClearanceStatus.PENDING);
+                                clearances.save(c);
+                            }
+                        });
     }
 
     public ResignationResponse startNotice(UUID tenantId, UUID id) {
@@ -393,18 +429,22 @@ public class ExitService {
             UUID tenantId, UUID resignationId, CreateClearanceRequest req) {
         Resignation r = requireResignation(tenantId, resignationId);
         clearances
-                .findByTenantIdAndResignationIdAndDepartment(
-                        tenantId, resignationId, req.department())
+                .findByTenantIdAndResignationIdAndDepartmentAndItemName(
+                        tenantId, resignationId, req.department(), req.itemName())
                 .ifPresent(
                         existing -> {
                             throw new ApiException(
                                     HttpStatus.CONFLICT,
-                                    "Clearance for " + req.department() + " already exists");
+                                    "Clearance for "
+                                            + req.department()
+                                            + (req.itemName() != null ? "/" + req.itemName() : "")
+                                            + " already exists");
                         });
         ExitClearance c = new ExitClearance();
         c.setTenantId(tenantId);
         c.setResignation(r);
         c.setDepartment(req.department());
+        c.setItemName(req.itemName());
         c.setOwnerEmployeeId(req.ownerEmployeeId());
         c.setStatus(ClearanceStatus.PENDING);
         c.setNotes(req.notes());
