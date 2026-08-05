@@ -27,10 +27,19 @@ class TimeEntryRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Autowired private TimeEntryRepository entries;
     @Autowired private EmployeeRepository employees;
 
+    // The seeded bootstrap tenant/company (IdentityBootstrap) — employees.tenant_id and
+    // employees.company_id are both real foreign keys, so an arbitrary UUID.randomUUID() fails
+    // with a constraint violation; every other integration test in this codebase that persists
+    // an Employee reuses this same well-known id (see PayrollRunControllerIntegrationTest).
+    private static final UUID DEFAULT_TENANT_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID DEFAULT_COMPANY_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     @Test
     void findRecentForEmployeeIsCappedEvenWithFarMoreRowsInHistory() {
-        UUID tenantId = UUID.randomUUID();
-        UUID companyId = UUID.randomUUID();
+        UUID tenantId = DEFAULT_TENANT_ID;
+        UUID companyId = DEFAULT_COMPANY_ID;
 
         Employee employee = new Employee();
         employee.setTenantId(tenantId);

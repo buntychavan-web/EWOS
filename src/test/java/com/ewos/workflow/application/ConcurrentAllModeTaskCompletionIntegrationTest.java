@@ -47,9 +47,16 @@ class ConcurrentAllModeTaskCompletionIntegrationTest extends AbstractIntegration
     @Autowired WorkflowTaskService tasks;
     @Autowired WorkflowInstanceRepository instanceRepository;
 
+    // The seeded bootstrap tenant (IdentityBootstrap) — workflow_definitions.tenant_id,
+    // workflow_instances.tenant_id, and workflow_tasks.tenant_id are all real foreign keys, so an
+    // arbitrary UUID.randomUUID() fails with a constraint violation; companyId carries no such
+    // constraint on these tables and can stay random.
+    private static final UUID DEFAULT_TENANT_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     @Test
     void bothSiblingTasksCompletedConcurrentlyStillAdvancesTheInstance() throws Exception {
-        UUID tenantId = UUID.randomUUID();
+        UUID tenantId = DEFAULT_TENANT_ID;
         UUID companyId = UUID.randomUUID();
         UUID approverA = UUID.randomUUID();
         UUID approverB = UUID.randomUUID();
