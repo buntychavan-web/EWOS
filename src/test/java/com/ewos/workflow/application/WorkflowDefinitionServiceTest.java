@@ -1,10 +1,12 @@
 package com.ewos.workflow.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import com.ewos.shared.exception.ApiException;
 import com.ewos.workflow.api.WorkflowMapper;
 import com.ewos.workflow.api.dto.CreateWorkflowDefinitionRequest;
 import com.ewos.workflow.api.dto.StateDefinitionSpec;
@@ -80,6 +82,49 @@ class WorkflowDefinitionServiceTest {
 
         org.mockito.Mockito.verify(repository)
                 .existsByTenantIdAndCodeIgnoreCaseAndDefinitionVersion(tenantA, "onboarding", 1);
+    }
+
+    @Test
+    void tryFindEffectiveReturnsEmptyWhenNoneIsConfigured() {
+        UUID tenantId = UUID.randomUUID();
+        when(repository.findActiveByTenantAndSubjectType(tenantId, "exit.resignation"))
+                .thenReturn(List.of());
+
+        assertThat(service.tryFindEffective(tenantId, "exit.resignation")).isEmpty();
+    }
+
+    @Test
+    void tryFindEffectiveReturnsTheActiveDefinitionInsideItsEffectiveWindow() {
+        UUID tenantId = UUID.randomUUID();
+        WorkflowDefinition def = new WorkflowDefinition();
+        def.setId(UUID.randomUUID());
+        when(repository.findActiveByTenantAndSubjectType(tenantId, "exit.resignation"))
+                .thenReturn(List.of(def));
+
+        assertThat(service.tryFindEffective(tenantId, "exit.resignation")).contains(def);
+    }
+
+    @Test
+    void findEffectiveThrowsConflictWhenNoneIsConfigured() {
+        UUID tenantId = UUID.randomUUID();
+        when(repository.findActiveByTenantAndSubjectType(tenantId, "exit.resignation"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.findEffective(tenantId, "exit.resignation"))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("No active workflow definition");
+    }
+
+    @Test
+    void findEffectiveReturnsTheSameDefinitionAsTryFindEffective() {
+        UUID tenantId = UUID.randomUUID();
+        WorkflowDefinition def = new WorkflowDefinition();
+        def.setId(UUID.randomUUID());
+        when(repository.findActiveByTenantAndSubjectType(tenantId, "onboarding_plan"))
+                .thenReturn(List.of(def));
+
+        assertThat(service.findEffective(tenantId, "onboarding_plan"))
+                .isEqualTo(service.tryFindEffective(tenantId, "onboarding_plan").orElseThrow());
     }
 
     private static CreateWorkflowDefinitionRequest minimalRequest() {

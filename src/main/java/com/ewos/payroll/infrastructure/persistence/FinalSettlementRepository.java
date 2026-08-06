@@ -22,4 +22,15 @@ public interface FinalSettlementRepository extends JpaRepository<FinalSettlement
 
     List<FinalSettlement> findAllByTenantIdAndCompanyIdAndStatusOrderByCreatedAtDesc(
             UUID tenantId, UUID companyId, FinalSettlementStatus status);
+
+    /**
+     * Sprint 26 — Exit integration: looks up the non-cancelled settlement linked to a resignation,
+     * if any.
+     */
+    @Query(
+            "select s from FinalSettlement s where s.tenantId = :tenantId "
+                    + "and s.resignationId = :resignationId and s.status <> "
+                    + "com.ewos.payroll.domain.FinalSettlementStatus.CANCELLED")
+    Optional<FinalSettlement> findLiveForResignation(
+            @Param("tenantId") UUID tenantId, @Param("resignationId") UUID resignationId);
 }

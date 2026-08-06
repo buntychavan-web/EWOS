@@ -24,4 +24,5 @@ public record CreateFinalSettlementRequest(
         @DecimalMin("0.0000") BigDecimal otherEarnings,
         @DecimalMin("0.0000") BigDecimal otherDeductions,
         @NotNull @Pattern(regexp = "^[A-Z]{3}$") String currency,
-        @Size(max = 2048) String notes) {}
+        @Size(max = 2048) String notes,
+        UUID resignationId) {}

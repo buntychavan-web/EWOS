@@ -2,10 +2,16 @@ package com.ewos.exit.api;
 
 import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
+import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
+import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
+import com.ewos.exit.api.dto.AssignSuccessorRequest;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateResignationRequest;
 import com.ewos.exit.api.dto.ExitDashboardResponse;
+import com.ewos.exit.api.dto.ExtendNoticeRequest;
 import com.ewos.exit.api.dto.ResignationResponse;
+import com.ewos.exit.api.dto.StartGardenLeaveRequest;
+import com.ewos.exit.api.dto.WaiveNoticeRequest;
 import com.ewos.exit.application.ExitService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,10 +43,16 @@ public class ResignationController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('EXIT_WRITE')")
-    @Operation(summary = "Submit a resignation")
+    @Operation(
+            summary = "Record a resignation or separation on an employee's behalf",
+            description =
+                    "For HR-initiated, manager-initiated, retirement, termination, death, or"
+                            + " absconding cases. Employee self-service submissions use"
+                            + " POST /api/v1/exit/self-service/resignations instead.")
     public ResponseEntity<ResignationResponse> submit(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
             @Valid @RequestBody CreateResignationRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(exit.submit(req));
+        return ResponseEntity.status(HttpStatus.CREATED).body(exit.submit(tenantId, req));
     }
 
     @GetMapping("/{id}")
@@ -85,6 +97,66 @@ public class ResignationController {
             @PathVariable UUID id,
             @Valid @RequestBody ApplyBuyoutRequest req) {
         return exit.applyBuyout(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/notice-recovery")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Recover pay from the employee for a notice-period shortfall")
+    public ResignationResponse applyNoticeRecovery(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ApplyNoticeRecoveryRequest req) {
+        return exit.applyNoticeRecovery(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/notice-waiver")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Waive the remaining notice period")
+    public ResignationResponse waiveNotice(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody WaiveNoticeRequest req) {
+        return exit.waiveNotice(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/garden-leave")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Record a garden-leave window within the notice period")
+    public ResignationResponse startGardenLeave(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody StartGardenLeaveRequest req) {
+        return exit.startGardenLeave(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/notice-extension")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Extend the notice period end date")
+    public ResignationResponse extendNotice(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ExtendNoticeRequest req) {
+        return exit.extendNotice(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/early-release")
+    @PreAuthorize("hasAuthority('EXIT_APPROVE')")
+    @Operation(summary = "Approve an earlier-than-scheduled last working day")
+    public ResignationResponse approveEarlyRelease(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ApproveEarlyReleaseRequest req) {
+        return exit.approveEarlyRelease(tenantId, id, req);
+    }
+
+    @PostMapping("/{id}/successor")
+    @PreAuthorize("hasAuthority('EXIT_WRITE')")
+    @Operation(summary = "Assign the employee who succeeds this role during knowledge transfer")
+    public ResignationResponse assignSuccessor(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @PathVariable UUID id,
+            @Valid @RequestBody AssignSuccessorRequest req) {
+        return exit.assignSuccessor(tenantId, id, req);
     }
 
     @PostMapping("/{id}/withdraw")

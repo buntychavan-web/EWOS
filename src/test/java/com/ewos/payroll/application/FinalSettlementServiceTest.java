@@ -98,6 +98,10 @@ class FinalSettlementServiceTest {
     }
 
     private CreateFinalSettlementRequest request() {
+        return request(null);
+    }
+
+    private CreateFinalSettlementRequest request(UUID resignationId) {
         return new CreateFinalSettlementRequest(
                 tenantId,
                 companyId,
@@ -114,7 +118,8 @@ class FinalSettlementServiceTest {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 "USD",
-                null);
+                null,
+                resignationId);
     }
 
     private FinalSettlement draftSettlement() {
@@ -177,6 +182,60 @@ class FinalSettlementServiceTest {
 
         assertThat(response.status()).isEqualTo(FinalSettlementStatus.DRAFT);
         assertThat(response.noticePayRecovery()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void createStoresTheLinkedResignationId() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employeeIn(companyId)));
+        when(repository.findLiveForEmployee(tenantId, employeeId)).thenReturn(Optional.empty());
+        UUID resignationId = UUID.randomUUID();
+        when(repository.findLiveForResignation(tenantId, resignationId))
+                .thenReturn(Optional.empty());
+
+        var response = service.create(request(resignationId));
+
+        assertThat(response.resignationId()).isEqualTo(resignationId);
+    }
+
+    @Test
+    void createRejectedWhenALiveSettlementAlreadyExistsForTheResignation() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employeeIn(companyId)));
+        when(repository.findLiveForEmployee(tenantId, employeeId)).thenReturn(Optional.empty());
+        UUID resignationId = UUID.randomUUID();
+        when(repository.findLiveForResignation(tenantId, resignationId))
+                .thenReturn(Optional.of(draftSettlement()));
+
+        assertThatThrownBy(() -> service.create(request(resignationId)))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    // --- findByResignation ---
+
+    @Test
+    void findByResignationReturnsEmptyWhenNoneIsLinked() {
+        UUID resignationId = UUID.randomUUID();
+        when(repository.findLiveForResignation(tenantId, resignationId))
+                .thenReturn(Optional.empty());
+
+        assertThat(service.findByResignation(tenantId, resignationId)).isEmpty();
+    }
+
+    @Test
+    void findByResignationChecksAccessForTheSettlementsCompany() {
+        UUID resignationId = UUID.randomUUID();
+        FinalSettlement s = draftSettlement();
+        s.setResignationId(resignationId);
+        when(repository.findLiveForResignation(tenantId, resignationId)).thenReturn(Optional.of(s));
+
+        var response = service.findByResignation(tenantId, resignationId);
+
+        assertThat(response).isPresent();
+        assertThat(response.get().resignationId()).isEqualTo(resignationId);
+        verify(guard).requireAccessForCompany(companyId);
     }
 
     // --- update ---

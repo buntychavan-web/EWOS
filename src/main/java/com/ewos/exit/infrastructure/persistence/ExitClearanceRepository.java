@@ -12,8 +12,8 @@ public interface ExitClearanceRepository extends JpaRepository<ExitClearance, UU
 
     Optional<ExitClearance> findByIdAndTenantId(UUID id, UUID tenantId);
 
-    Optional<ExitClearance> findByTenantIdAndResignationIdAndDepartment(
-            UUID tenantId, UUID resignationId, ClearanceDepartment department);
+    Optional<ExitClearance> findByTenantIdAndResignationIdAndDepartmentAndItemName(
+            UUID tenantId, UUID resignationId, ClearanceDepartment department, String itemName);
 
     List<ExitClearance> findAllByTenantIdAndResignationId(UUID tenantId, UUID resignationId);
 

@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -31,9 +33,24 @@ public class Resignation extends AuditableEntity {
     @Column(name = "company_id", nullable = false, updatable = false)
     private UUID companyId;
 
+    /**
+     * {@code employee_id} always references a real row and is never nulled — but {@link Employee}
+     * is soft-deleted ({@code @SQLRestriction("deleted_at IS NULL")}), so a resignation whose
+     * employee has since been soft-deleted would otherwise make Hibernate throw {@code
+     * EntityNotFoundException} the moment anything touches this association (mapper responses,
+     * dashboard counts, ...), making the resignation itself unreadable. {@code @NotFound(IGNORE)}
+     * makes Hibernate return null for the association instead once the target row is filtered out,
+     * matching every existing null-safe read of {@code getEmployee()} in this module (Sprint 26A
+     * P0-1).
+     */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false, updatable = false)
+    @NotFound(action = NotFoundAction.IGNORE)
     private Employee employee;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "resignation_type", nullable = false, length = 32, updatable = false)
+    private ResignationType resignationType = ResignationType.SELF_RESIGNATION;
 
     @Column(name = "submitted_at", nullable = false)
     private Instant submittedAt = Instant.now();
@@ -62,6 +79,28 @@ public class Resignation extends AuditableEntity {
     @Column(name = "buyout_amount", precision = 14, scale = 2)
     private BigDecimal buyoutAmount;
 
+    /** Recovered from the employee for notice shortfall — the opposite direction of buyout. */
+    @Column(name = "notice_recovery_amount", precision = 14, scale = 2)
+    private BigDecimal noticeRecoveryAmount;
+
+    @Column(name = "notice_waived", nullable = false)
+    private boolean noticeWaived;
+
+    @Column(name = "notice_waiver_reason", length = 2000)
+    private String noticeWaiverReason;
+
+    @Column(name = "garden_leave_start_date")
+    private LocalDate gardenLeaveStartDate;
+
+    @Column(name = "garden_leave_end_date")
+    private LocalDate gardenLeaveEndDate;
+
+    @Column(name = "notice_extension_reason", length = 2000)
+    private String noticeExtensionReason;
+
+    @Column(name = "early_release_reason", length = 2000)
+    private String earlyReleaseReason;
+
     @Column(name = "accepted_at")
     private Instant acceptedAt;
 
@@ -70,6 +109,10 @@ public class Resignation extends AuditableEntity {
 
     @Column(name = "exit_workflow_instance_id")
     private UUID exitWorkflowInstanceId;
+
+    /** Employee designated to take over this role during knowledge transfer (Sprint 26). */
+    @Column(name = "successor_employee_id")
+    private UUID successorEmployeeId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
@@ -114,6 +157,14 @@ public class Resignation extends AuditableEntity {
 
     public void setEmployee(Employee v) {
         this.employee = v;
+    }
+
+    public ResignationType getResignationType() {
+        return resignationType;
+    }
+
+    public void setResignationType(ResignationType v) {
+        this.resignationType = v;
     }
 
     public Instant getSubmittedAt() {
@@ -188,6 +239,62 @@ public class Resignation extends AuditableEntity {
         this.buyoutAmount = v;
     }
 
+    public BigDecimal getNoticeRecoveryAmount() {
+        return noticeRecoveryAmount;
+    }
+
+    public void setNoticeRecoveryAmount(BigDecimal v) {
+        this.noticeRecoveryAmount = v;
+    }
+
+    public boolean isNoticeWaived() {
+        return noticeWaived;
+    }
+
+    public void setNoticeWaived(boolean v) {
+        this.noticeWaived = v;
+    }
+
+    public String getNoticeWaiverReason() {
+        return noticeWaiverReason;
+    }
+
+    public void setNoticeWaiverReason(String v) {
+        this.noticeWaiverReason = v;
+    }
+
+    public LocalDate getGardenLeaveStartDate() {
+        return gardenLeaveStartDate;
+    }
+
+    public void setGardenLeaveStartDate(LocalDate v) {
+        this.gardenLeaveStartDate = v;
+    }
+
+    public LocalDate getGardenLeaveEndDate() {
+        return gardenLeaveEndDate;
+    }
+
+    public void setGardenLeaveEndDate(LocalDate v) {
+        this.gardenLeaveEndDate = v;
+    }
+
+    public String getNoticeExtensionReason() {
+        return noticeExtensionReason;
+    }
+
+    public void setNoticeExtensionReason(String v) {
+        this.noticeExtensionReason = v;
+    }
+
+    public String getEarlyReleaseReason() {
+        return earlyReleaseReason;
+    }
+
+    public void setEarlyReleaseReason(String v) {
+        this.earlyReleaseReason = v;
+    }
+
     public Instant getAcceptedAt() {
         return acceptedAt;
     }
@@ -210,6 +317,14 @@ public class Resignation extends AuditableEntity {
 
     public void setExitWorkflowInstanceId(UUID v) {
         this.exitWorkflowInstanceId = v;
+    }
+
+    public UUID getSuccessorEmployeeId() {
+        return successorEmployeeId;
+    }
+
+    public void setSuccessorEmployeeId(UUID v) {
+        this.successorEmployeeId = v;
     }
 
     public ResignationStatus getStatus() {

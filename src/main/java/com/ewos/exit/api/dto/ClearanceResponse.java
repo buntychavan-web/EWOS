@@ -10,6 +10,7 @@ public record ClearanceResponse(
         UUID tenantId,
         UUID resignationId,
         ClearanceDepartment department,
+        String itemName,
         UUID ownerEmployeeId,
         ClearanceStatus status,
         Instant clearedAt,

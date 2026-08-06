@@ -6,6 +6,9 @@ import com.ewos.exit.api.ExitMapper;
 import com.ewos.exit.api.dto.AcceptResignationRequest;
 import com.ewos.exit.api.dto.AlumniResponse;
 import com.ewos.exit.api.dto.ApplyBuyoutRequest;
+import com.ewos.exit.api.dto.ApplyNoticeRecoveryRequest;
+import com.ewos.exit.api.dto.ApproveEarlyReleaseRequest;
+import com.ewos.exit.api.dto.AssignSuccessorRequest;
 import com.ewos.exit.api.dto.ClearanceResponse;
 import com.ewos.exit.api.dto.CompleteExitRequest;
 import com.ewos.exit.api.dto.CreateAlumniRequest;
@@ -14,23 +17,28 @@ import com.ewos.exit.api.dto.CreateKtItemRequest;
 import com.ewos.exit.api.dto.CreateResignationRequest;
 import com.ewos.exit.api.dto.DocumentResponse;
 import com.ewos.exit.api.dto.ExitDashboardResponse;
+import com.ewos.exit.api.dto.ExtendNoticeRequest;
 import com.ewos.exit.api.dto.InterviewResponse;
 import com.ewos.exit.api.dto.IssueDocumentRequest;
 import com.ewos.exit.api.dto.KtItemResponse;
 import com.ewos.exit.api.dto.RecordInterviewRequest;
 import com.ewos.exit.api.dto.ResignationResponse;
+import com.ewos.exit.api.dto.StartGardenLeaveRequest;
 import com.ewos.exit.api.dto.UpdateAlumniRequest;
 import com.ewos.exit.api.dto.UpdateClearanceRequest;
+import com.ewos.exit.api.dto.WaiveNoticeRequest;
 import com.ewos.exit.domain.AlumniRecord;
 import com.ewos.exit.domain.ClearanceStatus;
 import com.ewos.exit.domain.ExitClearance;
 import com.ewos.exit.domain.ExitDocument;
 import com.ewos.exit.domain.ExitInterview;
 import com.ewos.exit.domain.KnowledgeTransferItem;
+import com.ewos.exit.domain.KtItemType;
 import com.ewos.exit.domain.RehireEligibility;
 import com.ewos.exit.domain.Resignation;
 import com.ewos.exit.domain.ResignationLifecyclePolicy;
 import com.ewos.exit.domain.ResignationStatus;
+import com.ewos.exit.domain.ResignationType;
 import com.ewos.exit.domain.events.ExitEvent;
 import com.ewos.exit.domain.events.ExitEventType;
 import com.ewos.exit.infrastructure.persistence.AlumniRecordRepository;
@@ -41,9 +49,16 @@ import com.ewos.exit.infrastructure.persistence.KnowledgeTransferItemRepository;
 import com.ewos.exit.infrastructure.persistence.ResignationRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import com.ewos.workflow.api.dto.StartInstanceRequest;
+import com.ewos.workflow.application.WorkflowDefinitionService;
+import com.ewos.workflow.application.WorkflowInstanceService;
+import com.ewos.workflow.domain.WorkflowDefinition;
+import com.ewos.workflow.domain.WorkflowInstanceStatus;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -53,6 +68,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class ExitService {
+
+    /** Subject type this module registers with the workflow engine for approval routing. */
+    static final String WORKFLOW_SUBJECT_TYPE = "exit.resignation";
 
     private final ResignationRepository resignations;
     private final ExitClearanceRepository clearances;
@@ -65,7 +83,11 @@ public class ExitService {
     private final ExitMapper mapper;
     private final ApplicationEventPublisher events;
     private final ClientAccessGuard guard;
+    private final WorkflowDefinitionService workflowDefinitions;
+    private final WorkflowInstanceService workflowInstances;
+    private final ExitChecklistTemplateService checklistTemplates;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public ExitService(
             ResignationRepository resignations,
             ExitClearanceRepository clearances,
@@ -77,7 +99,10 @@ public class ExitService {
             ResignationLifecyclePolicy lifecycle,
             ExitMapper mapper,
             ApplicationEventPublisher events,
-            ClientAccessGuard guard) {
+            ClientAccessGuard guard,
+            WorkflowDefinitionService workflowDefinitions,
+            WorkflowInstanceService workflowInstances,
+            ExitChecklistTemplateService checklistTemplates) {
         this.resignations = resignations;
         this.clearances = clearances;
         this.ktItems = ktItems;
@@ -89,20 +114,43 @@ public class ExitService {
         this.mapper = mapper;
         this.events = events;
         this.guard = guard;
+        this.workflowDefinitions = workflowDefinitions;
+        this.workflowInstances = workflowInstances;
+        this.checklistTemplates = checklistTemplates;
     }
 
     // Resignation ------------------------------------------------------------
 
-    public ResignationResponse submit(CreateResignationRequest req) {
+    public ResignationResponse submit(UUID tenantId, CreateResignationRequest req) {
+        if (req.resignationType() == ResignationType.SELF_RESIGNATION) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "resignationType SELF_RESIGNATION can only be submitted through the"
+                            + " self-service endpoint");
+        }
+        return doSubmit(tenantId, req);
+    }
+
+    /** Reserved for {@code ExitSelfService} — always forces {@code SELF_RESIGNATION}. */
+    ResignationResponse submitSelf(UUID tenantId, CreateResignationRequest req) {
+        if (req.resignationType() != ResignationType.SELF_RESIGNATION) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Self-service submissions must use resignationType SELF_RESIGNATION");
+        }
+        return doSubmit(tenantId, req);
+    }
+
+    private ResignationResponse doSubmit(UUID tenantId, CreateResignationRequest req) {
         guard.requireAccessForCompany(req.companyId());
-        Employee employee = requireEmployee(req.tenantId(), req.employeeId());
+        Employee employee = requireEmployee(tenantId, req.employeeId());
         if (!employee.getCompanyId().equals(req.companyId())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "Employee does not belong to the given company");
         }
         resignations
                 .findByTenantIdAndEmployeeIdAndStatusNot(
-                        req.tenantId(), req.employeeId(), ResignationStatus.WITHDRAWN)
+                        tenantId, req.employeeId(), ResignationStatus.WITHDRAWN)
                 .ifPresent(
                         existing -> {
                             if (lifecycle.isOpen(existing.getStatus())) {
@@ -112,9 +160,10 @@ public class ExitService {
                             }
                         });
         Resignation r = new Resignation();
-        r.setTenantId(req.tenantId());
+        r.setTenantId(tenantId);
         r.setCompanyId(req.companyId());
         r.setEmployee(employee);
+        r.setResignationType(req.resignationType());
         r.setSubmittedAt(Instant.now());
         r.setSubmittedBy(ExitSecurity.currentActor());
         r.setIntendedLastDay(req.intendedLastDay());
@@ -122,13 +171,49 @@ public class ExitService {
         r.setNoticePeriodDays(req.noticePeriodDays());
         r.setStatus(ResignationStatus.SUBMITTED);
         r = resignations.save(r);
+        attachApprovalWorkflow(tenantId, r);
         publish(ExitEventType.RESIGNATION_SUBMITTED, r, null, null, null, null);
         return mapper.toResponse(r);
+    }
+
+    /**
+     * Attaches a multi-level approval workflow instance when the tenant has configured one for
+     * {@value #WORKFLOW_SUBJECT_TYPE} (Sprint 26). Reuses the generic workflow engine rather than a
+     * bespoke approval chain, matching how Leave/Timesheet/Probation attach theirs. Deliberately
+     * optional: a tenant without a configured definition falls back to the pre-Sprint-26
+     * direct-approval path in {@link #accept}, so this never blocks a submission.
+     */
+    private void attachApprovalWorkflow(UUID tenantId, Resignation r) {
+        Optional<WorkflowDefinition> definition =
+                workflowDefinitions.tryFindEffective(tenantId, WORKFLOW_SUBJECT_TYPE);
+        if (definition.isEmpty()) {
+            return;
+        }
+        var instance =
+                workflowInstances.start(
+                        new StartInstanceRequest(
+                                tenantId,
+                                r.getCompanyId(),
+                                definition.get().getId(),
+                                WORKFLOW_SUBJECT_TYPE,
+                                r.getId(),
+                                WORKFLOW_SUBJECT_TYPE + ":" + r.getId()));
+        r.setExitWorkflowInstanceId(instance.id());
     }
 
     public ResignationResponse accept(UUID tenantId, UUID id, AcceptResignationRequest req) {
         Resignation r = requireResignation(tenantId, id);
         lifecycle.assertTransition(r.getStatus(), ResignationStatus.ACCEPTED);
+        if (r.getExitWorkflowInstanceId() != null) {
+            WorkflowInstanceStatus status =
+                    workflowInstances.getById(tenantId, r.getExitWorkflowInstanceId()).status();
+            if (status != WorkflowInstanceStatus.COMPLETED) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Cannot accept — the approval workflow for this resignation is still "
+                                + status.name().toLowerCase(Locale.ROOT));
+            }
+        }
         r.setStatus(ResignationStatus.ACCEPTED);
         r.setAcceptedAt(Instant.now());
         r.setAcceptedBy(ExitSecurity.currentActor());
@@ -136,8 +221,41 @@ public class ExitService {
             r.setNoticeStartDate(req.noticeStartDate());
             r.setNoticeEndDate(req.noticeEndDate());
         }
+        autoPopulateClearanceChecklist(tenantId, r);
         publish(ExitEventType.RESIGNATION_ACCEPTED, r, null, null, null, null);
         return mapper.toResponse(r);
+    }
+
+    /**
+     * Generates clearance items from the effective checklist template (Sprint 26) once a
+     * resignation is accepted. Skipped entirely when no template is configured for the
+     * company/org-unit — the pre-Sprint-26 manual {@link #addClearance} flow keeps working
+     * unchanged — and skipped when clearances already exist for this resignation, so it never
+     * overwrites entries HR added by hand.
+     */
+    private void autoPopulateClearanceChecklist(UUID tenantId, Resignation r) {
+        if (!clearances.findAllByTenantIdAndResignationId(tenantId, r.getId()).isEmpty()) {
+            return;
+        }
+        UUID orgUnitId =
+                r.getEmployee() == null || r.getEmployee().getPrimaryOrgUnit() == null
+                        ? null
+                        : r.getEmployee().getPrimaryOrgUnit().getId();
+        checklistTemplates
+                .resolveEffective(tenantId, r.getCompanyId(), orgUnitId)
+                .ifPresent(
+                        template -> {
+                            for (var item :
+                                    checklistTemplates.itemsOf(tenantId, template.getId())) {
+                                ExitClearance c = new ExitClearance();
+                                c.setTenantId(tenantId);
+                                c.setResignation(r);
+                                c.setDepartment(item.getDepartment());
+                                c.setItemName(item.getItemName());
+                                c.setStatus(ClearanceStatus.PENDING);
+                                clearances.save(c);
+                            }
+                        });
     }
 
     public ResignationResponse startNotice(UUID tenantId, UUID id) {
@@ -164,6 +282,125 @@ public class ExitService {
         r.setBuyoutDays(req.buyoutDays());
         r.setBuyoutAmount(req.buyoutAmount());
         publish(ExitEventType.BUYOUT_APPLIED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Recovers pay from the employee for notice shortfall — the opposite direction of buyout. */
+    public ResignationResponse applyNoticeRecovery(
+            UUID tenantId, UUID id, ApplyNoticeRecoveryRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot apply notice recovery on a closed resignation");
+        }
+        r.setNoticeRecoveryAmount(req.amount());
+        publish(ExitEventType.NOTICE_RECOVERY_APPLIED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Waives the remaining notice period entirely — the employee may exit immediately. */
+    public ResignationResponse waiveNotice(UUID tenantId, UUID id, WaiveNoticeRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot waive notice on a closed resignation");
+        }
+        r.setNoticeWaived(true);
+        r.setNoticeWaiverReason(req.reason());
+        LocalDate today = LocalDate.now();
+        if (r.getNoticeEndDate() == null || r.getNoticeEndDate().isAfter(today)) {
+            r.setNoticeEndDate(today);
+        }
+        publish(ExitEventType.NOTICE_WAIVED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Records a garden-leave window within the notice period. */
+    public ResignationResponse startGardenLeave(
+            UUID tenantId, UUID id, StartGardenLeaveRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot start garden leave on a closed resignation");
+        }
+        if (req.startDate().isAfter(req.endDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Garden leave start date must not be after end date");
+        }
+        if (r.getNoticeEndDate() != null && req.endDate().isAfter(r.getNoticeEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Garden leave end date cannot extend beyond the notice period end date");
+        }
+        r.setGardenLeaveStartDate(req.startDate());
+        r.setGardenLeaveEndDate(req.endDate());
+        publish(ExitEventType.GARDEN_LEAVE_STARTED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Extends the notice period end date. */
+    public ResignationResponse extendNotice(UUID tenantId, UUID id, ExtendNoticeRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot extend notice on a closed resignation");
+        }
+        if (r.getNoticeEndDate() != null && !req.newNoticeEndDate().isAfter(r.getNoticeEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "New notice end date must be after the current notice end date");
+        }
+        r.setNoticeEndDate(req.newNoticeEndDate());
+        r.setNoticeExtensionReason(req.reason());
+        publish(ExitEventType.NOTICE_EXTENDED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /** Approves an earlier-than-scheduled last working day. */
+    public ResignationResponse approveEarlyRelease(
+            UUID tenantId, UUID id, ApproveEarlyReleaseRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot approve early release on a closed resignation");
+        }
+        if (req.newLastDay().isBefore(LocalDate.now())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "New last day cannot be in the past");
+        }
+        if (r.getNoticeEndDate() != null && !req.newLastDay().isBefore(r.getNoticeEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "New last day must be earlier than the current notice end date");
+        }
+        r.setNoticeEndDate(req.newLastDay());
+        r.setEarlyReleaseReason(req.reason());
+        publish(ExitEventType.EARLY_RELEASE_APPROVED, r, null, null, null, null);
+        return mapper.toResponse(r);
+    }
+
+    /**
+     * Designates the employee who takes over this role during knowledge transfer (Sprint 26 item
+     * 7). Independent of the per-{@link KnowledgeTransferItem} {@code transferredTo} field, which
+     * can route individual KT items to different people; this is the one overall successor for the
+     * resignation.
+     */
+    public ResignationResponse assignSuccessor(UUID tenantId, UUID id, AssignSuccessorRequest req) {
+        Resignation r = requireResignation(tenantId, id);
+        if (lifecycle.isTerminal(r.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Cannot assign a successor on a closed resignation");
+        }
+        Employee successor = requireEmployee(tenantId, req.successorEmployeeId());
+        if (!successor.getCompanyId().equals(r.getCompanyId())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Successor does not belong to the same company");
+        }
+        if (r.getEmployee() != null && successor.getId().equals(r.getEmployee().getId())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Successor cannot be the exiting employee");
+        }
+        r.setSuccessorEmployeeId(successor.getId());
+        publish(ExitEventType.SUCCESSOR_ASSIGNED, r, null, null, null, null);
         return mapper.toResponse(r);
     }
 
@@ -220,18 +457,22 @@ public class ExitService {
             UUID tenantId, UUID resignationId, CreateClearanceRequest req) {
         Resignation r = requireResignation(tenantId, resignationId);
         clearances
-                .findByTenantIdAndResignationIdAndDepartment(
-                        tenantId, resignationId, req.department())
+                .findByTenantIdAndResignationIdAndDepartmentAndItemName(
+                        tenantId, resignationId, req.department(), req.itemName())
                 .ifPresent(
                         existing -> {
                             throw new ApiException(
                                     HttpStatus.CONFLICT,
-                                    "Clearance for " + req.department() + " already exists");
+                                    "Clearance for "
+                                            + req.department()
+                                            + (req.itemName() != null ? "/" + req.itemName() : "")
+                                            + " already exists");
                         });
         ExitClearance c = new ExitClearance();
         c.setTenantId(tenantId);
         c.setResignation(r);
         c.setDepartment(req.department());
+        c.setItemName(req.itemName());
         c.setOwnerEmployeeId(req.ownerEmployeeId());
         c.setStatus(ClearanceStatus.PENDING);
         c.setNotes(req.notes());
@@ -300,6 +541,7 @@ public class ExitService {
         KnowledgeTransferItem k = new KnowledgeTransferItem();
         k.setTenantId(tenantId);
         k.setResignation(r);
+        k.setItemType(req.itemType() != null ? req.itemType() : KtItemType.TASK);
         k.setTopic(req.topic());
         k.setDescription(req.description());
         k.setTransferredTo(req.transferredTo());
@@ -419,14 +661,14 @@ public class ExitService {
 
     // Alumni -----------------------------------------------------------------
 
-    public AlumniResponse createAlumni(CreateAlumniRequest req) {
+    public AlumniResponse createAlumni(UUID tenantId, CreateAlumniRequest req) {
         guard.requireAccessForCompany(req.companyId());
-        Employee employee = requireEmployee(req.tenantId(), req.employeeId());
+        Employee employee = requireEmployee(tenantId, req.employeeId());
         if (!employee.getCompanyId().equals(req.companyId())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "Employee does not belong to the given company");
         }
-        alumni.findByTenantIdAndEmployeeId(req.tenantId(), req.employeeId())
+        alumni.findByTenantIdAndEmployeeId(tenantId, req.employeeId())
                 .ifPresent(
                         existing -> {
                             throw new ApiException(
@@ -434,11 +676,11 @@ public class ExitService {
                                     "Alumni record already exists for this employee");
                         });
         AlumniRecord a = new AlumniRecord();
-        a.setTenantId(req.tenantId());
+        a.setTenantId(tenantId);
         a.setCompanyId(req.companyId());
         a.setEmployee(employee);
         if (req.resignationId() != null) {
-            a.setResignation(requireResignation(req.tenantId(), req.resignationId()));
+            a.setResignation(requireResignation(tenantId, req.resignationId()));
         }
         a.setExitedOn(req.exitedOn());
         a.setAlumniEmail(req.alumniEmail());
