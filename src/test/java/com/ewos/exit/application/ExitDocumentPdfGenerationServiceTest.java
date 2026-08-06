@@ -38,4 +38,22 @@ class ExitDocumentPdfGenerationServiceTest {
 
         assertThat(pdf).isNotEmpty();
     }
+
+    @Test
+    void generateRendersIndianNamesAndDevanagariTextWithoutThrowing() {
+        // Sprint 26A P1-3: the previous Standard-14 Helvetica font used a single-byte
+        // WinAnsiEncoding and threw IllegalArgumentException for any character outside it —
+        // including every Devanagari code point. This must now render cleanly.
+        byte[] pdf =
+                service.generate(
+                        "Relieving Letter",
+                        "Dear Priyāṅkā Śrīvāstava (प्रियांका श्रीवास्तव),\n\n"
+                                + "आपकी सेवा के लिए धन्यवाद। We wish you the very best, Rāghavendra"
+                                + " Iyer.",
+                        LocalDate.now());
+
+        assertThat(pdf).isNotEmpty();
+        assertThat(new String(pdf, 0, 5, java.nio.charset.StandardCharsets.US_ASCII))
+                .isEqualTo("%PDF-");
+    }
 }

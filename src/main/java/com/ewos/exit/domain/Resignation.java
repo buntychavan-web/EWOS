@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -31,8 +33,19 @@ public class Resignation extends AuditableEntity {
     @Column(name = "company_id", nullable = false, updatable = false)
     private UUID companyId;
 
+    /**
+     * {@code employee_id} always references a real row and is never nulled — but {@link Employee}
+     * is soft-deleted ({@code @SQLRestriction("deleted_at IS NULL")}), so a resignation whose
+     * employee has since been soft-deleted would otherwise make Hibernate throw {@code
+     * EntityNotFoundException} the moment anything touches this association (mapper responses,
+     * dashboard counts, ...), making the resignation itself unreadable. {@code @NotFound(IGNORE)}
+     * makes Hibernate return null for the association instead once the target row is filtered out,
+     * matching every existing null-safe read of {@code getEmployee()} in this module (Sprint 26A
+     * P0-1).
+     */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false, updatable = false)
+    @NotFound(action = NotFoundAction.IGNORE)
     private Employee employee;
 
     @Enumerated(EnumType.STRING)

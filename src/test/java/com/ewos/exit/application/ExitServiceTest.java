@@ -1077,8 +1077,8 @@ class ExitServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.createAlumni(
+                                        tenantId,
                                         new CreateAlumniRequest(
-                                                tenantId,
                                                 companyId,
                                                 employeeId,
                                                 null,
@@ -1102,8 +1102,8 @@ class ExitServiceTest {
         assertThatThrownBy(
                         () ->
                                 service.createAlumni(
+                                        tenantId,
                                         new CreateAlumniRequest(
-                                                tenantId,
                                                 companyId,
                                                 employeeId,
                                                 null,
@@ -1127,8 +1127,8 @@ class ExitServiceTest {
 
         var resp =
                 service.createAlumni(
+                        tenantId,
                         new CreateAlumniRequest(
-                                tenantId,
                                 companyId,
                                 employeeId,
                                 null,
@@ -1141,6 +1141,32 @@ class ExitServiceTest {
                                 null));
 
         assertThat(resp.alumniEmail()).isEqualTo("a@b.com");
+    }
+
+    @Test
+    void createAlumniUsesTheHeaderTenantIdNotAClientSuppliedOne() {
+        when(employees.findByIdAndTenantId(employeeId, tenantId))
+                .thenReturn(Optional.of(employee()));
+        when(alumni.findByTenantIdAndEmployeeId(tenantId, employeeId)).thenReturn(Optional.empty());
+        when(alumni.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var resp =
+                service.createAlumni(
+                        tenantId,
+                        new CreateAlumniRequest(
+                                companyId,
+                                employeeId,
+                                null,
+                                LocalDate.now(),
+                                null,
+                                null,
+                                null,
+                                false,
+                                RehireEligibility.YES,
+                                null));
+
+        assertThat(resp.tenantId()).isEqualTo(tenantId);
+        verify(employees).findByIdAndTenantId(employeeId, tenantId);
     }
 
     @Test

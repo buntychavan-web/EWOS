@@ -661,14 +661,14 @@ public class ExitService {
 
     // Alumni -----------------------------------------------------------------
 
-    public AlumniResponse createAlumni(CreateAlumniRequest req) {
+    public AlumniResponse createAlumni(UUID tenantId, CreateAlumniRequest req) {
         guard.requireAccessForCompany(req.companyId());
-        Employee employee = requireEmployee(req.tenantId(), req.employeeId());
+        Employee employee = requireEmployee(tenantId, req.employeeId());
         if (!employee.getCompanyId().equals(req.companyId())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "Employee does not belong to the given company");
         }
-        alumni.findByTenantIdAndEmployeeId(req.tenantId(), req.employeeId())
+        alumni.findByTenantIdAndEmployeeId(tenantId, req.employeeId())
                 .ifPresent(
                         existing -> {
                             throw new ApiException(
@@ -676,11 +676,11 @@ public class ExitService {
                                     "Alumni record already exists for this employee");
                         });
         AlumniRecord a = new AlumniRecord();
-        a.setTenantId(req.tenantId());
+        a.setTenantId(tenantId);
         a.setCompanyId(req.companyId());
         a.setEmployee(employee);
         if (req.resignationId() != null) {
-            a.setResignation(requireResignation(req.tenantId(), req.resignationId()));
+            a.setResignation(requireResignation(tenantId, req.resignationId()));
         }
         a.setExitedOn(req.exitedOn());
         a.setAlumniEmail(req.alumniEmail());

@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record CreateAlumniRequest(
-        @NotNull UUID tenantId,
         @NotNull UUID companyId,
         @NotNull UUID employeeId,
         UUID resignationId,

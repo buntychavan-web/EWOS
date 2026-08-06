@@ -36,8 +36,10 @@ public class AlumniController {
     @PostMapping
     @PreAuthorize("hasAuthority('ALUMNI_MANAGE')")
     @Operation(summary = "Create an alumni record")
-    public ResponseEntity<AlumniResponse> create(@Valid @RequestBody CreateAlumniRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(exit.createAlumni(req));
+    public ResponseEntity<AlumniResponse> create(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @Valid @RequestBody CreateAlumniRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(exit.createAlumni(tenantId, req));
     }
 
     @PutMapping("/{id}")
