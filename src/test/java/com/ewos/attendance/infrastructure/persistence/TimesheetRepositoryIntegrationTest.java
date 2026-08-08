@@ -59,20 +59,28 @@ class TimesheetRepositoryIntegrationTest extends AbstractIntegrationTest {
         return employees.save(e);
     }
 
+    private Timesheet timesheet(UUID tenantId, Employee employee, TimesheetStatus status) {
+        return timesheet(tenantId, employee, status, LocalDate.of(2026, 8, 1));
+    }
+
     /**
      * Every non-DRAFT status here also has to satisfy the real DB check constraints from {@code
      * V12__attendance_engine.sql} ({@code ck_timesheets_submitted_has_ts}, {@code
      * ck_timesheets_approved_pair}, {@code ck_timesheets_rejected_pair}) — a plain Docker-less unit
      * test can't catch a missing companion column, so this helper sets every column each status
-     * requires, not just the ones the query under test reads.
+     * requires, not just the ones the query under test reads. {@code periodStart} is a parameter
+     * (not hardcoded) because {@code ux_timesheets_employee_period_alive} allows only one alive
+     * timesheet per employee per period — a test needing two rows for the same employee must use
+     * two different periods.
      */
-    private Timesheet timesheet(UUID tenantId, Employee employee, TimesheetStatus status) {
+    private Timesheet timesheet(
+            UUID tenantId, Employee employee, TimesheetStatus status, LocalDate periodStart) {
         Timesheet ts = new Timesheet();
         ts.setTenantId(tenantId);
         ts.setCompanyId(COMPANY_ID);
         ts.setEmployee(employee);
-        ts.setPeriodStart(LocalDate.of(2026, 8, 1));
-        ts.setPeriodEnd(LocalDate.of(2026, 8, 7));
+        ts.setPeriodStart(periodStart);
+        ts.setPeriodEnd(periodStart.plusDays(6));
         ts.setStatus(status);
         if (status != TimesheetStatus.DRAFT) {
             ts.setSubmittedAt(Instant.now());
@@ -96,7 +104,14 @@ class TimesheetRepositoryIntegrationTest extends AbstractIntegrationTest {
         Employee report2 = employee(tenantA, "Report2", managerA);
         Timesheet pending1 = timesheet(tenantA, report1, TimesheetStatus.SUBMITTED);
         Timesheet pending2 = timesheet(tenantA, report2, TimesheetStatus.SUBMITTED);
-        timesheet(tenantA, report1, TimesheetStatus.APPROVED); // already decided — excluded
+        // Different period: ux_timesheets_employee_period_alive allows only one alive timesheet
+        // per employee per period, so this "already decided" row for report1 can't reuse the
+        // SUBMITTED one's period.
+        timesheet(
+                tenantA,
+                report1,
+                TimesheetStatus.APPROVED,
+                LocalDate.of(2026, 7, 1)); // already decided — excluded
 
         List<UUID> ids =
                 timesheets
