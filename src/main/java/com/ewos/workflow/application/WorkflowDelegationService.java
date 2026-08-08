@@ -79,6 +79,18 @@ public class WorkflowDelegationService {
                 .anyMatch(d -> d.getDelegateActorId().equals(candidateActor));
     }
 
+    /**
+     * Sprint 27B — every peer currently delegating their inbox to {@code delegateActorId}, for the
+     * approvals inbox's "acting for [X]" banner.
+     */
+    @Transactional(readOnly = true)
+    public List<WorkflowDelegationResponse> activeDelegatorsFor(
+            UUID tenantId, UUID delegateActorId) {
+        return delegations.findActiveDelegatingTo(tenantId, delegateActorId, Instant.now()).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     private WorkflowDelegationResponse toResponse(WorkflowDelegation d) {
         return new WorkflowDelegationResponse(
                 d.getId(),

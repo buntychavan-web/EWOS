@@ -24,4 +24,18 @@ public interface WorkflowDelegationRepository extends JpaRepository<WorkflowDele
             @Param("tenantId") UUID tenantId,
             @Param("delegatorActorId") UUID delegatorActorId,
             @Param("now") Instant now);
+
+    /**
+     * Sprint 27B — the inverse of {@link #findActiveFor}: every delegation currently making {@code
+     * delegateActorId} someone else's stand-in, powering the approvals inbox's "acting for [X]"
+     * peer list.
+     */
+    @Query(
+            "select d from WorkflowDelegation d where d.tenantId = :tenantId and d.delegateActorId ="
+                    + " :delegateActorId and d.active = true and d.startsAt <= :now and d.endsAt >="
+                    + " :now")
+    List<WorkflowDelegation> findActiveDelegatingTo(
+            @Param("tenantId") UUID tenantId,
+            @Param("delegateActorId") UUID delegateActorId,
+            @Param("now") Instant now);
 }

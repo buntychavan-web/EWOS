@@ -21,12 +21,15 @@ import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
+import com.ewos.workflow.application.WorkflowDelegationService;
 import com.ewos.workflow.application.WorkflowInstanceService;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -45,10 +48,12 @@ public class TimesheetService {
     private final AttendancePolicyService policies;
     private final TimesheetCalculator calculator;
     private final WorkflowInstanceService workflow;
+    private final WorkflowDelegationService delegations;
     private final AttendanceMapper mapper;
     private final org.springframework.context.ApplicationEventPublisher events;
     private final ClientAccessGuard guard;
 
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public TimesheetService(
             TimesheetRepository timesheets,
             TimeEntryRepository entries,
@@ -56,6 +61,7 @@ public class TimesheetService {
             AttendancePolicyService policies,
             TimesheetCalculator calculator,
             WorkflowInstanceService workflow,
+            WorkflowDelegationService delegations,
             AttendanceMapper mapper,
             org.springframework.context.ApplicationEventPublisher events,
             ClientAccessGuard guard) {
@@ -65,6 +71,7 @@ public class TimesheetService {
         this.policies = policies;
         this.calculator = calculator;
         this.workflow = workflow;
+        this.delegations = delegations;
         this.mapper = mapper;
         this.events = events;
         this.guard = guard;
@@ -213,6 +220,22 @@ public class TimesheetService {
     }
 
     /**
+     * Sprint 27B — SUBMITTED timesheets reporting up to {@code managerId}, server-side scoped and
+     * paginated. Mirrors {@code LeaveRequestService#pendingForManager}; feeds the unified manager
+     * approvals inbox.
+     */
+    @Transactional(readOnly = true)
+    public Page<TimesheetResponse> pendingForManager(
+            UUID tenantId, UUID managerId, Pageable pageable) {
+        Page<Timesheet> found =
+                timesheets.findAllByTenantIdAndStatusAndManagerId(
+                        tenantId, TimesheetStatus.SUBMITTED, managerId, pageable);
+        guard.requireAccessForCompanies(
+                found.getContent().stream().map(Timesheet::getCompanyId).toList());
+        return found.map(mapper::toResponse);
+    }
+
+    /**
      * Sprint 24F audit fix — mirrors {@code LeaveRequestService.requireManagerAuthorityUnlessAdmin}
      * exactly (Sprint 4's fix for the identical bug in Leave). {@code ATT_APPROVE} was a flat
      * platform permission with no server-side check that the approver is actually the target
@@ -233,9 +256,18 @@ public class TimesheetService {
         boolean isManager =
                 employees.findAllByUserIdAndTenantId(actorUserId, tenantId).stream()
                         .anyMatch(e -> e.getId().equals(manager.getId()));
-        if (!isManager) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "You are not this employee's manager");
+        if (isManager) {
+            return;
         }
+        // Sprint 27B — the unified approvals inbox lets a manager delegate their inbox to a peer
+        // (existing WorkflowDelegationService, unchanged); honor that delegation here too, exactly
+        // as WorkflowTaskService#claim already does for generic workflow tasks.
+        UUID managerUserId = manager.getUserId();
+        if (managerUserId != null
+                && delegations.isActiveDelegateOf(tenantId, managerUserId, actorUserId)) {
+            return;
+        }
+        throw new ApiException(HttpStatus.FORBIDDEN, "You are not this employee's manager");
     }
 
     private static boolean hasAuthority(String authority) {
