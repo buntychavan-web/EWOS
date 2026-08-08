@@ -32,6 +32,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -332,6 +334,22 @@ public class ProbationService {
         return records.findAllByTenantIdAndCompanyIdAndStatus(tenantId, companyId, status).stream()
                 .map(mapper::toReportRow)
                 .toList();
+    }
+
+    /**
+     * Sprint 27B — PENDING_APPROVAL confirmations reporting up to {@code managerId}, server-side
+     * scoped and paginated. Read-only card source for the unified manager approvals inbox — see the
+     * repository query's javadoc for why this module has no act-through path yet.
+     */
+    @Transactional(readOnly = true)
+    public Page<ProbationRecordResponse> pendingForManager(
+            UUID tenantId, UUID managerId, Pageable pageable) {
+        Page<ProbationRecord> found =
+                records.findAllByTenantIdAndStatusAndManagerId(
+                        tenantId, ProbationStatus.PENDING_APPROVAL, managerId, pageable);
+        guard.requireAccessForCompanies(
+                found.getContent().stream().map(ProbationRecord::getCompanyId).toList());
+        return found.map(mapper::toResponse);
     }
 
     @Transactional(readOnly = true)

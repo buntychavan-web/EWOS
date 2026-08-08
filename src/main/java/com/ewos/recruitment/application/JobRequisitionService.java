@@ -30,6 +30,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -293,6 +295,25 @@ public class JobRequisitionService {
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    /**
+     * Sprint 27B — PENDING_APPROVAL requisitions naming {@code hiringManagerId} directly, server-
+     * side scoped and paginated. Read-only card source for the unified manager approvals inbox:
+     * {@code RECRUITMENT_APPROVE} is a flat platform permission (org-wide, not hiring-manager
+     * scoped), so this query exists solely to scope the *inbox listing* to requisitions this caller
+     * was actually named as hiring manager on — the decision itself is still made through the
+     * existing Recruitment screen/endpoint, unchanged.
+     */
+    @Transactional(readOnly = true)
+    public Page<JobRequisitionResponse> pendingForManager(
+            UUID tenantId, UUID hiringManagerId, Pageable pageable) {
+        Page<JobRequisition> found =
+                requisitions.findAllByTenantIdAndStatusAndHiringManagerId(
+                        tenantId, RequisitionStatus.PENDING_APPROVAL, hiringManagerId, pageable);
+        guard.requireAccessForCompanies(
+                found.getContent().stream().map(JobRequisition::getCompanyId).toList());
+        return found.map(mapper::toResponse);
     }
 
     private JobRequisition require(UUID tenantId, UUID id) {

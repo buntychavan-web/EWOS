@@ -22,6 +22,7 @@ import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
+import com.ewos.workflow.application.WorkflowDelegationService;
 import com.ewos.workflow.application.WorkflowInstanceService;
 import com.ewos.workflow.domain.WorkflowInstanceStatus;
 import java.math.BigDecimal;
@@ -53,6 +54,7 @@ class TimesheetServiceTest {
     @Mock AttendancePolicyService policies;
     @Mock TimesheetCalculator calculator;
     @Mock WorkflowInstanceService workflow;
+    @Mock WorkflowDelegationService delegations;
     @Mock ClientAccessGuard guard;
 
     private TimesheetService service;
@@ -70,6 +72,7 @@ class TimesheetServiceTest {
                         policies,
                         calculator,
                         workflow,
+                        delegations,
                         new AttendanceMapper(),
                         org.mockito.Mockito.mock(
                                 org.springframework.context.ApplicationEventPublisher.class),
@@ -387,6 +390,48 @@ class TimesheetServiceTest {
         var response = service.approve(tenantId, ts.getId(), new DecideTimesheetRequest(null));
 
         assertThat(response.status()).isEqualTo(TimesheetStatus.APPROVED);
+    }
+
+    @Test
+    void approveSucceedsWhenActorIsAnActiveDelegateOfTheManager() {
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        UUID managerUserId = UUID.randomUUID();
+        manager.setUserId(managerUserId);
+        Timesheet ts = draftTimesheet();
+        ts.getEmployee().setManager(manager);
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        UUID actor = authenticateAs("ATT_APPROVE");
+        when(employees.findAllByUserIdAndTenantId(actor, tenantId)).thenReturn(List.of());
+        when(delegations.isActiveDelegateOf(tenantId, managerUserId, actor)).thenReturn(true);
+
+        var response = service.approve(tenantId, ts.getId(), new DecideTimesheetRequest(null));
+
+        assertThat(response.status()).isEqualTo(TimesheetStatus.APPROVED);
+    }
+
+    @Test
+    void approveRejectedWhenActorIsNotAnActiveDelegateOfTheManager() {
+        Employee manager = new Employee();
+        manager.setId(UUID.randomUUID());
+        UUID managerUserId = UUID.randomUUID();
+        manager.setUserId(managerUserId);
+        Timesheet ts = draftTimesheet();
+        ts.getEmployee().setManager(manager);
+        ts.setStatus(TimesheetStatus.SUBMITTED);
+        when(timesheets.findByIdAndTenantId(ts.getId(), tenantId)).thenReturn(Optional.of(ts));
+        UUID actor = authenticateAs("ATT_APPROVE");
+        when(employees.findAllByUserIdAndTenantId(actor, tenantId)).thenReturn(List.of());
+        when(delegations.isActiveDelegateOf(tenantId, managerUserId, actor)).thenReturn(false);
+
+        assertThatThrownBy(
+                        () ->
+                                service.approve(
+                                        tenantId, ts.getId(), new DecideTimesheetRequest(null)))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test

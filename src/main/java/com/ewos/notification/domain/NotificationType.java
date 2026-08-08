@@ -95,5 +95,13 @@ public enum NotificationType {
     // com.ewos.payroll.application.PayrollApprovalNotificationListener.
     PAYROLL_APPROVAL_PENDING,
     PAYROLL_APPROVAL_FULLY_APPROVED,
-    PAYROLL_APPROVAL_REJECTED
+    PAYROLL_APPROVAL_REJECTED,
+
+    // Sprint 27B — ESS/MSS unified approvals inbox. See
+    // com.ewos.employee.application.EssMssNotificationEventListener. Leave/Timesheet approval
+    // previously produced zero notifications at all — neither the manager was told a request was
+    // waiting, nor the employee told of the outcome.
+    ESS_MSS_APPROVAL_PENDING,
+    ESS_MSS_APPROVAL_APPROVED,
+    ESS_MSS_APPROVAL_REJECTED
 }

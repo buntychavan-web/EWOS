@@ -6,6 +6,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -34,4 +36,22 @@ public interface ProbationRecordRepository extends JpaRepository<ProbationRecord
             @Param("companyId") UUID companyId,
             @Param("statuses") List<ProbationStatus> statuses,
             @Param("through") LocalDate through);
+
+    /**
+     * Sprint 27B — server-side scoped and paginated, mirroring {@code
+     * LeaveRequestRepository#findAllByTenantIdAndStatusAndManagerId}: powers the manager's
+     * read-only "pending probation confirmations" card in the unified approvals inbox. Unlike
+     * Leave/Timesheet, {@code ProbationService.approveConfirmation}/{@code rejectConfirmation} are
+     * flat-permission-gated ({@code PROBATION_APPROVE}), not manager-relationship-checked — this
+     * query exists solely to scope the *inbox listing* to the manager's own reports; the decision
+     * itself is still made through the existing Probation screen/endpoint, unchanged.
+     */
+    @Query(
+            "select r from ProbationRecord r where r.tenantId = :tenantId and r.status = :status"
+                    + " and r.employee.manager.id = :managerId order by r.updatedAt asc")
+    Page<ProbationRecord> findAllByTenantIdAndStatusAndManagerId(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") ProbationStatus status,
+            @Param("managerId") UUID managerId,
+            Pageable pageable);
 }

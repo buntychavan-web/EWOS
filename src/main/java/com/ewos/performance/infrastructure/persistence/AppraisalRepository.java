@@ -55,6 +55,15 @@ public interface AppraisalRepository extends JpaRepository<Appraisal, UUID> {
     List<Appraisal> findAllByTenantIdAndManagerEmployeeIdAndStatus(
             UUID tenantId, UUID managerEmployeeId, AppraisalStatus status);
 
+    /**
+     * Sprint 27B — bounded/paginated form of {@link
+     * #findAllByTenantIdAndManagerEmployeeIdAndStatus}, used by the unified manager approvals inbox
+     * so Performance is capped the same way every other module's {@code pendingForManager} query is
+     * (no unbounded {@code List} feeding an in-memory merge).
+     */
+    Page<Appraisal> findAllByTenantIdAndManagerEmployeeIdAndStatus(
+            UUID tenantId, UUID managerEmployeeId, AppraisalStatus status, Pageable pageable);
+
     List<Appraisal> findAllByTenantIdAndReviewerEmployeeIdAndStatus(
             UUID tenantId, UUID reviewerEmployeeId, AppraisalStatus status);
 

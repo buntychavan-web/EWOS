@@ -20,6 +20,7 @@ import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
 import com.ewos.workflow.api.dto.StartInstanceRequest;
 import com.ewos.workflow.api.dto.WorkflowInstanceResponse;
+import com.ewos.workflow.application.WorkflowDelegationService;
 import com.ewos.workflow.application.WorkflowInstanceService;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -50,6 +51,7 @@ public class LeaveRequestService {
     private final LeaveBalanceCalculator calculator;
     private final LeavePolicy policy;
     private final WorkflowInstanceService workflow;
+    private final WorkflowDelegationService delegations;
     private final LeaveMapper mapper;
     private final ApplicationEventPublisher events;
     private final Clock clock;
@@ -60,6 +62,7 @@ public class LeaveRequestService {
     // told which one to use — see the CandidateNumberGenerator/CorsConfig fixes earlier in the
     // same audit pass for the failure mode this closes.
     @Autowired
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     public LeaveRequestService(
             LeaveRequestRepository requests,
             EmployeeRepository employees,
@@ -68,6 +71,7 @@ public class LeaveRequestService {
             LeaveBalanceCalculator calculator,
             LeavePolicy policy,
             WorkflowInstanceService workflow,
+            WorkflowDelegationService delegations,
             LeaveMapper mapper,
             ApplicationEventPublisher events,
             ClientAccessGuard guard) {
@@ -79,6 +83,7 @@ public class LeaveRequestService {
                 calculator,
                 policy,
                 workflow,
+                delegations,
                 mapper,
                 events,
                 Clock.systemUTC(),
@@ -86,6 +91,7 @@ public class LeaveRequestService {
     }
 
     /** Test-friendly overload; production callers use the {@code Clock.systemUTC()} default. */
+    @SuppressWarnings("PMD.ExcessiveParameterList")
     LeaveRequestService(
             LeaveRequestRepository requests,
             EmployeeRepository employees,
@@ -94,6 +100,7 @@ public class LeaveRequestService {
             LeaveBalanceCalculator calculator,
             LeavePolicy policy,
             WorkflowInstanceService workflow,
+            WorkflowDelegationService delegations,
             LeaveMapper mapper,
             ApplicationEventPublisher events,
             Clock clock,
@@ -105,6 +112,7 @@ public class LeaveRequestService {
         this.calculator = calculator;
         this.policy = policy;
         this.workflow = workflow;
+        this.delegations = delegations;
         this.mapper = mapper;
         this.events = events;
         this.clock = clock;
@@ -337,9 +345,18 @@ public class LeaveRequestService {
         boolean isManager =
                 employees.findAllByUserIdAndTenantId(actorUserId, tenantId).stream()
                         .anyMatch(e -> e.getId().equals(manager.getId()));
-        if (!isManager) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "You are not this employee's manager");
+        if (isManager) {
+            return;
         }
+        // Sprint 27B — the unified approvals inbox lets a manager delegate their inbox to a peer
+        // (existing WorkflowDelegationService, unchanged); honor that delegation here too, exactly
+        // as WorkflowTaskService#claim already does for generic workflow tasks.
+        UUID managerUserId = manager.getUserId();
+        if (managerUserId != null
+                && delegations.isActiveDelegateOf(tenantId, managerUserId, actorUserId)) {
+            return;
+        }
+        throw new ApiException(HttpStatus.FORBIDDEN, "You are not this employee's manager");
     }
 
     private static boolean hasAuthority(String authority) {

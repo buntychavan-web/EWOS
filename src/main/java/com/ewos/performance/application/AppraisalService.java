@@ -39,6 +39,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -313,6 +315,20 @@ public class AppraisalService {
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    /**
+     * Sprint 27B — bounded/paginated form of {@link #pendingForManager(UUID, UUID)}, for the
+     * unified manager approvals inbox (see {@code ManagerApprovalsService}), which caps every
+     * module's contribution to its in-memory merge at the same page size.
+     */
+    @Transactional(readOnly = true)
+    public Page<AppraisalResponse> pendingForManager(
+            UUID tenantId, UUID managerEmployeeId, Pageable pageable) {
+        return appraisals
+                .findAllByTenantIdAndManagerEmployeeIdAndStatus(
+                        tenantId, managerEmployeeId, AppraisalStatus.PENDING_MANAGER, pageable)
+                .map(mapper::toResponse);
     }
 
     /** Sprint 24A self-service: appraisals awaiting the caller's own reviewer assessment. */

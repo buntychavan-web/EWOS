@@ -19,6 +19,7 @@ import com.ewos.leave.domain.LeaveType;
 import com.ewos.leave.infrastructure.persistence.LeaveRequestRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import com.ewos.workflow.application.WorkflowDelegationService;
 import com.ewos.workflow.application.WorkflowInstanceService;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -55,6 +56,7 @@ class LeaveRequestServiceTest {
     @Mock LeaveBalanceService balances;
     @Mock LeaveBalanceCalculator calculator;
     @Mock WorkflowInstanceService workflow;
+    @Mock WorkflowDelegationService delegations;
     @Mock ApplicationEventPublisher events;
     @Mock ClientAccessGuard guard;
 
@@ -75,6 +77,7 @@ class LeaveRequestServiceTest {
                         calculator,
                         new LeavePolicy(),
                         workflow,
+                        delegations,
                         new LeaveMapper(calculator),
                         events,
                         Clock.fixed(java.time.Instant.now(), ZoneOffset.UTC),
@@ -200,6 +203,38 @@ class LeaveRequestServiceTest {
         service.approve(tenantId, r.getId(), new DecideLeaveRequestRequest(null));
 
         org.mockito.Mockito.verify(employees, never()).findAllByUserIdAndTenantId(any(), any());
+    }
+
+    @Test
+    void approveSucceedsWhenActorIsAnActiveDelegateOfTheManager() {
+        LeaveRequest r = submittedRequest(managerId);
+        when(requests.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(employees.findAllByUserIdAndTenantId(actorUserId, tenantId)).thenReturn(List.of());
+        UUID managerUserId = UUID.randomUUID();
+        r.getEmployee().getManager().setUserId(managerUserId);
+        when(delegations.isActiveDelegateOf(tenantId, managerUserId, actorUserId)).thenReturn(true);
+        stubBalance(r);
+
+        service.approve(tenantId, r.getId(), new DecideLeaveRequestRequest(null));
+    }
+
+    @Test
+    void approveRejectsWhenActorIsNotAnActiveDelegateOfTheManager() {
+        LeaveRequest r = submittedRequest(managerId);
+        when(requests.findByIdAndTenantId(r.getId(), tenantId)).thenReturn(Optional.of(r));
+        when(employees.findAllByUserIdAndTenantId(actorUserId, tenantId)).thenReturn(List.of());
+        UUID managerUserId = UUID.randomUUID();
+        r.getEmployee().getManager().setUserId(managerUserId);
+        when(delegations.isActiveDelegateOf(tenantId, managerUserId, actorUserId))
+                .thenReturn(false);
+
+        assertThatThrownBy(
+                        () ->
+                                service.approve(
+                                        tenantId, r.getId(), new DecideLeaveRequestRequest(null)))
+                .isInstanceOf(ApiException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test

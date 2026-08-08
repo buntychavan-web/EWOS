@@ -29,4 +29,13 @@ public interface JobRequisitionRepository
 
     long countByTenantIdAndCompanyIdAndStatus(
             UUID tenantId, UUID companyId, RequisitionStatus status);
+
+    /**
+     * Sprint 27B — server-side scoped and paginated: powers the hiring manager's read-only "pending
+     * requisitions" card in the unified approvals inbox. Unlike Leave/Timesheet's "employee's
+     * manager" relationship, {@code hiringManager} is a direct field on the requisition itself —
+     * there is no subject employee to walk a manager chain from.
+     */
+    Page<JobRequisition> findAllByTenantIdAndStatusAndHiringManagerId(
+            UUID tenantId, RequisitionStatus status, UUID hiringManagerId, Pageable pageable);
 }

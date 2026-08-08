@@ -52,7 +52,8 @@ public class ProbationMapper {
                 r.getConfirmationLetterUri(),
                 r.getTerminatedAt(),
                 r.getTerminatedBy(),
-                r.getOutcomeNotes());
+                r.getOutcomeNotes(),
+                r.getUpdatedAt());
     }
 
     public ProbationReportRowResponse toReportRow(ProbationRecord r) {
