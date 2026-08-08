@@ -76,9 +76,14 @@ class ProbationRecordRepositoryIntegrationTest extends AbstractIntegrationTest {
         Employee managerA = employee(tenantA, "ManagerA", null);
         Employee report1 = employee(tenantA, "Report1", managerA);
         Employee report2 = employee(tenantA, "Report2", managerA);
+        Employee report3 = employee(tenantA, "Report3", managerA);
         ProbationRecord pending1 = record(tenantA, report1, ProbationStatus.PENDING_APPROVAL);
         ProbationRecord pending2 = record(tenantA, report2, ProbationStatus.PENDING_APPROVAL);
-        record(tenantA, report1, ProbationStatus.IN_PROBATION); // not yet submitted — excluded
+        // DB enforces one active probation record per employee
+        // (ux_probation_records_employee_alive,
+        // matching ProbationService#open's own conflict check), so the "not yet submitted" excluded
+        // record needs its own employee rather than reusing report1/report2.
+        record(tenantA, report3, ProbationStatus.IN_PROBATION); // not yet submitted — excluded
 
         List<UUID> ids =
                 records.findAllByTenantIdAndStatusAndManagerId(

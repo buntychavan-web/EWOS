@@ -10,6 +10,7 @@ import com.ewos.employee.domain.EmployeeStatus;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.tenancy.domain.Tenant;
 import com.ewos.tenancy.infrastructure.persistence.TenantRepository;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
@@ -58,6 +59,13 @@ class TimesheetRepositoryIntegrationTest extends AbstractIntegrationTest {
         return employees.save(e);
     }
 
+    /**
+     * Every non-DRAFT status here also has to satisfy the real DB check constraints from {@code
+     * V12__attendance_engine.sql} ({@code ck_timesheets_submitted_has_ts}, {@code
+     * ck_timesheets_approved_pair}, {@code ck_timesheets_rejected_pair}) — a plain Docker-less unit
+     * test can't catch a missing companion column, so this helper sets every column each status
+     * requires, not just the ones the query under test reads.
+     */
     private Timesheet timesheet(UUID tenantId, Employee employee, TimesheetStatus status) {
         Timesheet ts = new Timesheet();
         ts.setTenantId(tenantId);
@@ -66,6 +74,17 @@ class TimesheetRepositoryIntegrationTest extends AbstractIntegrationTest {
         ts.setPeriodStart(LocalDate.of(2026, 8, 1));
         ts.setPeriodEnd(LocalDate.of(2026, 8, 7));
         ts.setStatus(status);
+        if (status != TimesheetStatus.DRAFT) {
+            ts.setSubmittedAt(Instant.now());
+        }
+        if (status == TimesheetStatus.APPROVED) {
+            ts.setApprovedAt(Instant.now());
+            ts.setApprovedBy(UUID.randomUUID());
+        }
+        if (status == TimesheetStatus.REJECTED) {
+            ts.setRejectedAt(Instant.now());
+            ts.setRejectedBy(UUID.randomUUID());
+        }
         return timesheets.save(ts);
     }
 
