@@ -88,16 +88,28 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
         // (bypassing EmployeeLifecyclePolicy.assertValidManager, which already blocks this at the
         // service layer — see EmployeeLifecyclePolicyTest#managerFromDifferentTenantRejected) to
         // prove the *query itself* also never leaks data across tenants, not just the service.
+        //
+        // The query filters on the returned employee's own tenantId, not the tenant of the
+        // manager it points to — so the meaningful defense-in-depth case is querying the
+        // *manager's* tenant (tenantA) while a corrupted row in a different tenant (tenantB)
+        // also points its manager_employee_id at that same manager. A legitimate tenantA report
+        // is included alongside the corrupted pointer so the assertion proves the tenant filter
+        // is doing real work — excluding one matching-manager row while including another —
+        // rather than the page simply happening to be empty.
         UUID tenantA = tenant("TenantA2").getId();
         UUID tenantB = tenant("TenantB2").getId();
         Employee managerA = employee(tenantA, "ManagerA2", null);
+        Employee legitimateReport = employee(tenantA, "LegitimateReport", managerA);
         Employee crossTenantReport = employee(tenantB, "CrossTenantReport", managerA);
 
         var page =
                 employees.findAllByTenantIdAndManagerId(
-                        tenantB, managerA.getId(), PageRequest.of(0, 20));
+                        tenantA, managerA.getId(), PageRequest.of(0, 20));
 
-        assertThat(page.getContent()).doesNotContain(crossTenantReport).isEmpty();
+        assertThat(page.getContent())
+                .extracting(Employee::getId)
+                .containsExactly(legitimateReport.getId())
+                .doesNotContain(crossTenantReport.getId());
     }
 
     @Test
