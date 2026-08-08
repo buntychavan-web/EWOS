@@ -18,6 +18,9 @@ CREATE TABLE idempotency_keys (
     response_body TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- IdempotencyKey extends AuditableEntity, which maps these two columns on every entity.
+    created_by UUID,
+    updated_by UUID,
     CONSTRAINT uq_idempotency_key UNIQUE (tenant_id, actor_user_id, endpoint, idempotency_key)
 );
 
