@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.ewos.AbstractIntegrationTest;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.domain.EmployeeStatus;
+import com.ewos.tenancy.domain.Tenant;
+import com.ewos.tenancy.infrastructure.persistence.TenantRepository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -21,16 +23,29 @@ import org.springframework.transaction.annotation.Transactional;
  * defense-in-depth the query itself provides (PRD §12/finding 4.1): a report is only ever returned
  * for the tenant it actually belongs to, even if a corrupted {@code manager_employee_id} pointed
  * across tenants.
+ *
+ * <p>{@code employees.tenant_id} carries a real foreign key ({@code fk_employees_tenant}, V34) to
+ * {@code tenants}, so — same as every other integration test in this codebase that persists an
+ * {@link Employee} (see {@code TimeEntryRepositoryIntegrationTest}'s comment) — a tenant used here
+ * must be a real, persisted row. This test needs two distinct tenants to prove cross-tenant
+ * isolation, so it creates its own via {@link #tenant(String)} rather than reusing the single
+ * seeded bootstrap tenant every other test relies on.
  */
 @Transactional
 class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
 
-    private static final UUID TENANT_A = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
-    private static final UUID TENANT_B = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
     private static final UUID COMPANY_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final AtomicInteger SEQ = new AtomicInteger();
 
     @Autowired EmployeeRepository employees;
+    @Autowired TenantRepository tenants;
+
+    private Tenant tenant(String label) {
+        Tenant t = new Tenant();
+        t.setCode(label + "-" + SEQ.incrementAndGet());
+        t.setName(label);
+        return tenants.save(t);
+    }
 
     private Employee employee(UUID tenantId, String label, Employee manager) {
         Employee e = new Employee();
@@ -48,17 +63,19 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void returnsOnlyDirectReportsOfTheGivenManagerWithinTheTenant() {
-        Employee managerA = employee(TENANT_A, "ManagerA", null);
-        Employee report1 = employee(TENANT_A, "Report1", managerA);
-        Employee report2 = employee(TENANT_A, "Report2", managerA);
-        employee(TENANT_A, "Unrelated", null); // same tenant, different (no) manager
-        Employee managerB = employee(TENANT_B, "ManagerB", null);
-        employee(TENANT_B, "OtherTenantReport", managerB);
+        UUID tenantA = tenant("TenantA").getId();
+        UUID tenantB = tenant("TenantB").getId();
+        Employee managerA = employee(tenantA, "ManagerA", null);
+        Employee report1 = employee(tenantA, "Report1", managerA);
+        Employee report2 = employee(tenantA, "Report2", managerA);
+        employee(tenantA, "Unrelated", null); // same tenant, different (no) manager
+        Employee managerB = employee(tenantB, "ManagerB", null);
+        employee(tenantB, "OtherTenantReport", managerB);
 
         List<UUID> ids =
                 employees
                         .findAllByTenantIdAndManagerId(
-                                TENANT_A, managerA.getId(), PageRequest.of(0, 20, Sort.by("id")))
+                                tenantA, managerA.getId(), PageRequest.of(0, 20, Sort.by("id")))
                         .map(Employee::getId)
                         .toList();
 
@@ -71,26 +88,29 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
         // (bypassing EmployeeLifecyclePolicy.assertValidManager, which already blocks this at the
         // service layer — see EmployeeLifecyclePolicyTest#managerFromDifferentTenantRejected) to
         // prove the *query itself* also never leaks data across tenants, not just the service.
-        Employee managerA = employee(TENANT_A, "ManagerA2", null);
-        Employee crossTenantReport = employee(TENANT_B, "CrossTenantReport", managerA);
+        UUID tenantA = tenant("TenantA2").getId();
+        UUID tenantB = tenant("TenantB2").getId();
+        Employee managerA = employee(tenantA, "ManagerA2", null);
+        Employee crossTenantReport = employee(tenantB, "CrossTenantReport", managerA);
 
         var page =
                 employees.findAllByTenantIdAndManagerId(
-                        TENANT_B, managerA.getId(), PageRequest.of(0, 20));
+                        tenantB, managerA.getId(), PageRequest.of(0, 20));
 
         assertThat(page.getContent()).doesNotContain(crossTenantReport).isEmpty();
     }
 
     @Test
     void resultsArePaginated() {
-        Employee manager = employee(TENANT_A, "BigTeamManager", null);
+        UUID tenantA = tenant("TenantA3").getId();
+        Employee manager = employee(tenantA, "BigTeamManager", null);
         for (int i = 0; i < 5; i++) {
-            employee(TENANT_A, "TeamMember" + i, manager);
+            employee(tenantA, "TeamMember" + i, manager);
         }
 
         var firstPage =
                 employees.findAllByTenantIdAndManagerId(
-                        TENANT_A, manager.getId(), PageRequest.of(0, 2, Sort.by("employeeNumber")));
+                        tenantA, manager.getId(), PageRequest.of(0, 2, Sort.by("employeeNumber")));
 
         assertThat(firstPage.getContent()).hasSize(2);
         assertThat(firstPage.getTotalElements()).isEqualTo(5);
