@@ -1,6 +1,7 @@
 package com.ewos.identity.infrastructure.security;
 
 import com.ewos.identity.infrastructure.security.jwt.JwtAuthenticationFilter;
+import com.ewos.identity.infrastructure.security.ratelimit.EssMssRateLimitFilter;
 import com.ewos.shared.exception.ApiError;
 import com.ewos.tenancy.infrastructure.security.TenantHeaderValidationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,7 @@ public class SecurityConfig {
             HttpSecurity http,
             JwtAuthenticationFilter jwtAuthenticationFilter,
             TenantHeaderValidationFilter tenantHeaderValidationFilter,
+            EssMssRateLimitFilter essMssRateLimitFilter,
             AuthenticationEntryPoint authenticationEntryPoint,
             CorsConfigurationSource corsConfigurationSource)
             throws Exception {
@@ -86,6 +88,7 @@ public class SecurityConfig {
                 .addFilterBefore(
                         jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(tenantHeaderValidationFilter, JwtAuthenticationFilter.class)
+                .addFilterAfter(essMssRateLimitFilter, TenantHeaderValidationFilter.class)
                 .build();
     }
 

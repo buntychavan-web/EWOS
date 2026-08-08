@@ -6,6 +6,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -28,6 +30,18 @@ public interface EmployeeRepository
 
     @Query("select count(e) from Employee e where e.manager.id = :managerId")
     long countDirectReports(@Param("managerId") UUID managerId);
+
+    /**
+     * Sprint 27A (MSS foundation, PRD FR-5) — a manager's direct reports, tenant-scoped and
+     * paginated. {@code tenantId} is part of the query itself (not left to the caller to filter
+     * afterward) so a manager can never be handed a report from a different tenant even if {@code
+     * manager_employee_id} data were ever corrupted across tenants (PRD §12/finding 4.1).
+     */
+    @Query("select e from Employee e where e.tenantId = :tenantId and e.manager.id = :managerId")
+    Page<Employee> findAllByTenantIdAndManagerId(
+            @Param("tenantId") UUID tenantId,
+            @Param("managerId") UUID managerId,
+            Pageable pageable);
 
     List<Employee> findAllByUserIdAndTenantId(UUID userId, UUID tenantId);
 

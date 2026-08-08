@@ -1,6 +1,7 @@
 package com.ewos.shared.purge;
 
 import com.ewos.identity.infrastructure.persistence.RefreshTokenRepository;
+import com.ewos.shared.audit.CrossEmployeeAccessLogRepository;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,10 +34,15 @@ public class PurgeJob {
 
     private final PurgeProperties properties;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final CrossEmployeeAccessLogRepository mssAccessLogRepository;
 
-    public PurgeJob(PurgeProperties properties, RefreshTokenRepository refreshTokenRepository) {
+    public PurgeJob(
+            PurgeProperties properties,
+            RefreshTokenRepository refreshTokenRepository,
+            CrossEmployeeAccessLogRepository mssAccessLogRepository) {
         this.properties = properties;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.mssAccessLogRepository = mssAccessLogRepository;
     }
 
     /**
@@ -52,6 +58,7 @@ public class PurgeJob {
         log.info("Purge sweep starting");
         purgeExpiredRefreshTokens();
         purgeSoftDeletedRows();
+        purgeMssAccessLogs();
         log.info("Purge sweep finished");
     }
 
@@ -72,6 +79,16 @@ public class PurgeJob {
         log.info(
                 "Soft-deleted-row purge is enabled but no per-module purger is implemented yet."
                         + " Add module-specific queries here in a follow-up WP.");
+    }
+
+    /** Sprint 27A — PRD §11/§14 data-retention requirement (audit finding 3.7). */
+    void purgeMssAccessLogs() {
+        if (!properties.mssAccessLogsEnabled()) {
+            return;
+        }
+        Instant cutoff = Instant.now().minus(properties.mssAccessLogRetention());
+        int deleted = mssAccessLogRepository.deleteAllOlderThan(cutoff);
+        log.info("Purged {} MSS access log rows older than {}", deleted, cutoff);
     }
 
     // Provided so integration tests can trigger the run without waiting for cron.

@@ -33,6 +33,10 @@ app:
     rate-limit:
       # Disable IP throttling in tests — MockMvc reuses "127.0.0.1" and would trip.
       enabled: false
+    ess-mss-rate-limit:
+      # Same reasoning as auth rate-limit above — MockMvc reuses "127.0.0.1" and integration
+      # tests share one JVM-wide InMemoryRateLimiter instance across many self-service calls.
+      enabled: false
   cors:
     allowed-origins: http://localhost:5173,http://localhost:3000
 

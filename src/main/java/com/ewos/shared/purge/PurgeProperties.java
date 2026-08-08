@@ -13,8 +13,10 @@ public record PurgeProperties(
         String cron,
         Duration expiredRefreshTokenRetention,
         Duration softDeletedRowRetention,
+        Duration mssAccessLogRetention,
         boolean expiredRefreshTokensEnabled,
-        boolean softDeletedRowsEnabled) {
+        boolean softDeletedRowsEnabled,
+        boolean mssAccessLogsEnabled) {
 
     public PurgeProperties {
         if (cron == null || cron.isBlank()) {
@@ -26,6 +28,11 @@ public record PurgeProperties(
         }
         if (softDeletedRowRetention == null || softDeletedRowRetention.isNegative()) {
             softDeletedRowRetention = Duration.ofDays(365);
+        }
+        if (mssAccessLogRetention == null || mssAccessLogRetention.isNegative()) {
+            // PRD §11/§14 (audit finding 3.7) — an access log, not a business record; a shorter
+            // default than soft-deleted rows is appropriate.
+            mssAccessLogRetention = Duration.ofDays(180);
         }
     }
 }
