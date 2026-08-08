@@ -108,6 +108,15 @@ public class Employee extends AuditableEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    /**
+     * Sprint 27A — minimal DPDP Act 2023 readiness hook (PRD §13.1). Null means the employee has
+     * not yet acknowledged the ESS privacy notice; set once, on first acknowledgment, by the future
+     * My Profile self-service (Sprint 27D). Not surfaced on any response DTO yet — no endpoint
+     * reads or writes this field in Sprint 27A.
+     */
+    @Column(name = "privacy_notice_acknowledged_at")
+    private Instant privacyNoticeAcknowledgedAt;
+
     @Version
     @Column(name = "version_no", nullable = false)
     private long versionNo;
@@ -274,6 +283,14 @@ public class Employee extends AuditableEntity {
 
     public Instant getDeletedAt() {
         return deletedAt;
+    }
+
+    public Instant getPrivacyNoticeAcknowledgedAt() {
+        return privacyNoticeAcknowledgedAt;
+    }
+
+    public void setPrivacyNoticeAcknowledgedAt(Instant privacyNoticeAcknowledgedAt) {
+        this.privacyNoticeAcknowledgedAt = privacyNoticeAcknowledgedAt;
     }
 
     public long getVersionNo() {

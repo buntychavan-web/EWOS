@@ -5,6 +5,9 @@ import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.domain.PayslipBrandingConfiguration;
 import com.ewos.payroll.domain.PayslipLine;
 import com.ewos.payroll.domain.PayslipPasswordPolicy;
+import com.ewos.shared.document.EmbeddedFonts;
+import com.ewos.shared.document.PdfFontLoader;
+import com.ewos.shared.document.PdfTextLayout;
 import com.ewos.shared.exception.ApiException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,8 +24,6 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +32,16 @@ import org.springframework.stereotype.Service;
  * calls; the caller decides whether to stream the result directly or bundle several into a ZIP for
  * bulk download. Uses PDFBox's low-level content-stream API directly rather than an HTML/CSS
  * templating layer, keeping the dependency footprint to the one library.
+ *
+ * <p><strong>Sprint 27A Unicode hotfix (audit finding 1.5 / PRD FR-11):</strong> previously used
+ * PDFBox's Standard-14 Helvetica fonts, which use a single-byte WinAnsiEncoding and throw {@code
+ * IllegalArgumentException} for any character outside it — the same bug Sprint 26A P1-3 fixed for
+ * {@code ExitDocumentPdfGenerationService}, making this service unusable for Indian employee names
+ * or other non-Latin-1 text on the payslip. Now loads the same embedded GNU FreeSans font via the
+ * shared {@code com.ewos.shared.document} utility. Unlike the removed {@code PDType1Font} fields,
+ * the embedded {@code PDType0Font} is bound to one {@link PDDocument} and cannot be a {@code
+ * static} field — every private layout method below now takes the regular/bold {@link PDFont} as a
+ * parameter instead of referencing a shared static.
  *
  * <p>Employer branding ({@link PayslipBrandingConfiguration}) is text-only — see that class's
  * javadoc for why a logo image is not rendered yet. Password protection ({@link #generate}'s {@code
@@ -46,9 +57,6 @@ public class PayslipPdfGenerationService {
     private static final float PAGE_WIDTH = PDRectangle.A4.getWidth();
     private static final float PAGE_HEIGHT = PDRectangle.A4.getHeight();
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MMM-yyyy");
-    private static final PDFont FONT_REGULAR = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
-    private static final PDFont FONT_BOLD =
-            new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
@@ -60,17 +68,37 @@ public class PayslipPdfGenerationService {
     public byte[] generate(
             Payslip payslip, PayslipBrandingConfiguration branding, String password) {
         try (PDDocument document = new PDDocument()) {
+            PDFont fontRegular =
+                    PdfFontLoader.loadEmbeddedFont(document, EmbeddedFonts.FREE_SANS_REGULAR);
+            PDFont fontBold =
+                    PdfFontLoader.loadEmbeddedFont(document, EmbeddedFonts.FREE_SANS_BOLD);
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
 
             try (PDPageContentStream content = new PDPageContentStream(document, page)) {
                 float y = PAGE_HEIGHT - MARGIN;
-                y = writeHeader(content, branding, y);
-                y = writeEmployeeBlock(content, payslip, y);
-                y = writeLinesTable(content, payslip, PayComponentKind.EARNING, "Earnings", y);
-                y = writeLinesTable(content, payslip, PayComponentKind.DEDUCTION, "Deductions", y);
-                writeSummary(content, payslip, y);
-                writeFooter(content, branding);
+                y = writeHeader(content, fontRegular, fontBold, branding, y);
+                y = writeEmployeeBlock(content, fontRegular, fontBold, payslip, y);
+                y =
+                        writeLinesTable(
+                                content,
+                                fontRegular,
+                                fontBold,
+                                payslip,
+                                PayComponentKind.EARNING,
+                                "Earnings",
+                                y);
+                y =
+                        writeLinesTable(
+                                content,
+                                fontRegular,
+                                fontBold,
+                                payslip,
+                                PayComponentKind.DEDUCTION,
+                                "Deductions",
+                                y);
+                writeSummary(content, fontBold, payslip, y);
+                writeFooter(content, fontRegular, branding);
             }
 
             if (password != null && !password.isBlank()) {
@@ -107,12 +135,16 @@ public class PayslipPdfGenerationService {
     }
 
     private static float writeHeader(
-            PDPageContentStream content, PayslipBrandingConfiguration branding, float startY)
+            PDPageContentStream content,
+            PDFont fontRegular,
+            PDFont fontBold,
+            PayslipBrandingConfiguration branding,
+            float startY)
             throws IOException {
         float y = startY;
         String displayName = branding != null ? branding.getDisplayName() : "Payslip";
         content.beginText();
-        content.setFont(FONT_BOLD, 16);
+        content.setFont(fontBold, 16);
         content.newLineAtOffset(MARGIN, y);
         content.showText(displayName);
         content.endText();
@@ -127,7 +159,7 @@ public class PayslipPdfGenerationService {
                     continue;
                 }
                 content.beginText();
-                content.setFont(FONT_REGULAR, 9);
+                content.setFont(fontRegular, 9);
                 content.newLineAtOffset(MARGIN, y);
                 content.showText(line);
                 content.endText();
@@ -136,7 +168,7 @@ public class PayslipPdfGenerationService {
         }
         y -= 10;
         content.beginText();
-        content.setFont(FONT_BOLD, 13);
+        content.setFont(fontBold, 13);
         content.newLineAtOffset(MARGIN, y);
         content.showText("Payslip");
         content.endText();
@@ -144,7 +176,12 @@ public class PayslipPdfGenerationService {
     }
 
     private static float writeEmployeeBlock(
-            PDPageContentStream content, Payslip payslip, float startY) throws IOException {
+            PDPageContentStream content,
+            PDFont fontRegular,
+            PDFont fontBold,
+            Payslip payslip,
+            float startY)
+            throws IOException {
         float y = startY;
         String[][] rows = {
             {"Employee Name", nullToEmpty(payslip.getEmployeeNameSnapshot())},
@@ -158,12 +195,12 @@ public class PayslipPdfGenerationService {
         };
         for (String[] row : rows) {
             content.beginText();
-            content.setFont(FONT_BOLD, 10);
+            content.setFont(fontBold, 10);
             content.newLineAtOffset(MARGIN, y);
             content.showText(row[0] + ":");
             content.endText();
             content.beginText();
-            content.setFont(FONT_REGULAR, 10);
+            content.setFont(fontRegular, 10);
             content.newLineAtOffset(MARGIN + 150, y);
             content.showText(row[1]);
             content.endText();
@@ -174,6 +211,8 @@ public class PayslipPdfGenerationService {
 
     private static float writeLinesTable(
             PDPageContentStream content,
+            PDFont fontRegular,
+            PDFont fontBold,
             Payslip payslip,
             PayComponentKind kind,
             String heading,
@@ -187,7 +226,7 @@ public class PayslipPdfGenerationService {
                         .toList();
 
         content.beginText();
-        content.setFont(FONT_BOLD, 11);
+        content.setFont(fontBold, 11);
         content.newLineAtOffset(MARGIN, y);
         content.showText(heading);
         content.endText();
@@ -195,16 +234,16 @@ public class PayslipPdfGenerationService {
 
         for (PayslipLine line : lines) {
             content.beginText();
-            content.setFont(FONT_REGULAR, 10);
+            content.setFont(fontRegular, 10);
             content.newLineAtOffset(MARGIN + 10, y);
             content.showText(nullToEmpty(line.getComponentNameSnapshot()));
             content.endText();
 
             String amountText = formatAmount(line.getAmount());
             content.beginText();
-            content.setFont(FONT_REGULAR, 10);
+            content.setFont(fontRegular, 10);
             content.newLineAtOffset(
-                    PAGE_WIDTH - MARGIN - textWidth(FONT_REGULAR, 10, amountText), y);
+                    PAGE_WIDTH - MARGIN - PdfTextLayout.textWidth(fontRegular, amountText, 10), y);
             content.showText(amountText);
             content.endText();
             y -= 14;
@@ -212,7 +251,8 @@ public class PayslipPdfGenerationService {
         return y - 14;
     }
 
-    private static float writeSummary(PDPageContentStream content, Payslip payslip, float startY)
+    private static float writeSummary(
+            PDPageContentStream content, PDFont fontBold, Payslip payslip, float startY)
             throws IOException {
         float y = startY;
         String[][] rows = {
@@ -222,13 +262,14 @@ public class PayslipPdfGenerationService {
         };
         for (String[] row : rows) {
             content.beginText();
-            content.setFont(FONT_BOLD, 11);
+            content.setFont(fontBold, 11);
             content.newLineAtOffset(MARGIN, y);
             content.showText(row[0] + ":");
             content.endText();
             content.beginText();
-            content.setFont(FONT_BOLD, 11);
-            content.newLineAtOffset(PAGE_WIDTH - MARGIN - textWidth(FONT_BOLD, 11, row[1]), y);
+            content.setFont(fontBold, 11);
+            content.newLineAtOffset(
+                    PAGE_WIDTH - MARGIN - PdfTextLayout.textWidth(fontBold, row[1], 11), y);
             content.showText(row[1]);
             content.endText();
             y -= 16;
@@ -237,20 +278,21 @@ public class PayslipPdfGenerationService {
     }
 
     private static void writeFooter(
-            PDPageContentStream content, PayslipBrandingConfiguration branding) throws IOException {
+            PDPageContentStream content, PDFont fontRegular, PayslipBrandingConfiguration branding)
+            throws IOException {
         if (branding == null) {
             return;
         }
         if (branding.getSupportEmail() != null && !branding.getSupportEmail().isBlank()) {
             content.beginText();
-            content.setFont(FONT_REGULAR, 8);
+            content.setFont(fontRegular, 8);
             content.newLineAtOffset(MARGIN, MARGIN);
             content.showText("Support: " + branding.getSupportEmail());
             content.endText();
         }
         if (branding.getFooterNote() != null && !branding.getFooterNote().isBlank()) {
             content.beginText();
-            content.setFont(FONT_REGULAR, 8);
+            content.setFont(fontRegular, 8);
             content.newLineAtOffset(MARGIN, MARGIN - 12);
             content.showText(branding.getFooterNote());
             content.endText();
@@ -274,10 +316,6 @@ public class PayslipPdfGenerationService {
         byte[] bytes = new byte[24];
         SECURE_RANDOM.nextBytes(bytes);
         return java.util.Base64.getEncoder().encodeToString(bytes);
-    }
-
-    private static float textWidth(PDFont font, float fontSize, String text) throws IOException {
-        return font.getStringWidth(text) / 1000f * fontSize;
     }
 
     private static String formatAmount(BigDecimal amount) {

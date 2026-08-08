@@ -1,0 +1,13 @@
+-- Sprint 27A — ESS/MSS foundation, item 9.
+--
+-- Minimal DPDP Act 2023 readiness hook (PRD §13.1): records when an employee first acknowledges
+-- the ESS privacy notice. Nullable, additive, backward compatible — every existing employee row
+-- starts unacknowledged (NULL) rather than being backfilled with a fabricated timestamp. No
+-- consuming endpoint exists yet; this is the data model only, ready for Sprint 27D's My Profile
+-- self-service to read/write.
+--
+-- Deliberately not the 11-table DPDP compliance platform referenced in the audit (consent
+-- records, DSAR workflow, erasure requests, breach notification, DPO assignment, grievance
+-- redressal, cross-border transfer, DPIA) — that infrastructure does not exist anywhere in EWOS
+-- (verified by repository search) and is out of this sprint's scope; see PRD §13.2.
+ALTER TABLE employees ADD COLUMN privacy_notice_acknowledged_at TIMESTAMPTZ;

@@ -1,19 +1,18 @@
 package com.ewos.exit.application;
 
+import com.ewos.shared.document.EmbeddedFonts;
+import com.ewos.shared.document.PdfFontLoader;
+import com.ewos.shared.document.PdfTextLayout;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
-import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,7 +26,10 @@ import org.springframework.stereotype.Service;
  * when asked to render a character outside it — Devanagari and most other non-Latin-1 text included
  * — which made this service unsuitable for Indian names and other multilingual letter content.
  * FreeSans is a full Unicode TrueType font; PDFBox embeds only the glyph subset actually used, so
- * output size stays close to what the Standard-14 fonts produced.
+ * output size stays close to what the Standard-14 fonts produced. Font loading and text
+ * measurement/wrapping are shared with {@code PayslipPdfGenerationService} via {@code
+ * com.ewos.shared.document} (Sprint 27A, audit finding 8.2 — this class previously duplicated
+ * both).
  */
 @Service
 public class ExitDocumentPdfGenerationService {
@@ -38,14 +40,14 @@ public class ExitDocumentPdfGenerationService {
     private static final float BODY_FONT_SIZE = 11f;
     private static final float LINE_HEIGHT = 16f;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MMM-yyyy");
-    private static final String FONT_REGULAR_RESOURCE = "/fonts/FreeSans.ttf";
-    private static final String FONT_BOLD_RESOURCE = "/fonts/FreeSansBold.ttf";
 
     /** Renders one letter. {@code body} is the already token-substituted plain text. */
     public byte[] generate(String title, String body, LocalDate issueDate) {
         try (PDDocument document = new PDDocument()) {
-            PDFont fontRegular = loadFont(document, FONT_REGULAR_RESOURCE);
-            PDFont fontBold = loadFont(document, FONT_BOLD_RESOURCE);
+            PDFont fontRegular =
+                    PdfFontLoader.loadEmbeddedFont(document, EmbeddedFonts.FREE_SANS_REGULAR);
+            PDFont fontBold =
+                    PdfFontLoader.loadEmbeddedFont(document, EmbeddedFonts.FREE_SANS_BOLD);
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
 
@@ -61,16 +63,6 @@ public class ExitDocumentPdfGenerationService {
             return out.toByteArray();
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to generate exit document PDF", e);
-        }
-    }
-
-    private static PDFont loadFont(PDDocument document, String resourcePath) throws IOException {
-        try (InputStream in =
-                ExitDocumentPdfGenerationService.class.getResourceAsStream(resourcePath)) {
-            if (in == null) {
-                throw new IOException("Embedded font resource not found: " + resourcePath);
-            }
-            return PDType0Font.load(document, in, true);
         }
     }
 
@@ -102,7 +94,8 @@ public class ExitDocumentPdfGenerationService {
         float y = startY;
         float maxWidth = PAGE_WIDTH - 2 * MARGIN;
         for (String paragraph : (body == null ? "" : body).split("\n", -1)) {
-            for (String line : wrap(fontRegular, paragraph, maxWidth)) {
+            for (String line :
+                    PdfTextLayout.wrap(fontRegular, paragraph, BODY_FONT_SIZE, maxWidth)) {
                 if (y < MARGIN) {
                     return;
                 }
@@ -115,32 +108,5 @@ public class ExitDocumentPdfGenerationService {
             }
             y -= LINE_HEIGHT / 2;
         }
-    }
-
-    private static List<String> wrap(PDFont fontRegular, String paragraph, float maxWidth)
-            throws IOException {
-        List<String> lines = new ArrayList<>();
-        if (paragraph.isBlank()) {
-            lines.add("");
-            return lines;
-        }
-        StringBuilder current = new StringBuilder();
-        for (String word : paragraph.split(" ")) {
-            String candidate = current.isEmpty() ? word : current + " " + word;
-            if (textWidth(fontRegular, candidate) > maxWidth && !current.isEmpty()) {
-                lines.add(current.toString());
-                current = new StringBuilder(word);
-            } else {
-                current = new StringBuilder(candidate);
-            }
-        }
-        if (!current.isEmpty()) {
-            lines.add(current.toString());
-        }
-        return lines;
-    }
-
-    private static float textWidth(PDFont fontRegular, String text) throws IOException {
-        return fontRegular.getStringWidth(text) / 1000f * BODY_FONT_SIZE;
     }
 }

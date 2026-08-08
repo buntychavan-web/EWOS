@@ -127,4 +127,27 @@ class PayslipPdfGenerationServiceTest {
                                         p, branding(PayslipPasswordPolicy.DATE_OF_BIRTH_DDMMYYYY)))
                 .isInstanceOf(ApiException.class);
     }
+
+    @Test
+    void generateRendersIndianNamesAndDevanagariTextWithoutThrowing() throws IOException {
+        // Sprint 27A hotfix (audit finding 1.5): this service previously used PDFBox's Standard-14
+        // Helvetica fonts, which use a single-byte WinAnsiEncoding and throw
+        // IllegalArgumentException for any character outside it — the same bug Sprint 26A P1-3
+        // fixed for ExitDocumentPdfGenerationService. Must now render cleanly, mirroring that
+        // service's regression test.
+        Payslip p = payslip();
+        p.setEmployeeNameSnapshot("Priyāṅkā Śrīvāstava (प्रियांका श्रीवास्तव)");
+        PayslipBrandingConfiguration branding = branding(PayslipPasswordPolicy.NONE);
+        branding.setDisplayName("Rāghavendra Iyer Enterprises Pvt. Ltd.");
+        branding.setFooterNote("धन्यवाद — thank you for your service.");
+
+        byte[] pdf = service.generate(p, branding, null);
+
+        assertThat(pdf).isNotEmpty();
+        assertThat(new String(pdf, 0, 5, java.nio.charset.StandardCharsets.US_ASCII))
+                .isEqualTo("%PDF-");
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertThat(doc.getNumberOfPages()).isEqualTo(1);
+        }
+    }
 }
