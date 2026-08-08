@@ -1,13 +1,17 @@
 # Sprint 27 — Employee Self Service (ESS) & Manager Self Service (MSS)
 
-## Product Requirements Document (Revision 2 — post Chief Software Architect audit)
+## Product Requirements Document (Revision 3 — APPROVED WITH MINOR CHANGES)
 
-**Status:** Revised draft for Sprint 27 planning. No code has been written against this document.
+**Status:** Approved for Sprint 27 planning (final independent Chief Software Architect review:
+APPROVED WITH MINOR CHANGES). No code has been written against this document.
 **As of:** 2026-08-06, analyzed against `main` @ `1fbe12b` (post Sprint 26/26A).
 **Revision 1:** committed `f9877d3` (2026-08-06).
-**Revision 2 (this document):** incorporates the Chief Software Architect audit of Revision 1
-(`Chief Software Architect Audit Report — Sprint 27 ESS & MSS PRD`, dated 2026-08-06). See §26 for
-the full findings disposition and the closing summary message for accept/defer rationale.
+**Revision 2:** committed `f9c4e7b` (2026-08-06) — incorporated the Chief Software Architect audit
+of Revision 1 (`Chief Software Architect Audit Report — Sprint 27 ESS & MSS PRD`, dated
+2026-08-06). See §26 for the full findings disposition and accept/defer rationale.
+**Revision 3 (this document):** three clarifications from the final approval review — bulk
+approval transaction semantics (§5.4, §15, §17), employee-ID enumeration protection on MSS
+target lookups (§5.3, §17), and an explicit widget cache-invalidation mechanism (§5.1).
 **Companion documents:** [`EWOS_PRODUCT_ROADMAP.md`](./EWOS_PRODUCT_ROADMAP.md),
 [`PROJECT_STATUS.md`](./PROJECT_STATUS.md), [`RELEASE_NOTES_SPRINT_26.md`](./RELEASE_NOTES_SPRINT_26.md).
 
@@ -257,13 +261,39 @@ explicitly **not** GraphQL or a BFF layer (both are out of scope per explicit in
 - `GET /api/v1/self-service/widgets/notifications` (unread count)
 - `GET /api/v1/self-service/widgets/approvals` (manager only — pending approval count)
 
-Each widget: independently cacheable (Redis, TTL 60–300s, cache-aside, invalidated on the
-underlying module's write events), independently timeout-bounded, and independently failable — one
-slow/broken module degrades one widget, not the whole screen. The frontend composes them; no new
-aggregation service owns cross-module business logic. This directly satisfies R4's requirement to
-eliminate the god-endpoint anti-pattern while using option (c) from the audit's own menu of three
-alternatives (lightweight widget endpoints) rather than option (a) or (b) (GraphQL / BFF), which
-would themselves be a scope expansion this revision does not take.
+Each widget: independently cacheable (Redis, cache-aside, existing `RedisConfig`), independently
+timeout-bounded, and independently failable — one slow/broken module degrades one widget, not the
+whole screen. The frontend composes them; no new aggregation service owns cross-module business
+logic. This directly satisfies R4's requirement to eliminate the god-endpoint anti-pattern while
+using option (c) from the audit's own menu of three alternatives (lightweight widget endpoints)
+rather than option (a) or (b) (GraphQL / BFF), which would themselves be a scope expansion this
+revision does not take.
+
+**Cache invalidation mechanism (audit-driven clarification):** two layers, both reusing existing
+platform infrastructure — no new eviction plumbing is introduced.
+
+1. **TTL as the safety net.** Every widget cache entry carries a 60–300s TTL (shorter for
+   fast-changing widgets like `approvals`, longer for slow-changing ones like `payroll`). This
+   bounds staleness even if a specific invalidation event is ever missed, and is the only
+   mechanism for widgets with no natural write-event hook (e.g. `notifications`' unread count,
+   which changes on read as well as write).
+2. **Event-driven eviction as the primary path**, reusing the platform's existing
+   `@TransactionalEventListener(phase = AFTER_COMMIT)` pattern (§1.3, §9.1) rather than inventing a
+   new hook: the same domain events each module already publishes to drive
+   `*NotificationEventListener` (e.g. Leave approval/cancellation, Payslip finalization, Goal
+   progress update, a new approval task being assigned) are also consumed by a small
+   `WidgetCacheEvictionListener` per module — added alongside the existing notification listener,
+   not replacing it — that evicts the affected `tenantId:employeeId:widgetName` Redis key(s)
+   on commit. This is the same "listen to an already-published domain event, act after commit"
+   shape as every existing `*NotificationEventListener` in the codebase; it does not require any
+   module to publish a new kind of event, only to gain one more listener on events it already
+   fires.
+
+Where a module's write path does not already publish a domain event the widget could hook (rare,
+since notification dispatch already covers most write paths that matter to a widget), the widget
+falls back to TTL-only expiry rather than justifying a new event being added purely for cache
+invalidation — consistent with this PRD's "no new cross-cutting infrastructure beyond what's
+already there" position (§1.3).
 
 ### 5.2 FR-4 — Sensitive profile field changes — **hardened**
 
@@ -285,15 +315,27 @@ audit-driven additions:
 - Target-employee-ID validation on every MSS request (finding 3.6) performs, server-side, in this
   order: (1) same-tenant check, (2) `Employee.manager == callerEmployeeId` check, (3)
   active-employment-status check, (4) audit log entry (success or failure) — closing the IDOR
-  vector the audit correctly identified as underspecified.
+  vector the audit correctly identified as underspecified. **Enumeration protection:** a failure
+  at any of steps (1)–(3) returns the identical `404 Not Found` response as a genuinely
+  non-existent employee ID — see §17. The three checks differ internally (and each failure reason
+  is captured distinctly in the audit log from step (4), for legitimate incident investigation),
+  but nothing in the HTTP response lets a caller distinguish "this ID doesn't exist," "this
+  employee exists but isn't your report," and "this employee exists in another tenant."
 
 ### 5.4 FR-7/FR-8 — Unified Approvals Inbox — **hardened**
 
 - Cursor-based pagination (stable ordering on insert), per finding 7.3.
 - **New (finding 2.3):** bulk act — a manager may select multiple pending tasks of the same type
-  and approve/reject them in one call, which internally loops existing
-  `WorkflowTaskService.claim`/`.complete` calls inside one transaction. No new authorization logic;
-  same per-task checks apply to each item in the batch.
+  and approve/reject them in one call. **Transaction model, made explicit:** each item is
+  processed in its own independent transaction — the batch is *not* wrapped in one all-or-nothing
+  transaction. This is a deliberate choice, not an oversight: a single 51-item transaction would
+  mean one bad item (already-claimed, stale version, concurrently withdrawn) rolls back 50 valid
+  approvals along with it, which is worse for the manager than getting 50 successes and 1 clearly
+  reported failure. Per-item independence is also what makes the `207 Multi-Status`-style response
+  contract in §17 truthful — a batch endpoint cannot report genuine partial success if it runs as
+  one atomic transaction. Internally this loops existing `WorkflowTaskService.claim`/`.complete`
+  calls, each in its own transaction boundary; no new authorization logic — the same per-task
+  checks apply to each item as if it were actioned individually.
 - **New (finding 2.1):** the inbox screen surfaces the existing `WorkflowDelegation` capability —
   "delegate my approvals" and "acting for [delegator]" banner — wiring the UI/API surface onto the
   already-existing `/api/v1/workflow/delegations` endpoints. No new backend service.
@@ -548,7 +590,7 @@ Revision 1's §11 is preserved and expanded:
 | Single widget endpoint, cache miss | p95 < 500ms | Single-module query, no fan-out |
 | Team roster (100 direct reports) | p95 < 300ms | Paginated, indexed `manager_employee_id` query (index already exists) |
 | Approvals inbox (paginated) | p95 < 400ms | Cursor pagination over `WorkflowTaskController.myTasks`'s existing query |
-| Bulk approve (up to 50 items) | p95 < 2s | Single transaction, batched existing single-item logic |
+| Bulk approve (up to 50 items) | p95 < 2s | Independent per-item transactions (§5.4), batched existing single-item logic — not one atomic transaction |
 | 10,000 concurrent 9:00 AM logins (100K-employee tenant) | No connection pool exhaustion | Independent, cacheable widgets (not one fan-out call) + documented HikariCP sizing (finding 6.4) reviewed before go-live, not assumed |
 | Document download (payslip/exit letter PDF) | p95 < 1s for cached/pre-rendered, < 3s for on-demand generation | Existing PDF generation path, unchanged; app-server-served (CDN explicitly deferred, §25, per instruction) |
 
@@ -596,14 +638,23 @@ this is confirmed, not built.
 All ESS/MSS endpoints reuse the existing `GlobalExceptionHandler`/`ApiError` envelope. Specific
 mappings relevant to new MSS behavior:
 
+**Enumeration protection (audit-driven clarification):** for every MSS target-employee lookup, a
+target ID that doesn't exist, one that belongs to another tenant, and one that exists but isn't
+the caller's direct report **all return the exact same response** — `404 Not Found` with the
+identical generic message. A distinct `403 Forbidden` for "exists but not your report" is
+deliberately **not** used, because it would let a caller enumerate valid employee IDs by
+distinguishing "not yours" (403) from "no such employee" (404). The three cases are told apart
+internally only in the audit log (§14/§5.3's access-log entry, which does capture the real reason
+for investigation purposes) — never in the HTTP response.
+
 | Scenario | HTTP status | `ApiError.message` (indicative) |
 |---|---|---|
-| Manager requests a non-report's data | `403 Forbidden` | "This employee does not report to you" |
-| Manager requests a report from a different tenant (should be structurally impossible, defense-in-depth) | `403 Forbidden` | Generic — never confirms whether the target ID exists |
-| Manager requests an unknown employee ID | `404 Not Found` | "Employee not found" |
+| Manager requests an employee ID that doesn't exist | `404 Not Found` | "Employee not found" |
+| Manager requests an employee who exists but isn't a direct report | `404 Not Found` | "Employee not found" (identical to the above — see enumeration protection note) |
+| Manager requests an employee ID belonging to another tenant | `404 Not Found` | "Employee not found" (identical to the above — never distinguished at the HTTP layer) |
 | Field-ACL-masked field requested explicitly | Field omitted from response (not an error) | N/A — matches §12's "masked, not denied" design |
 | Duplicate `Idempotency-Key` | `200`/original status, original body | Returns the prior result, not an error |
-| Bulk-act partial failure | `207 Multi-Status`-style body: `{results: [{id, status, error?}]}` | Every item in a batch reports independently — a bad item does not fail the whole batch |
+| Bulk-act partial failure | `207 Multi-Status`-style body: `{results: [{id, status, error?}]}` | Consistent with §5.4's per-item-transaction model: every item is committed or fails independently, so a bad item genuinely does not roll back or block the others |
 
 ---
 
