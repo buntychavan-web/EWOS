@@ -129,7 +129,7 @@ public class ManagerApprovalsService {
         List<TimesheetResponse> timesheetItems =
                 timesheets.pendingForManager(tenantId, effectiveManagerId, window).getContent();
         List<AppraisalResponse> performanceItems =
-                performance.pendingForManager(tenantId, effectiveManagerId);
+                performance.pendingForManager(tenantId, effectiveManagerId, window).getContent();
         List<ProbationRecordResponse> probationItems =
                 probation.pendingForManager(tenantId, effectiveManagerId, window).getContent();
         List<JobRequisitionResponse> requisitionItems =

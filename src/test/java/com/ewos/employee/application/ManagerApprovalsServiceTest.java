@@ -94,7 +94,9 @@ class ManagerApprovalsServiceTest {
         lenient()
                 .when(timesheets.pendingForManager(any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
-        lenient().when(performance.pendingForManager(any(), any())).thenReturn(List.of());
+        lenient()
+                .when(performance.pendingForManager(any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
         lenient()
                 .when(probation.pendingForManager(any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -117,7 +119,11 @@ class ManagerApprovalsServiceTest {
                         org.mockito.ArgumentMatchers.eq(tenantId),
                         org.mockito.ArgumentMatchers.eq(callerEmployeeId),
                         any());
-        verify(performance).pendingForManager(tenantId, callerEmployeeId);
+        verify(performance)
+                .pendingForManager(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(callerEmployeeId),
+                        any());
     }
 
     @Test

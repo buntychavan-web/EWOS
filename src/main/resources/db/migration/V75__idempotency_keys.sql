@@ -16,6 +16,12 @@ CREATE TABLE idempotency_keys (
     endpoint VARCHAR(200) NOT NULL,
     idempotency_key VARCHAR(200) NOT NULL,
     response_body TEXT,
+    -- Failure marker: set when the claimed action threw, so a retry with the same key replays
+    -- the original failure instead of either re-running the action or getting a misleading 409
+    -- (409 is reserved for a claim that is still genuinely in flight — see IdempotencyService).
+    failed BOOLEAN NOT NULL DEFAULT FALSE,
+    failure_status INT,
+    failure_message TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- IdempotencyKey extends AuditableEntity, which maps these two columns on every entity.

@@ -105,6 +105,67 @@ class IdempotencyServiceTest {
     }
 
     @Test
+    void firstCallPersistsAFailureMarkerAndRethrowsWhenTheActionThrows() {
+        when(repository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+        // Deliberately NOT 409, so the later replay test can prove it returns the *original*
+        // status rather than the generic "still in flight" 409 the conflict path also uses.
+        ApiException failure = new ApiException(HttpStatus.NOT_FOUND, "Timesheet not found");
+
+        assertThatThrownBy(
+                        () ->
+                                service.execute(
+                                        tenantId,
+                                        actorId,
+                                        "ep",
+                                        "key-1",
+                                        String.class,
+                                        () -> {
+                                            throw failure;
+                                        }))
+                .isSameAs(failure);
+
+        org.mockito.ArgumentCaptor<IdempotencyKey> captor =
+                org.mockito.ArgumentCaptor.forClass(IdempotencyKey.class);
+        verify(repository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().isFailed()).isTrue();
+        assertThat(captor.getValue().getFailureStatus()).isEqualTo(HttpStatus.NOT_FOUND.value());
+        assertThat(captor.getValue().getFailureMessage()).isEqualTo("Timesheet not found");
+        assertThat(captor.getValue().getResponseBody()).isNull();
+    }
+
+    @Test
+    void retryOfTheSameKeyAfterAFailureRethrowsTheOriginalFailureWithoutReRunningTheAction() {
+        when(repository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("dup"));
+        IdempotencyKey failed = new IdempotencyKey();
+        failed.setFailed(true);
+        failed.setFailureStatus(HttpStatus.NOT_FOUND.value());
+        failed.setFailureMessage("Timesheet not found");
+        when(repository.findByTenantIdAndActorUserIdAndEndpointAndIdempotencyKeyValue(
+                        tenantId, actorId, "ep", "key-1"))
+                .thenReturn(Optional.of(failed));
+        AtomicInteger calls = new AtomicInteger();
+
+        assertThatThrownBy(
+                        () ->
+                                service.execute(
+                                        tenantId,
+                                        actorId,
+                                        "ep",
+                                        "key-1",
+                                        String.class,
+                                        () -> {
+                                            calls.incrementAndGet();
+                                            return "should-not-run";
+                                        }))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                // Proves this is the replayed original failure (404), NOT the generic
+                // still-in-flight 409 the conflict path below returns.
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(calls.get()).isZero();
+    }
+
+    @Test
     void concurrentDuplicateInFlightReturnsConflictInsteadOfReplayingAnEmptyResponse() {
         when(repository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("dup"));
         IdempotencyKey inFlight = new IdempotencyKey();

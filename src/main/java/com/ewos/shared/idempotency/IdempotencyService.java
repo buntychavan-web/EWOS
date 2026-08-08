@@ -18,11 +18,12 @@ import org.springframework.stereotype.Service;
  *
  * <p>Protocol: first caller with a given {@code (tenant, actor, endpoint, key)} tuple inserts a
  * claim row and wins the race (enforced by the table's unique constraint); it then performs the
- * action and stores the JSON response on that same row. A second caller with the same tuple loses
- * the insert, and either replays the first caller's stored response (if it has finished) or gets a
- * {@code 409} if the first call is still in flight. A caller that starts a fresh action after a
- * crash mid-claim (row inserted, response never stored) is a known limitation — see the PR
- * description.
+ * action and stores either the JSON response or, if the action throws, a failure marker on that
+ * same row. A second caller with the same tuple loses the insert, and either replays the first
+ * caller's stored outcome — success response or the original failure, re-thrown as-is — or gets a
+ * {@code 409} only while the first call is still genuinely in flight (no outcome recorded yet). A
+ * caller that starts a fresh action after a crash mid-claim (row inserted, neither outcome ever
+ * stored) is a known limitation — see the PR description.
  */
 @Service
 public class IdempotencyService {
@@ -57,7 +58,16 @@ public class IdempotencyService {
             return replayOrConflict(tenantId, actorUserId, endpoint, idempotencyKey, responseType);
         }
 
-        T result = action.get();
+        T result;
+        try {
+            result = action.get();
+        } catch (RuntimeException actionFailed) {
+            claim.setFailed(true);
+            claim.setFailureStatus(statusOf(actionFailed));
+            claim.setFailureMessage(actionFailed.getMessage());
+            repository.save(claim);
+            throw actionFailed;
+        }
         claim.setResponseBody(writeJson(result));
         repository.save(claim);
         return result;
@@ -79,12 +89,28 @@ public class IdempotencyService {
                                                 HttpStatus.CONFLICT,
                                                 "A request with this Idempotency-Key is already"
                                                         + " being processed"));
+        if (existing.isFailed()) {
+            HttpStatus status =
+                    HttpStatus.resolve(
+                            existing.getFailureStatus() == null
+                                    ? HttpStatus.INTERNAL_SERVER_ERROR.value()
+                                    : existing.getFailureStatus());
+            throw new ApiException(
+                    status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status,
+                    existing.getFailureMessage());
+        }
         if (existing.getResponseBody() == null) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "A request with this Idempotency-Key is already being processed");
         }
         return readJson(existing.getResponseBody(), responseType);
+    }
+
+    private static Integer statusOf(RuntimeException e) {
+        return e instanceof ApiException apiException
+                ? apiException.getStatus().value()
+                : HttpStatus.INTERNAL_SERVER_ERROR.value();
     }
 
     private String writeJson(Object value) {

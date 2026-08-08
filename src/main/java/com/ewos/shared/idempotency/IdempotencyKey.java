@@ -31,6 +31,16 @@ public class IdempotencyKey extends AuditableEntity {
     @Column(name = "response_body")
     private String responseBody;
 
+    @Column(name = "failed", nullable = false)
+    private boolean failed;
+
+    @Column(name = "failure_status")
+    private Integer failureStatus;
+
+    @Lob
+    @Column(name = "failure_message")
+    private String failureMessage;
+
     public UUID getTenantId() {
         return tenantId;
     }
@@ -69,5 +79,29 @@ public class IdempotencyKey extends AuditableEntity {
 
     public void setResponseBody(String responseBody) {
         this.responseBody = responseBody;
+    }
+
+    public boolean isFailed() {
+        return failed;
+    }
+
+    public void setFailed(boolean failed) {
+        this.failed = failed;
+    }
+
+    public Integer getFailureStatus() {
+        return failureStatus;
+    }
+
+    public void setFailureStatus(Integer failureStatus) {
+        this.failureStatus = failureStatus;
+    }
+
+    public String getFailureMessage() {
+        return failureMessage;
+    }
+
+    public void setFailureMessage(String failureMessage) {
+        this.failureMessage = failureMessage;
     }
 }
