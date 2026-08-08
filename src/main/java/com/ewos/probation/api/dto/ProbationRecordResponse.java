@@ -31,4 +31,8 @@ public record ProbationRecordResponse(
         String confirmationLetterUri,
         Instant terminatedAt,
         UUID terminatedBy,
-        String outcomeNotes) {}
+        String outcomeNotes,
+        // Sprint 27B — while status is PENDING_APPROVAL, this is the confirmation-submission
+        // moment (the only mutation that can have happened since), used to order the record in
+        // the unified manager approvals inbox.
+        Instant updatedAt) {}
