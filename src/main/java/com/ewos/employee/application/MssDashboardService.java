@@ -105,6 +105,7 @@ public class MssDashboardService {
                                 .map(r -> r.getEmployee().getId())
                                 .collect(Collectors.toCollection(HashSet::new));
 
+        long headcount = employees.countByTenantIdAndManagerId(tenantId, effectiveManagerId);
         long pendingApprovals = approvals.countPending(actingForEmployeeId);
         long timesheetsPending =
                 timesheetService.countPendingForManager(tenantId, effectiveManagerId);
@@ -112,7 +113,7 @@ public class MssDashboardService {
                 leaveRequestService.countPendingForManager(tenantId, effectiveManagerId);
         MssTeamSummaryResponse teamSummary =
                 new MssTeamSummaryResponse(
-                        directReports.size(),
+                        headcount,
                         onLeaveTodayIds.size(),
                         pendingApprovals,
                         timesheetsPending,

@@ -2,6 +2,9 @@ package com.ewos.employee.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ewos.attendance.domain.Timesheet;
@@ -116,7 +119,7 @@ class EssDashboardServiceTest {
         draft.setPeriodEnd(LocalDate.of(2026, 8, 31));
         when(timesheets.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of(draft));
         when(leaveRequests.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
-        when(payslips.forEmployee(tenantId, employeeId)).thenReturn(List.of());
+        when(payslips.latestForEmployee(tenantId, employeeId)).thenReturn(Optional.empty());
         when(leaveBalances.balancesForEmployee(
                         org.mockito.ArgumentMatchers.eq(tenantId),
                         org.mockito.ArgumentMatchers.eq(employeeId),
@@ -147,7 +150,7 @@ class EssDashboardServiceTest {
         when(timesheets.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
         when(leaveRequests.findAllForEmployee(tenantId, employeeId))
                 .thenReturn(List.of(pending, approvedSoon, approvedPast));
-        when(payslips.forEmployee(tenantId, employeeId)).thenReturn(List.of());
+        when(payslips.latestForEmployee(tenantId, employeeId)).thenReturn(Optional.empty());
         BalanceResponse b1 =
                 new BalanceResponse(
                         null,
@@ -201,7 +204,7 @@ class EssDashboardServiceTest {
     void payrollSnapshotIsAllNullWhenTheCallerHasNoPayslips() {
         when(timesheets.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
         when(leaveRequests.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
-        when(payslips.forEmployee(tenantId, employeeId)).thenReturn(List.of());
+        when(payslips.latestForEmployee(tenantId, employeeId)).thenReturn(Optional.empty());
         when(leaveBalances.balancesForEmployee(
                         org.mockito.ArgumentMatchers.eq(tenantId),
                         org.mockito.ArgumentMatchers.eq(employeeId),
@@ -260,8 +263,13 @@ class EssDashboardServiceTest {
                         List.of(taxLine));
         when(timesheets.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
         when(leaveRequests.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
-        when(payslips.forEmployee(tenantId, employeeId))
-                .thenReturn(List.of(thisYearPayslip, lastYearPayslip));
+        when(payslips.latestForEmployee(tenantId, employeeId))
+                .thenReturn(Optional.of(thisYearPayslip));
+        // A real forEmployeeInYear call is bounded to the year in its own SQL predicate, so its
+        // mocked return here deliberately omits lastYearPayslip — matching what the repository
+        // would actually hand back, not what the service used to have to filter out itself.
+        when(payslips.forEmployeeInYear(tenantId, employeeId, thisYear))
+                .thenReturn(List.of(thisYearPayslip));
         when(leaveBalances.balancesForEmployee(
                         org.mockito.ArgumentMatchers.eq(tenantId),
                         org.mockito.ArgumentMatchers.eq(employeeId),
@@ -281,5 +289,23 @@ class EssDashboardServiceTest {
                 .isEqualByComparingTo(BigDecimal.valueOf(50000));
         assertThat(response.payrollSnapshot().ytdTaxDeducted())
                 .isEqualByComparingTo(BigDecimal.valueOf(1000));
+        // lastYearPayslip only exists to prove it's never even requested for the YTD sum — see
+        // dashboardNeverLoadsUnboundedPayslipHistory below for the direct assertion.
+        assertThat(lastYearPayslip.periodStart().getYear()).isEqualTo(thisYear - 1);
+    }
+
+    @Test
+    void dashboardNeverLoadsUnboundedPayslipHistory() {
+        when(timesheets.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
+        when(leaveRequests.findAllForEmployee(tenantId, employeeId)).thenReturn(List.of());
+        when(payslips.latestForEmployee(tenantId, employeeId)).thenReturn(Optional.empty());
+        when(leaveBalances.balancesForEmployee(any(), any(), anyInt())).thenReturn(List.of());
+        when(notifications.unreadCount(tenantId)).thenReturn(0L);
+        when(leaveRequestService.countPendingForManager(tenantId, employeeId)).thenReturn(0L);
+
+        service.dashboard(tenantId);
+
+        verify(payslips, never()).forEmployee(any(), any());
+        verify(payslips).latestForEmployee(tenantId, employeeId);
     }
 }

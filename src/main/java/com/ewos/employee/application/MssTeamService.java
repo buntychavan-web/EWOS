@@ -19,10 +19,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -104,17 +102,25 @@ public class MssTeamService {
 
         int pageSize =
                 (limit == null || limit <= 0) ? DEFAULT_PAGE_SIZE : Math.min(limit, MAX_PAGE_SIZE);
-        int pageIndex = decodeCursor(cursor);
-        Pageable pageable = PageRequest.of(pageIndex, pageSize, Sort.by("displayName").ascending());
-        Page<Employee> page =
-                employees.findAllByTenantIdAndManagerId(tenantId, effectiveManagerId, pageable);
+        CursorKey key = decodeCursor(cursor);
+        Pageable window = PageRequest.of(0, pageSize + 1);
+        List<Employee> found =
+                employees.findDirectReportsAfterCursor(
+                        tenantId,
+                        effectiveManagerId,
+                        key == null ? null : key.displayName(),
+                        key == null ? null : key.employeeId(),
+                        window);
+
+        boolean hasMore = found.size() > pageSize;
+        List<Employee> page = hasMore ? found.subList(0, pageSize) : found;
 
         Set<String> visible = visibleFieldNames(tenantId);
         List<MssTeamMemberResponse> items = new ArrayList<>();
-        for (Employee e : page.getContent()) {
+        for (Employee e : page) {
             items.add(toListItem(e, visible));
         }
-        String nextCursor = page.hasNext() ? encodeCursor(pageIndex + 1) : null;
+        String nextCursor = hasMore ? encodeCursor(page.get(page.size() - 1)) : null;
         return new MssTeamPageResponse(items, nextCursor);
     }
 
@@ -234,25 +240,37 @@ public class MssTeamService {
         return full.isEmpty() ? null : full;
     }
 
-    private static int decodeCursor(String cursor) {
+    /**
+     * Sprint 27C fix-round (F3) — PRD §4.3's exact {@code Base64(displayName|employeeId)} keyset
+     * cursor. {@code employeeId} (a UUID, never containing {@code |}) is always the last field, so
+     * decoding splits on the <em>last</em> {@code |} rather than the first — correct even for the
+     * unlikely case of a display name that itself contains a {@code |}.
+     */
+    private static CursorKey decodeCursor(String cursor) {
         if (cursor == null || cursor.isBlank()) {
-            return 0;
+            return null;
         }
         try {
             String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            int pageIndex = Integer.parseInt(raw);
-            if (pageIndex < 0) {
-                throw new NumberFormatException("negative page index");
+            int lastPipe = raw.lastIndexOf('|');
+            if (lastPipe < 0) {
+                throw new IllegalArgumentException("missing displayName|employeeId separator");
             }
-            return pageIndex;
+            String displayName = raw.substring(0, lastPipe);
+            UUID employeeId = UUID.fromString(raw.substring(lastPipe + 1));
+            return new CursorKey(displayName, employeeId);
         } catch (RuntimeException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid cursor", e);
         }
     }
 
-    private static String encodeCursor(int pageIndex) {
+    private static String encodeCursor(Employee e) {
+        String displayName = e.getDisplayName() == null ? "" : e.getDisplayName();
+        String raw = displayName + "|" + e.getId();
         return Base64.getUrlEncoder()
                 .withoutPadding()
-                .encodeToString(Integer.toString(pageIndex).getBytes(StandardCharsets.UTF_8));
+                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
+
+    private record CursorKey(String displayName, UUID employeeId) {}
 }

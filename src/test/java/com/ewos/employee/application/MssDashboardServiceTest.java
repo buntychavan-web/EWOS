@@ -97,6 +97,7 @@ class MssDashboardServiceTest {
     void headcountAndPendingCountsComeFromTheirRespectiveModules() {
         when(employees.findAllByTenantIdAndManagerId(eq(tenantId), eq(managerEmployeeId), any()))
                 .thenReturn(new PageImpl<>(List.of()));
+        when(employees.countByTenantIdAndManagerId(tenantId, managerEmployeeId)).thenReturn(5L);
         when(approvals.countPending(null)).thenReturn(7L);
         when(timesheetService.countPendingForManager(tenantId, managerEmployeeId)).thenReturn(3L);
         when(leaveRequestService.countPendingForManager(tenantId, managerEmployeeId))
@@ -104,10 +105,40 @@ class MssDashboardServiceTest {
 
         MssDashboardResponse response = service.dashboard(null);
 
-        assertThat(response.teamSummary().headcount()).isZero();
+        assertThat(response.teamSummary().headcount()).isEqualTo(5L);
         assertThat(response.teamSummary().pendingApprovals()).isEqualTo(7L);
         assertThat(response.teamSummary().timesheetsPending()).isEqualTo(3L);
         assertThat(response.teamSummary().leaveRequestsPending()).isEqualTo(2L);
+    }
+
+    /**
+     * Sprint 27C fix-round (F1) — {@code teamSummary.headcount} must come from the dedicated {@code
+     * COUNT(*)} query, not {@code directReports.size()}. Before this fix, a manager with more than
+     * {@code TEAM_SNAPSHOT_CAP} (200) direct reports would silently see their headcount capped at
+     * 200 even though the true count is available cheaply.
+     */
+    @Test
+    void headcountReflectsTheTrueCountEvenWhenDirectReportsExceedTheSnapshotCap() {
+        List<Employee> cappedPage =
+                java.util.stream.IntStream.range(0, 200)
+                        .mapToObj(i -> report(UUID.randomUUID(), "Report " + i))
+                        .toList();
+        when(employees.findAllByTenantIdAndManagerId(eq(tenantId), eq(managerEmployeeId), any()))
+                .thenReturn(new PageImpl<>(cappedPage));
+        when(employees.countByTenantIdAndManagerId(tenantId, managerEmployeeId)).thenReturn(350L);
+        when(approvals.countPending(null)).thenReturn(0L);
+        when(timesheetService.countPendingForManager(tenantId, managerEmployeeId)).thenReturn(0L);
+        when(leaveRequestService.countPendingForManager(tenantId, managerEmployeeId))
+                .thenReturn(0L);
+
+        MssDashboardResponse response = service.dashboard(null);
+
+        assertThat(response.teamSummary().headcount())
+                .as("headcount must be the true count, not the capped page size")
+                .isEqualTo(350L);
+        assertThat(response.teamAttendanceSnapshot())
+                .as("the snapshot list itself must stay bounded regardless of true headcount")
+                .hasSize(200);
     }
 
     @Test

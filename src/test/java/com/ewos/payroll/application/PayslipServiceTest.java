@@ -2,8 +2,12 @@ package com.ewos.payroll.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.ewos.employee.application.EmployeeContext;
@@ -14,6 +18,7 @@ import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -294,6 +300,83 @@ class PayslipServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void latestForEmployeeUsesTheBoundedOneRowRepositoryQueryNotTheFullHistoryQuery() {
+        UUID tenantId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        Payslip latest = payslip(companyId, employeeId);
+        when(repository.findRecentForEmployee(
+                        eq(tenantId), eq(employeeId), eq(PageRequest.of(0, 1))))
+                .thenReturn(List.of(latest));
+
+        Optional<PayslipResponse> result = service.latestForEmployee(tenantId, employeeId);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().id()).isEqualTo(latest.getId());
+        verify(guard).requireAccessForCompany(companyId);
+        verify(repository, never()).findAllForEmployee(any(), any());
+    }
+
+    @Test
+    void latestForEmployeeReturnsEmptyWhenTheEmployeeHasNoPayslipsYet() {
+        UUID tenantId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        when(repository.findRecentForEmployee(
+                        eq(tenantId), eq(employeeId), eq(PageRequest.of(0, 1))))
+                .thenReturn(List.of());
+
+        Optional<PayslipResponse> result = service.latestForEmployee(tenantId, employeeId);
+
+        assertThat(result).isEmpty();
+        verifyNoInteractions(guard);
+    }
+
+    @Test
+    void latestForEmployeeDeniedWhenCallerHasOnlyPayrollReadAndRequestsSomeoneElse() {
+        UUID tenantId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID();
+        when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(UUID.randomUUID()));
+        authenticateAsNonAdmin();
+
+        assertThatThrownBy(() -> service.latestForEmployee(tenantId, targetEmployeeId))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void forEmployeeInYearUsesTheDateBoundedRepositoryQueryNotTheFullHistoryQuery() {
+        UUID tenantId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        Payslip inYear = payslip(companyId, employeeId);
+        when(repository.findAllForEmployeeInPeriod(
+                        tenantId, employeeId, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31)))
+                .thenReturn(List.of(inYear));
+
+        List<PayslipResponse> results = service.forEmployeeInYear(tenantId, employeeId, 2026);
+
+        assertThat(results).hasSize(1);
+        verify(guard).requireAccessForCompanies(List.of(companyId));
+        verify(repository, never()).findAllForEmployee(any(), any());
+    }
+
+    @Test
+    void forEmployeeInYearDeniedWhenCallerHasOnlyPayrollReadAndRequestsSomeoneElse() {
+        UUID tenantId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID();
+        when(employeeContext.currentEmployeeId()).thenReturn(Optional.of(UUID.randomUUID()));
+        authenticateAsNonAdmin();
+
+        assertThatThrownBy(() -> service.forEmployeeInYear(tenantId, targetEmployeeId, 2026))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verifyNoInteractions(repository);
     }
 
     @Test

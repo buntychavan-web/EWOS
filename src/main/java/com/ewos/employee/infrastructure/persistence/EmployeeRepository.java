@@ -53,6 +53,29 @@ public interface EmployeeRepository
             @Param("managerId") UUID managerId,
             Pageable pageable);
 
+    /**
+     * Sprint 27C fix-round (F3) — true keyset pagination for {@code MssTeamService.list}, matching
+     * the PRD's specified {@code Base64(displayName|employeeId)} cursor exactly, replacing an
+     * earlier page-index cursor. {@code coalesce(e.displayName, '')} keeps the comparison total
+     * even for the (schema-legal, if unusual) case of a null {@code display_name}; {@code e.id} is
+     * the tiebreaker for two reports sharing a display name, so ordering stays deterministic and no
+     * row is ever skipped or repeated across pages regardless of concurrent inserts/deletes — the
+     * exact class of bug offset/page-index pagination is exposed to. {@code cursorDisplayName}/
+     * {@code cursorEmployeeId} are both {@code null} for the first page.
+     */
+    @Query(
+            "select e from Employee e where e.tenantId = :tenantId and e.manager.id ="
+                    + " :managerId and (:cursorDisplayName is null or coalesce(e.displayName, '')"
+                    + " > :cursorDisplayName or (coalesce(e.displayName, '') = :cursorDisplayName"
+                    + " and e.id > :cursorEmployeeId)) order by coalesce(e.displayName, '') asc,"
+                    + " e.id asc")
+    List<Employee> findDirectReportsAfterCursor(
+            @Param("tenantId") UUID tenantId,
+            @Param("managerId") UUID managerId,
+            @Param("cursorDisplayName") String cursorDisplayName,
+            @Param("cursorEmployeeId") UUID cursorEmployeeId,
+            Pageable pageable);
+
     List<Employee> findAllByUserIdAndTenantId(UUID userId, UUID tenantId);
 
     boolean existsByCompanyIdAndUserId(UUID companyId, UUID userId);

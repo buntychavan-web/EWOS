@@ -24,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -91,13 +92,12 @@ public class EssDashboardService {
         List<Timesheet> ownTimesheets = timesheets.findAllForEmployee(tenantId, employeeId);
         List<LeaveRequest> ownLeaveRequests =
                 leaveRequests.findAllForEmployee(tenantId, employeeId);
-        List<PayslipResponse> ownPayslips = payslips.forEmployee(tenantId, employeeId);
 
         return new EssDashboardResponse(
                 employees.getById(tenantId, employeeId),
                 pendingActions(tenantId, employeeId, ownTimesheets),
                 leaveSummary(tenantId, employeeId, ownLeaveRequests, today),
-                payrollSnapshot(ownPayslips, today.getYear()),
+                payrollSnapshot(tenantId, employeeId, today.getYear()),
                 calendar.upcoming(tenantId, employeeId, today, today.plusDays(UPCOMING_EVENTS_DAYS))
                         .events());
     }
@@ -139,14 +139,19 @@ public class EssDashboardService {
         return new EssLeaveSummaryResponse(balanceDays, pendingRequests, nextApprovedLeaveDate);
     }
 
-    private EssPayrollSnapshotResponse payrollSnapshot(
-            List<PayslipResponse> ownPayslips, int year) {
-        if (ownPayslips.isEmpty()) {
+    /**
+     * Sprint 27C fix-round (F2) — {@code latestForEmployee}/{@code forEmployeeInYear} are both
+     * bounded at the database level (one row; one calendar year respectively), replacing the
+     * original {@code payslips.forEmployee(...)} call that loaded an employee's <em>entire</em>
+     * payslip history on every dashboard load and filtered it in memory — a query cost that only
+     * ever grows, forever, as an employee's tenure lengthens.
+     */
+    private EssPayrollSnapshotResponse payrollSnapshot(UUID tenantId, UUID employeeId, int year) {
+        Optional<PayslipResponse> latest = payslips.latestForEmployee(tenantId, employeeId);
+        if (latest.isEmpty()) {
             return new EssPayrollSnapshotResponse(null, null, null, null, null);
         }
-        PayslipResponse latest = ownPayslips.get(0);
-        List<PayslipResponse> ytd =
-                ownPayslips.stream().filter(p -> p.periodStart().getYear() == year).toList();
+        List<PayslipResponse> ytd = payslips.forEmployeeInYear(tenantId, employeeId, year);
         BigDecimal ytdGross =
                 ytd.stream()
                         .map(PayslipResponse::grossAmount)
@@ -167,6 +172,10 @@ public class EssDashboardService {
                         .map(PayslipLineResponse::amount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new EssPayrollSnapshotResponse(
-                latest.id(), latest.periodStart(), latest.periodEnd(), ytdGross, ytdTax);
+                latest.get().id(),
+                latest.get().periodStart(),
+                latest.get().periodEnd(),
+                ytdGross,
+                ytdTax);
     }
 }

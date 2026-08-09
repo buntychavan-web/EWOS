@@ -7,8 +7,11 @@ import com.ewos.payroll.domain.Payslip;
 import com.ewos.payroll.infrastructure.persistence.PayslipRepository;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.ClientAccessGuard;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -86,6 +89,41 @@ public class PayslipService {
     public List<PayslipResponse> forEmployee(UUID tenantId, UUID employeeId) {
         requireElevatedOrOwn(employeeId);
         List<Payslip> slips = repository.findAllForEmployee(tenantId, employeeId);
+        guard.requireAccessForCompanies(slips.stream().map(Payslip::getCompanyId).toList());
+        return slips.stream().map(mapper::toResponse).toList();
+    }
+
+    /**
+     * Sprint 27C fix-round (F2) — the single most recent payslip, for the ESS Dashboard's "latest
+     * payslip" card. Bounded to one row at the database level ({@link
+     * PayslipRepository#findRecentForEmployee}) rather than loading the employee's full payslip
+     * history and taking the first element, which is what {@link #forEmployee} did when it was
+     * (mis)used for this purpose.
+     */
+    public Optional<PayslipResponse> latestForEmployee(UUID tenantId, UUID employeeId) {
+        requireElevatedOrOwn(employeeId);
+        List<Payslip> recent =
+                repository.findRecentForEmployee(tenantId, employeeId, PageRequest.of(0, 1));
+        if (recent.isEmpty()) {
+            return Optional.empty();
+        }
+        Payslip latest = recent.get(0);
+        guard.requireAccessForCompany(latest.getCompanyId());
+        return Optional.of(mapper.toResponse(latest));
+    }
+
+    /**
+     * Sprint 27C fix-round (F2) — payslips whose {@code periodStart} falls within {@code year}, for
+     * the ESS Dashboard's year-to-date gross/tax summary. Bounded at the database level ({@link
+     * PayslipRepository#findAllForEmployeeInPeriod}) to one calendar year instead of {@link
+     * #forEmployee}'s complete, ever-growing history — same year-selection semantics as before (a
+     * payslip's {@code periodStart} year), just filtered in SQL instead of in application code.
+     */
+    public List<PayslipResponse> forEmployeeInYear(UUID tenantId, UUID employeeId, int year) {
+        requireElevatedOrOwn(employeeId);
+        List<Payslip> slips =
+                repository.findAllForEmployeeInPeriod(
+                        tenantId, employeeId, LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31));
         guard.requireAccessForCompanies(slips.stream().map(Payslip::getCompanyId).toList());
         return slips.stream().map(mapper::toResponse).toList();
     }
