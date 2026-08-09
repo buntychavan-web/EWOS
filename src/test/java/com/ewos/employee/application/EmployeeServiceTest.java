@@ -309,6 +309,65 @@ class EmployeeServiceTest {
                 .hasMessageContaining("multiple companies");
     }
 
+    @Test
+    void updateMeAppliesOnlyTheApprovedProfileFieldsAndLeavesEverythingElseUnchanged() {
+        UUID tenant = UUID.randomUUID();
+        Employee e = fixture(tenant, UUID.randomUUID());
+        e.setPersonalEmail("old@personal.example");
+        when(employees.findByIdAndTenantId(e.getId(), tenant)).thenReturn(Optional.of(e));
+        com.ewos.employee.api.dto.EssProfileUpdateRequest request =
+                new com.ewos.employee.api.dto.EssProfileUpdateRequest(
+                        "new@personal.example",
+                        "+1-555-0100",
+                        "Bob",
+                        "+1-555-0199",
+                        "s3://avatar/1");
+
+        EmployeeResponse response = service.updateMe(tenant, e.getId(), request);
+
+        assertThat(response.personalEmail()).isEqualTo("new@personal.example");
+        assertThat(response.phone()).isEqualTo("+1-555-0100");
+        assertThat(response.emergencyContactName()).isEqualTo("Bob");
+        assertThat(response.emergencyContactPhone()).isEqualTo("+1-555-0199");
+        assertThat(response.avatarStorageUri()).isEqualTo("s3://avatar/1");
+        // Never made editable through this path.
+        assertThat(response.workEmail()).isEqualTo("a@ex.com");
+        assertThat(response.displayName()).isNull();
+    }
+
+    @Test
+    void updateMeLeavesFieldsUnchangedWhenTheRequestOmitsThem() {
+        UUID tenant = UUID.randomUUID();
+        Employee e = fixture(tenant, UUID.randomUUID());
+        e.setPersonalEmail("keep@personal.example");
+        e.setPhone("+1-555-0000");
+        when(employees.findByIdAndTenantId(e.getId(), tenant)).thenReturn(Optional.of(e));
+        com.ewos.employee.api.dto.EssProfileUpdateRequest onlyAvatar =
+                new com.ewos.employee.api.dto.EssProfileUpdateRequest(
+                        null, null, null, null, "s3://avatar/2");
+
+        EmployeeResponse response = service.updateMe(tenant, e.getId(), onlyAvatar);
+
+        assertThat(response.personalEmail()).isEqualTo("keep@personal.example");
+        assertThat(response.phone()).isEqualTo("+1-555-0000");
+        assertThat(response.avatarStorageUri()).isEqualTo("s3://avatar/2");
+    }
+
+    @Test
+    void updateMeThrows404WhenTheEmployeeRecordDoesNotExist() {
+        UUID tenant = UUID.randomUUID();
+        UUID missingId = UUID.randomUUID();
+        when(employees.findByIdAndTenantId(missingId, tenant)).thenReturn(Optional.empty());
+        com.ewos.employee.api.dto.EssProfileUpdateRequest request =
+                new com.ewos.employee.api.dto.EssProfileUpdateRequest(
+                        "x@example.com", null, null, null, null);
+
+        assertThatThrownBy(() -> service.updateMe(tenant, missingId, request))
+                .isInstanceOf(ApiException.class)
+                .extracting(ex -> ((ApiException) ex).getStatus())
+                .isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
+    }
+
     private Employee fixture(UUID tenant, UUID company) {
         Employee e = new Employee();
         e.setId(UUID.randomUUID());

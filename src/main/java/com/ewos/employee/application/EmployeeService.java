@@ -3,6 +3,7 @@ package com.ewos.employee.application;
 import com.ewos.employee.api.EmployeeMapper;
 import com.ewos.employee.api.dto.EmployeeResponse;
 import com.ewos.employee.api.dto.EmployeeSearchCriteria;
+import com.ewos.employee.api.dto.EssProfileUpdateRequest;
 import com.ewos.employee.api.dto.HireEmployeeRequest;
 import com.ewos.employee.api.dto.TerminateEmployeeRequest;
 import com.ewos.employee.api.dto.UpdateEmployeeRequest;
@@ -273,6 +274,37 @@ public class EmployeeService {
                 "Your account is linked to employee records in multiple companies; retry with"
                         + " ?companyId= one of: "
                         + candidates);
+    }
+
+    /**
+     * Sprint 27C — Profile Self-Service (PRD §4.5). {@code employeeId} must already have been
+     * resolved by the caller from {@link com.ewos.employee.application.EmployeeContext}, never
+     * accepted from client input — this method itself has no way to tell "my own record" from "any
+     * record", the same trust boundary {@link #getById} and every other admin-tier method here rely
+     * on the controller layer to enforce. {@code workEmail}/{@code displayName} are deliberately
+     * not accepted: both are HR-admin-only and have no setter called here. Every field on {@code
+     * request} is optional; a null field leaves the current value unchanged.
+     */
+    public EmployeeResponse updateMe(
+            UUID tenantId, UUID employeeId, EssProfileUpdateRequest request) {
+        Employee e = require(tenantId, employeeId);
+        if (request.personalEmail() != null) {
+            e.setPersonalEmail(request.personalEmail());
+        }
+        if (request.phone() != null) {
+            e.setPhone(request.phone());
+        }
+        if (request.emergencyContactName() != null) {
+            e.setEmergencyContactName(request.emergencyContactName());
+        }
+        if (request.emergencyContactPhone() != null) {
+            e.setEmergencyContactPhone(request.emergencyContactPhone());
+        }
+        if (request.avatarStorageUri() != null) {
+            e.setAvatarStorageUri(request.avatarStorageUri());
+        }
+        publish(EmployeeEventType.UPDATED, e, null);
+        return mapper.toResponse(e);
     }
 
     @Transactional(readOnly = true)

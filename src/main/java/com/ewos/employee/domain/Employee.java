@@ -83,6 +83,16 @@ public class Employee extends AuditableEntity {
     @Column(name = "gender_code", length = 32)
     private String genderCode;
 
+    /** Sprint 27C — Profile Self-Service editable fields (PRD §4.5), additive/nullable. */
+    @Column(name = "emergency_contact_name", length = 200)
+    private String emergencyContactName;
+
+    @Column(name = "emergency_contact_phone", length = 50)
+    private String emergencyContactPhone;
+
+    @Column(name = "avatar_storage_uri", length = 500)
+    private String avatarStorageUri;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "primary_org_unit_id")
     private OrganizationUnit primaryOrgUnit;
@@ -231,6 +241,30 @@ public class Employee extends AuditableEntity {
 
     public void setGenderCode(String genderCode) {
         this.genderCode = genderCode;
+    }
+
+    public String getEmergencyContactName() {
+        return emergencyContactName;
+    }
+
+    public void setEmergencyContactName(String emergencyContactName) {
+        this.emergencyContactName = emergencyContactName;
+    }
+
+    public String getEmergencyContactPhone() {
+        return emergencyContactPhone;
+    }
+
+    public void setEmergencyContactPhone(String emergencyContactPhone) {
+        this.emergencyContactPhone = emergencyContactPhone;
+    }
+
+    public String getAvatarStorageUri() {
+        return avatarStorageUri;
+    }
+
+    public void setAvatarStorageUri(String avatarStorageUri) {
+        this.avatarStorageUri = avatarStorageUri;
     }
 
     public OrganizationUnit getPrimaryOrgUnit() {

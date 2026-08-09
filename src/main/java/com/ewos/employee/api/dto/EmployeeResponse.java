@@ -23,6 +23,10 @@ public record EmployeeResponse(
         String phone,
         LocalDate dateOfBirth,
         String genderCode,
+        // Sprint 27C — Profile Self-Service editable fields.
+        String emergencyContactName,
+        String emergencyContactPhone,
+        String avatarStorageUri,
         UUID primaryOrgUnitId,
         String primaryOrgUnitCode,
         UUID managerEmployeeId,

@@ -32,6 +32,16 @@ public interface EmployeeRepository
     long countDirectReports(@Param("managerId") UUID managerId);
 
     /**
+     * Sprint 27C — tenant-scoped headcount for the MSS dashboard's {@code teamSummary}, mirroring
+     * {@link #findAllByTenantIdAndManagerId}'s tenant-scoping rationale (and {@code @Query} style,
+     * for the same nested-property-path reason) exactly.
+     */
+    @Query(
+            "select count(e) from Employee e where e.tenantId = :tenantId and e.manager.id = :managerId")
+    long countByTenantIdAndManagerId(
+            @Param("tenantId") UUID tenantId, @Param("managerId") UUID managerId);
+
+    /**
      * Sprint 27A (MSS foundation, PRD FR-5) — a manager's direct reports, tenant-scoped and
      * paginated. {@code tenantId} is part of the query itself (not left to the caller to filter
      * afterward) so a manager can never be handed a report from a different tenant even if {@code
