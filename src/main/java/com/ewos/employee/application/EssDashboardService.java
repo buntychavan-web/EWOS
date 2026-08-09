@@ -154,20 +154,19 @@ public class EssDashboardService {
         BigDecimal ytdTax =
                 ytd.stream()
                         .flatMap(p -> p.lines().stream())
-                        .filter(this::isTaxDeductionLine)
+                        .filter(
+                                line ->
+                                        line.kind() == PayComponentKind.DEDUCTION
+                                                && statutoryClassifier
+                                                        .classify(line.componentCode())
+                                                        .map(
+                                                                c ->
+                                                                        TAX_STATUTORY_CODES
+                                                                                .contains(c.code()))
+                                                        .orElse(false))
                         .map(PayslipLineResponse::amount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new EssPayrollSnapshotResponse(
                 latest.id(), latest.periodStart(), latest.periodEnd(), ytdGross, ytdTax);
-    }
-
-    private boolean isTaxDeductionLine(PayslipLineResponse line) {
-        if (line.kind() != PayComponentKind.DEDUCTION) {
-            return false;
-        }
-        return statutoryClassifier
-                .classify(line.componentCode())
-                .map(c -> TAX_STATUTORY_CODES.contains(c.code()))
-                .orElse(false);
     }
 }
