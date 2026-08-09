@@ -19,7 +19,6 @@ import com.ewos.employee.api.dto.BulkApprovalActionResponse;
 import com.ewos.employee.api.dto.BulkApprovalItemRequest;
 import com.ewos.employee.domain.ApprovalAction;
 import com.ewos.employee.domain.ApprovalSourceModule;
-import com.ewos.employee.domain.Employee;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
 import com.ewos.leave.api.dto.DecideLeaveRequestRequest;
 import com.ewos.leave.api.dto.LeaveRequestResponse;
@@ -28,10 +27,8 @@ import com.ewos.leave.domain.LeaveRequestStatus;
 import com.ewos.performance.application.AppraisalService;
 import com.ewos.probation.application.ProbationService;
 import com.ewos.recruitment.application.JobRequisitionService;
-import com.ewos.shared.audit.CrossEmployeeAccessLogService;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.TenantContext;
-import com.ewos.workflow.application.WorkflowDelegationService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -61,8 +58,7 @@ class ManagerApprovalsServiceTest {
     @Mock EmployeeRepository employees;
     @Mock EmployeeContext employeeContext;
     @Mock TenantContext tenantContext;
-    @Mock WorkflowDelegationService delegations;
-    @Mock CrossEmployeeAccessLogService accessLog;
+    @Mock EffectiveManagerResolver effectiveManagerResolver;
 
     private ManagerApprovalsService service;
     private final UUID tenantId = UUID.randomUUID();
@@ -81,13 +77,23 @@ class ManagerApprovalsServiceTest {
                         employees,
                         employeeContext,
                         tenantContext,
-                        delegations,
-                        accessLog);
+                        effectiveManagerResolver);
         lenient().when(tenantContext.homeTenantId()).thenReturn(tenantId);
         lenient()
                 .when(employeeContext.currentEmployeeId())
                 .thenReturn(Optional.of(callerEmployeeId));
         lenient().when(tenantContext.currentUserId()).thenReturn(Optional.of(callerUserId));
+        // Default passthrough: acting for nobody but oneself, exactly what
+        // EffectiveManagerResolver.resolve itself returns when actingForEmployeeId is null.
+        lenient()
+                .when(
+                        effectiveManagerResolver.resolve(
+                                any(),
+                                any(),
+                                any(),
+                                org.mockito.ArgumentMatchers.anyString(),
+                                any()))
+                .thenAnswer(inv -> inv.getArgument(1));
         lenient()
                 .when(leave.pendingForManager(any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
@@ -146,39 +152,34 @@ class ManagerApprovalsServiceTest {
     }
 
     @Test
-    void listThrowsNotFoundWhenActingForEmployeeHasNoActiveDelegationToCaller() {
+    void listThrowsNotFoundWhenEffectiveManagerResolverDenies() {
         UUID peerEmployeeId = UUID.randomUUID();
-        Employee peer = new Employee();
-        peer.setId(peerEmployeeId);
-        peer.setUserId(UUID.randomUUID());
-        when(employees.findByIdAndTenantId(peerEmployeeId, tenantId)).thenReturn(Optional.of(peer));
-        when(delegations.isActiveDelegateOf(tenantId, peer.getUserId(), callerUserId))
-                .thenReturn(false);
+        when(effectiveManagerResolver.resolve(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(callerEmployeeId),
+                        org.mockito.ArgumentMatchers.eq(peerEmployeeId),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        any()))
+                .thenThrow(new ApiException(HttpStatus.NOT_FOUND, "Approvals inbox not found"));
 
         assertThatThrownBy(() -> service.list(peerEmployeeId, null, null))
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
-        verify(accessLog)
-                .logDenied(
-                        org.mockito.ArgumentMatchers.eq(tenantId),
-                        org.mockito.ArgumentMatchers.eq(callerEmployeeId),
-                        org.mockito.ArgumentMatchers.eq(peerEmployeeId),
-                        any(),
-                        any());
         verify(leave, never()).pendingForManager(any(), any(), any());
     }
 
     @Test
-    void listSucceedsAndQueriesThePeersInboxWhenActiveDelegationExists() {
+    void listSucceedsAndQueriesThePeersInboxWhenEffectiveManagerResolverGrants() {
         UUID peerEmployeeId = UUID.randomUUID();
-        Employee peer = new Employee();
-        peer.setId(peerEmployeeId);
-        peer.setUserId(UUID.randomUUID());
-        when(employees.findByIdAndTenantId(peerEmployeeId, tenantId)).thenReturn(Optional.of(peer));
-        when(delegations.isActiveDelegateOf(tenantId, peer.getUserId(), callerUserId))
-                .thenReturn(true);
+        when(effectiveManagerResolver.resolve(
+                        org.mockito.ArgumentMatchers.eq(tenantId),
+                        org.mockito.ArgumentMatchers.eq(callerEmployeeId),
+                        org.mockito.ArgumentMatchers.eq(peerEmployeeId),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        any()))
+                .thenReturn(peerEmployeeId);
 
         ApprovalsPageResponse page = service.list(peerEmployeeId, null, null);
 
@@ -186,12 +187,6 @@ class ManagerApprovalsServiceTest {
         verify(leave)
                 .pendingForManager(
                         org.mockito.ArgumentMatchers.eq(tenantId),
-                        org.mockito.ArgumentMatchers.eq(peerEmployeeId),
-                        any());
-        verify(accessLog)
-                .logGranted(
-                        org.mockito.ArgumentMatchers.eq(tenantId),
-                        org.mockito.ArgumentMatchers.eq(callerEmployeeId),
                         org.mockito.ArgumentMatchers.eq(peerEmployeeId),
                         any());
     }
