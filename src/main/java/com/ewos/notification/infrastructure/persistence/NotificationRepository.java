@@ -65,13 +65,25 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
      * cursorCreatedAt}/{@code cursorId} are both {@code null} for the first page; a caller passes
      * back the last item's {@code createdAt}/{@code id} to fetch the next page, ordered newest
      * first with {@code id} as a stable tiebreaker for rows sharing a timestamp.
+     *
+     * <p>Sprint 27C fix-round (F5 CI fix) — {@code cast(:cursorCreatedAt as timestamp) is null}
+     * rather than a bare {@code :cursorCreatedAt is null}: the real-database integration tests
+     * added for F5 caught PostgreSQL rejecting the first-page call (where {@code cursorCreatedAt}
+     * is {@code null}) with {@code "could not determine data type of parameter"} — a bare parameter
+     * used only in an {@code IS NULL} check, with no other typed context at that occurrence, gives
+     * Postgres nothing to infer its type from. This was a genuine pre-existing bug: {@code
+     * NotificationService.myPage} calls this with a null cursor on every first page load, so every
+     * unfiltered notification-inbox request would have failed against a real database. The explicit
+     * cast only affects the nullity check; the two other occurrences of {@code :cursorCreatedAt}
+     * (the actual {@code <} / {@code =} comparisons) are untouched and keep inferring their type
+     * from the {@code n.createdAt} column as before.
      */
     @Query(
             "select n from Notification n where n.tenantId = :tenantId and n.recipientActorId ="
                     + " :recipientActorId and n.deletedAt is null and (:unreadOnly = false or"
-                    + " n.readAt is null) and (:cursorCreatedAt is null or n.createdAt <"
-                    + " :cursorCreatedAt or (n.createdAt = :cursorCreatedAt and n.id <"
-                    + " :cursorId)) order by n.createdAt desc, n.id desc")
+                    + " n.readAt is null) and (cast(:cursorCreatedAt as timestamp) is null or"
+                    + " n.createdAt < :cursorCreatedAt or (n.createdAt = :cursorCreatedAt and"
+                    + " n.id < :cursorId)) order by n.createdAt desc, n.id desc")
     List<Notification> findPage(
             @Param("tenantId") UUID tenantId,
             @Param("recipientActorId") UUID recipientActorId,
