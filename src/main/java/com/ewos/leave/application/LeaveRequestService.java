@@ -317,6 +317,17 @@ public class LeaveRequestService {
         return found.map(mapper::toResponse);
     }
 
+    /**
+     * Sprint 27C — count-only sibling of {@link #pendingForManager(UUID, UUID, Pageable)} for the
+     * MSS dashboard, which only needs the number (PRD §9 risk table). No company guard: a count
+     * discloses no row-level data.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingForManager(UUID tenantId, UUID managerId) {
+        return requests.countByTenantIdAndStatusAndManagerId(
+                tenantId, LeaveRequestStatus.SUBMITTED, managerId);
+    }
+
     private LeaveRequest require(UUID tenantId, UUID id) {
         return requests.findByIdAndTenantId(id, tenantId)
                 .orElseThrow(

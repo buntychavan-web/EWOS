@@ -331,6 +331,16 @@ public class AppraisalService {
                 .map(mapper::toResponse);
     }
 
+    /**
+     * Sprint 27C — count-only sibling of {@link #pendingForManager(UUID, UUID, Pageable)} for the
+     * MSS dashboard, which only needs the number (PRD §9 risk table).
+     */
+    @Transactional(readOnly = true)
+    public long countPendingForManager(UUID tenantId, UUID managerEmployeeId) {
+        return appraisals.countByTenantIdAndManagerEmployeeIdAndStatus(
+                tenantId, managerEmployeeId, AppraisalStatus.PENDING_MANAGER);
+    }
+
     /** Sprint 24A self-service: appraisals awaiting the caller's own reviewer assessment. */
     @Transactional(readOnly = true)
     public List<AppraisalResponse> pendingForReviewer(UUID tenantId, UUID reviewerEmployeeId) {

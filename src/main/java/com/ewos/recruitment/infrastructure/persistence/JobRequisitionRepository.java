@@ -38,4 +38,12 @@ public interface JobRequisitionRepository
      */
     Page<JobRequisition> findAllByTenantIdAndStatusAndHiringManagerId(
             UUID tenantId, RequisitionStatus status, UUID hiringManagerId, Pageable pageable);
+
+    /**
+     * Sprint 27C — count-only sibling of {@link #findAllByTenantIdAndStatusAndHiringManagerId}, for
+     * the MSS dashboard's {@code teamSummary.pendingApprovals} (PRD §9 risk table: dashboard must
+     * not pull the full, capped content page just to show a number).
+     */
+    long countByTenantIdAndStatusAndHiringManagerId(
+            UUID tenantId, RequisitionStatus status, UUID hiringManagerId);
 }

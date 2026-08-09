@@ -52,4 +52,17 @@ public interface TimesheetRepository
             @Param("status") TimesheetStatus status,
             @Param("managerId") UUID managerId,
             Pageable pageable);
+
+    /**
+     * Sprint 27C — count-only sibling of {@link #findAllByTenantIdAndStatusAndManagerId}, for the
+     * MSS dashboard's {@code teamSummary.pendingApprovals} (PRD §9 risk table: dashboard must not
+     * pull the full, capped content page just to show a number).
+     */
+    @Query(
+            "select count(t) from Timesheet t where t.tenantId = :tenantId and t.status = :status"
+                    + " and t.employee.manager.id = :managerId")
+    long countByTenantIdAndStatusAndManagerId(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") TimesheetStatus status,
+            @Param("managerId") UUID managerId);
 }

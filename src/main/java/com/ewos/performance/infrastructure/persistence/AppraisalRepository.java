@@ -64,6 +64,15 @@ public interface AppraisalRepository extends JpaRepository<Appraisal, UUID> {
     Page<Appraisal> findAllByTenantIdAndManagerEmployeeIdAndStatus(
             UUID tenantId, UUID managerEmployeeId, AppraisalStatus status, Pageable pageable);
 
+    /**
+     * Sprint 27C — count-only sibling of {@link
+     * #findAllByTenantIdAndManagerEmployeeIdAndStatus(UUID, UUID, AppraisalStatus, Pageable)}, for
+     * the MSS dashboard's {@code teamSummary.pendingApprovals} (PRD §9 risk table: dashboard must
+     * not pull the full, capped content page just to show a number).
+     */
+    long countByTenantIdAndManagerEmployeeIdAndStatus(
+            UUID tenantId, UUID managerEmployeeId, AppraisalStatus status);
+
     List<Appraisal> findAllByTenantIdAndReviewerEmployeeIdAndStatus(
             UUID tenantId, UUID reviewerEmployeeId, AppraisalStatus status);
 
