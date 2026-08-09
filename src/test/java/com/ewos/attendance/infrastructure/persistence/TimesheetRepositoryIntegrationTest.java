@@ -153,4 +153,52 @@ class TimesheetRepositoryIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(ids).containsExactly(legitimate.getId());
     }
+
+    /**
+     * Sprint 27C fix-round (F5) — {@code countByTenantIdAndStatusAndManagerId} is the count-only
+     * sibling used by the MSS dashboard's {@code teamSummary.timesheetsPending}; same
+     * tenant-scoping proof as the list query above, run against the real database and its check
+     * constraints.
+     */
+    @Test
+    void countByTenantIdAndStatusAndManagerIdCountsOnlySubmittedTimesheetsWithinTheTenant() {
+        UUID tenantA = tenant("TsCountTenantA").getId();
+        Employee managerA = employee(tenantA, "TsCountManagerA", null);
+        Employee report1 = employee(tenantA, "TsCountReport1", managerA);
+        Employee report2 = employee(tenantA, "TsCountReport2", managerA);
+        timesheet(tenantA, report1, TimesheetStatus.SUBMITTED);
+        timesheet(tenantA, report2, TimesheetStatus.SUBMITTED);
+        timesheet(tenantA, report1, TimesheetStatus.APPROVED, LocalDate.of(2026, 7, 1));
+
+        long count =
+                timesheets.countByTenantIdAndStatusAndManagerId(
+                        tenantA, TimesheetStatus.SUBMITTED, managerA.getId());
+
+        assertThat(count).isEqualTo(2L);
+    }
+
+    @Test
+    void
+            countByTenantIdAndStatusAndManagerIdNeverCountsATimesheetFromADifferentTenantEvenIfTheManagerIdMatches() {
+        UUID tenantA = tenant("TsCountTenantB1").getId();
+        UUID tenantB = tenant("TsCountTenantB2").getId();
+        Employee managerA = employee(tenantA, "TsCountManagerB", null);
+        Employee legitimateReport = employee(tenantA, "TsCountLegitReport", managerA);
+        timesheet(tenantA, legitimateReport, TimesheetStatus.SUBMITTED);
+
+        // Corrupted cross-tenant pointer — same rationale as the list-query test above.
+        Employee crossTenantReportEmployee =
+                employee(tenantB, "TsCountCrossTenantReport", managerA);
+        timesheet(tenantB, crossTenantReportEmployee, TimesheetStatus.SUBMITTED);
+
+        long countA =
+                timesheets.countByTenantIdAndStatusAndManagerId(
+                        tenantA, TimesheetStatus.SUBMITTED, managerA.getId());
+        long countB =
+                timesheets.countByTenantIdAndStatusAndManagerId(
+                        tenantB, TimesheetStatus.SUBMITTED, managerA.getId());
+
+        assertThat(countA).isEqualTo(1L);
+        assertThat(countB).isEqualTo(1L);
+    }
 }

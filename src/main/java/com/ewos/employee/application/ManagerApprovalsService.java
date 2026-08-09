@@ -22,10 +22,8 @@ import com.ewos.probation.api.dto.ProbationRecordResponse;
 import com.ewos.probation.application.ProbationService;
 import com.ewos.recruitment.api.dto.JobRequisitionResponse;
 import com.ewos.recruitment.application.JobRequisitionService;
-import com.ewos.shared.audit.CrossEmployeeAccessLogService;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.TenantContext;
-import com.ewos.workflow.application.WorkflowDelegationService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -84,8 +82,7 @@ public class ManagerApprovalsService {
     private final EmployeeRepository employees;
     private final EmployeeContext employeeContext;
     private final TenantContext tenantContext;
-    private final WorkflowDelegationService delegations;
-    private final CrossEmployeeAccessLogService accessLog;
+    private final EffectiveManagerResolver effectiveManagerResolver;
 
     @SuppressWarnings("PMD.ExcessiveParameterList")
     public ManagerApprovalsService(
@@ -97,8 +94,7 @@ public class ManagerApprovalsService {
             EmployeeRepository employees,
             EmployeeContext employeeContext,
             TenantContext tenantContext,
-            WorkflowDelegationService delegations,
-            CrossEmployeeAccessLogService accessLog) {
+            EffectiveManagerResolver effectiveManagerResolver) {
         this.leave = leave;
         this.timesheets = timesheets;
         this.performance = performance;
@@ -107,8 +103,7 @@ public class ManagerApprovalsService {
         this.employees = employees;
         this.employeeContext = employeeContext;
         this.tenantContext = tenantContext;
-        this.delegations = delegations;
-        this.accessLog = accessLog;
+        this.effectiveManagerResolver = effectiveManagerResolver;
     }
 
     @Transactional(readOnly = true)
@@ -118,7 +113,12 @@ public class ManagerApprovalsService {
         boolean delegated =
                 actingForEmployeeId != null && !actingForEmployeeId.equals(callerEmployeeId);
         UUID effectiveManagerId =
-                resolveEffectiveManagerEmployeeId(tenantId, callerEmployeeId, actingForEmployeeId);
+                effectiveManagerResolver.resolve(
+                        tenantId,
+                        callerEmployeeId,
+                        actingForEmployeeId,
+                        "MSS_APPROVALS_ACTING_FOR",
+                        "Approvals inbox not found");
 
         int pageSize =
                 (limit == null || limit <= 0) ? DEFAULT_PAGE_SIZE : Math.min(limit, MAX_PAGE_SIZE);
@@ -160,6 +160,31 @@ public class ManagerApprovalsService {
         return new ApprovalsPageResponse(page, nextCursor, delegated);
     }
 
+    /**
+     * Sprint 27C — lightweight total across every module's pending count, for the MSS dashboard's
+     * {@code teamSummary.pendingApprovals}. PRD §9 risk table: {@link #list} is expensive (five
+     * capped-but-real content queries plus an in-memory merge) and the dashboard would otherwise
+     * call it just to read {@code items.size()}; this sums five cheap {@code COUNT(*)} queries
+     * instead.
+     */
+    @Transactional(readOnly = true)
+    public long countPending(UUID actingForEmployeeId) {
+        UUID tenantId = tenantContext.homeTenantId();
+        UUID callerEmployeeId = requireEmployeeId();
+        UUID effectiveManagerId =
+                effectiveManagerResolver.resolve(
+                        tenantId,
+                        callerEmployeeId,
+                        actingForEmployeeId,
+                        "MSS_APPROVALS_ACTING_FOR",
+                        "Approvals inbox not found");
+        return leave.countPendingForManager(tenantId, effectiveManagerId)
+                + timesheets.countPendingForManager(tenantId, effectiveManagerId)
+                + performance.countPendingForManager(tenantId, effectiveManagerId)
+                + probation.countPendingForManager(tenantId, effectiveManagerId)
+                + requisitions.countPendingForManager(tenantId, effectiveManagerId);
+    }
+
     public ApprovalItemResponse decide(
             ApprovalSourceModule sourceModule,
             UUID sourceId,
@@ -168,7 +193,12 @@ public class ManagerApprovalsService {
             String notes) {
         UUID tenantId = tenantContext.homeTenantId();
         UUID callerEmployeeId = requireEmployeeId();
-        resolveEffectiveManagerEmployeeId(tenantId, callerEmployeeId, actingForEmployeeId);
+        effectiveManagerResolver.resolve(
+                tenantId,
+                callerEmployeeId,
+                actingForEmployeeId,
+                "MSS_APPROVALS_ACTING_FOR",
+                "Approvals inbox not found");
         return dispatch(tenantId, sourceModule, sourceId, action, notes);
     }
 
@@ -182,7 +212,12 @@ public class ManagerApprovalsService {
             BulkApprovalActionRequest request, UUID actingForEmployeeId) {
         UUID tenantId = tenantContext.homeTenantId();
         UUID callerEmployeeId = requireEmployeeId();
-        resolveEffectiveManagerEmployeeId(tenantId, callerEmployeeId, actingForEmployeeId);
+        effectiveManagerResolver.resolve(
+                tenantId,
+                callerEmployeeId,
+                actingForEmployeeId,
+                "MSS_APPROVALS_ACTING_FOR",
+                "Approvals inbox not found");
 
         List<BulkApprovalItemResult> results = new ArrayList<>(request.items().size());
         int succeeded = 0;
@@ -247,34 +282,6 @@ public class ManagerApprovalsService {
      * is simply not an active delegator to the caller — enumeration protection per PRD §17. Logs
      * every delegated access (granted or denied) to the cross-employee access log.
      */
-    private UUID resolveEffectiveManagerEmployeeId(
-            UUID tenantId, UUID callerEmployeeId, UUID actingForEmployeeId) {
-        if (actingForEmployeeId == null || actingForEmployeeId.equals(callerEmployeeId)) {
-            return callerEmployeeId;
-        }
-        Employee delegator =
-                employees.findByIdAndTenantId(actingForEmployeeId, tenantId).orElse(null);
-        UUID callerUserId = tenantContext.currentUserId().orElse(null);
-        boolean active =
-                delegator != null
-                        && delegator.getUserId() != null
-                        && callerUserId != null
-                        && delegations.isActiveDelegateOf(
-                                tenantId, delegator.getUserId(), callerUserId);
-        if (!active) {
-            accessLog.logDenied(
-                    tenantId,
-                    callerEmployeeId,
-                    actingForEmployeeId,
-                    "MSS_APPROVALS_ACTING_FOR",
-                    "no active delegation");
-            throw new ApiException(HttpStatus.NOT_FOUND, "Approvals inbox not found");
-        }
-        accessLog.logGranted(
-                tenantId, callerEmployeeId, actingForEmployeeId, "MSS_APPROVALS_ACTING_FOR");
-        return actingForEmployeeId;
-    }
-
     private UUID requireEmployeeId() {
         return employeeContext
                 .currentEmployeeId()

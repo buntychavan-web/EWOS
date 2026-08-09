@@ -10,9 +10,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Minimal in-app notification inbox row. No soft-delete or optimistic locking — notifications are
- * write-once (created by an event listener) and read-mostly (marked read by the recipient), so the
- * extra bookkeeping other aggregates carry isn't needed here.
+ * In-app notification inbox row, write-once (created by an event listener) and read-mostly (marked
+ * read / dismissed by the recipient). Sprint 27C adds {@link #deletedAt} for the Notification
+ * Inbox's dismiss action (PRD §4.6, Decision 3: soft delete, no archive mechanism) — still no
+ * optimistic-locking version column, since a dismissed row is never subsequently mutated.
  */
 @Entity
 @Table(name = "notifications")
@@ -39,6 +40,9 @@ public class Notification extends AuditableEntity {
 
     @Column(name = "read_at")
     private Instant readAt;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 
     public UUID getTenantId() {
         return tenantId;
@@ -94,5 +98,13 @@ public class Notification extends AuditableEntity {
 
     public void setReadAt(Instant readAt) {
         this.readAt = readAt;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
     }
 }

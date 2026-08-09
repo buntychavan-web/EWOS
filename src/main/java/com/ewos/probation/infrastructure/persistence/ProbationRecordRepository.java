@@ -54,4 +54,17 @@ public interface ProbationRecordRepository extends JpaRepository<ProbationRecord
             @Param("status") ProbationStatus status,
             @Param("managerId") UUID managerId,
             Pageable pageable);
+
+    /**
+     * Sprint 27C — count-only sibling of {@link #findAllByTenantIdAndStatusAndManagerId}, for the
+     * MSS dashboard's {@code teamSummary.pendingApprovals} (PRD §9 risk table: dashboard must not
+     * pull the full, capped content page just to show a number).
+     */
+    @Query(
+            "select count(r) from ProbationRecord r where r.tenantId = :tenantId and r.status ="
+                    + " :status and r.employee.manager.id = :managerId")
+    long countByTenantIdAndStatusAndManagerId(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") ProbationStatus status,
+            @Param("managerId") UUID managerId);
 }

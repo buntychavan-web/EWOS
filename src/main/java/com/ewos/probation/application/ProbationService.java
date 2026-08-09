@@ -352,6 +352,17 @@ public class ProbationService {
         return found.map(mapper::toResponse);
     }
 
+    /**
+     * Sprint 27C — count-only sibling of {@link #pendingForManager(UUID, UUID, Pageable)} for the
+     * MSS dashboard, which only needs the number (PRD §9 risk table). No company guard: a count
+     * discloses no row-level data.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingForManager(UUID tenantId, UUID managerId) {
+        return records.countByTenantIdAndStatusAndManagerId(
+                tenantId, ProbationStatus.PENDING_APPROVAL, managerId);
+    }
+
     @Transactional(readOnly = true)
     public List<ProbationReportRowResponse> dueThrough(
             UUID tenantId, UUID companyId, LocalDate through) {

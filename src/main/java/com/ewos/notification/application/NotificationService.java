@@ -1,5 +1,6 @@
 package com.ewos.notification.application;
 
+import com.ewos.notification.api.dto.NotificationPageResponse;
 import com.ewos.notification.api.dto.NotificationResponse;
 import com.ewos.notification.domain.Notification;
 import com.ewos.notification.domain.NotificationTemplate;
@@ -7,12 +8,17 @@ import com.ewos.notification.domain.NotificationType;
 import com.ewos.notification.infrastructure.persistence.NotificationRepository;
 import com.ewos.notification.infrastructure.persistence.NotificationTemplateRepository;
 import com.ewos.shared.exception.ApiException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -155,6 +161,75 @@ public class NotificationService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Notification not found");
         }
     }
+
+    /**
+     * Sprint 27C — soft-delete (dismiss) one of the caller's own notifications (PRD §4.6, Decision
+     * 3). {@link NotificationRepository#dismiss} already scopes by tenant + recipient in the same
+     * statement, so an id belonging to someone else — or a different tenant — simply matches zero
+     * rows here exactly as {@link #markRead} already does; re-dismissing an already-dismissed row
+     * is a deliberate no-op (idempotent), not an error, which is why the 0-rows-updated branch
+     * below only 404s when the row doesn't exist/isn't owned by the caller at all.
+     */
+    public void dismiss(UUID tenantId, UUID id) {
+        UUID actor = requireActor();
+        int updated = repository.dismiss(id, tenantId, actor);
+        if (updated == 0
+                && repository
+                        .findByIdAndTenantIdAndRecipientActorId(id, tenantId, actor)
+                        .isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Notification not found");
+        }
+    }
+
+    /**
+     * Sprint 27C — keyset-paginated notification inbox (PRD §4.6) for {@code
+     * NotificationInboxController}, distinct from {@link #mine} (offset-paginated, pre-existing
+     * {@code NotificationController}): fetches one page beyond {@code cursor} (an opaque, caller-
+     * supplied token encoding the last item's {@code createdAt}/{@code id}; {@code null}/blank for
+     * the first page) and returns the next cursor, or {@code null} once the caller has reached the
+     * end.
+     */
+    @Transactional(readOnly = true)
+    public NotificationPageResponse myPage(
+            UUID tenantId, boolean unreadOnly, String cursor, int limit) {
+        UUID actor = requireActor();
+        CursorKey key = decodeCursor(cursor);
+        List<Notification> found =
+                repository.findPage(
+                        tenantId,
+                        actor,
+                        unreadOnly,
+                        key == null ? null : key.createdAt(),
+                        key == null ? null : key.id(),
+                        PageRequest.of(0, limit + 1));
+        boolean hasMore = found.size() > limit;
+        List<Notification> page = hasMore ? found.subList(0, limit) : found;
+        String nextCursor = hasMore ? encodeCursor(page.get(page.size() - 1)) : null;
+        return new NotificationPageResponse(
+                page.stream().map(this::toResponse).toList(), nextCursor);
+    }
+
+    private static String encodeCursor(Notification n) {
+        String raw = n.getCreatedAt() + "|" + n.getId();
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static CursorKey decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String raw = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = raw.split("\\|", 2);
+            return new CursorKey(Instant.parse(parts[0]), UUID.fromString(parts[1]));
+        } catch (RuntimeException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid cursor", e);
+        }
+    }
+
+    private record CursorKey(Instant createdAt, UUID id) {}
 
     // Used via method reference (this::toResponse above) — PMD's UnusedPrivateMethod
     // doesn't resolve method-reference call sites in this version.

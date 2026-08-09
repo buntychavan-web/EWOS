@@ -236,6 +236,17 @@ public class TimesheetService {
     }
 
     /**
+     * Sprint 27C — count-only sibling of {@link #pendingForManager(UUID, UUID, Pageable)} for the
+     * MSS dashboard, which only needs the number (PRD §9 risk table). No company guard: a count
+     * discloses no row-level data.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingForManager(UUID tenantId, UUID managerId) {
+        return timesheets.countByTenantIdAndStatusAndManagerId(
+                tenantId, TimesheetStatus.SUBMITTED, managerId);
+    }
+
+    /**
      * Sprint 24F audit fix — mirrors {@code LeaveRequestService.requireManagerAuthorityUnlessAdmin}
      * exactly (Sprint 4's fix for the identical bug in Leave). {@code ATT_APPROVE} was a flat
      * platform permission with no server-side check that the approver is actually the target

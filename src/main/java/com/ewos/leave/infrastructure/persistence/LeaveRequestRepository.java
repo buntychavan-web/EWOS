@@ -41,6 +41,19 @@ public interface LeaveRequestRepository
             Pageable pageable);
 
     /**
+     * Sprint 27C — count-only sibling of {@link #findAllByTenantIdAndStatusAndManagerId}, for the
+     * MSS dashboard's {@code teamSummary.pendingApprovals} (PRD §9 risk table: dashboard must not
+     * pull the full, capped content page just to show a number).
+     */
+    @Query(
+            "select count(r) from LeaveRequest r where r.tenantId = :tenantId and r.status ="
+                    + " :status and r.employee.manager.id = :managerId")
+    long countByTenantIdAndStatusAndManagerId(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") LeaveRequestStatus status,
+            @Param("managerId") UUID managerId);
+
+    /**
      * Approved leave requests for a given employee that overlap a payroll period. Used by the
      * payroll calculator to compute loss-of-pay (unpaid leave days inside the period).
      */

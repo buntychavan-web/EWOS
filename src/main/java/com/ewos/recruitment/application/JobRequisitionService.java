@@ -316,6 +316,17 @@ public class JobRequisitionService {
         return found.map(mapper::toResponse);
     }
 
+    /**
+     * Sprint 27C — count-only sibling of {@link #pendingForManager(UUID, UUID, Pageable)} for the
+     * MSS dashboard, which only needs the number (PRD §9 risk table). No company guard: a count
+     * discloses no row-level data.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingForManager(UUID tenantId, UUID hiringManagerId) {
+        return requisitions.countByTenantIdAndStatusAndHiringManagerId(
+                tenantId, RequisitionStatus.PENDING_APPROVAL, hiringManagerId);
+    }
+
     private JobRequisition require(UUID tenantId, UUID id) {
         return requisitions
                 .findByIdAndTenantId(id, tenantId)
