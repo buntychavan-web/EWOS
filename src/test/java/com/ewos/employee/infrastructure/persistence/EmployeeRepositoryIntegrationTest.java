@@ -246,8 +246,14 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
         Employee manager = employee(tenantA, "CursorManagerC", null);
         Employee first = employeeWithDisplayName(tenantA, "Same", manager);
         Employee second = employeeWithDisplayName(tenantA, "Same", manager);
+        // java.util.UUID#compareTo compares mostSigBits/leastSigBits as *signed* longs, but
+        // PostgreSQL's uuid type orders by unsigned byte comparison of the 16 raw bytes — the two
+        // disagree whenever a UUID's first byte has its high bit set. The canonical string form
+        // compares identically to Postgres's byte order (each hex pair encodes one byte, and hex
+        // digits compare in byte-value order), so it — not UUID#compareTo — is what predicts the
+        // query's actual ordering here.
         List<UUID> expectedOrder =
-                first.getId().compareTo(second.getId()) < 0
+                first.getId().toString().compareTo(second.getId().toString()) < 0
                         ? List.of(first.getId(), second.getId())
                         : List.of(second.getId(), first.getId());
 
