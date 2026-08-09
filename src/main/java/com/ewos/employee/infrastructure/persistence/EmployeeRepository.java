@@ -76,6 +76,18 @@ public interface EmployeeRepository
             @Param("cursorEmployeeId") UUID cursorEmployeeId,
             Pageable pageable);
 
+    /**
+     * Sprint 27D — {@link com.ewos.leave.application.LeaveAccrualJob}'s bulk sweep source: every
+     * {@code ACTIVE} employee in a tenant (across every company that tenant has, since {@link
+     * com.ewos.leave.domain.LeaveType} is tenant-scoped, not company-scoped), paged so a
+     * large-tenant sweep never loads the whole workforce into memory at once.
+     */
+    @Query("select e from Employee e where e.tenantId = :tenantId and e.status = :status")
+    Page<Employee> findAllByTenantIdAndStatus(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") EmployeeStatus status,
+            Pageable pageable);
+
     List<Employee> findAllByUserIdAndTenantId(UUID userId, UUID tenantId);
 
     boolean existsByCompanyIdAndUserId(UUID companyId, UUID userId);

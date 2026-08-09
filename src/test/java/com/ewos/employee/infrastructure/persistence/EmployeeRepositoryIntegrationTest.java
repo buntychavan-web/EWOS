@@ -279,4 +279,69 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(page).extracting(Employee::getId).containsExactly(legitimateReport.getId());
     }
+
+    private Employee employeeWithStatus(UUID tenantId, String label, EmployeeStatus status) {
+        Employee e = employee(tenantId, label, null);
+        e.setStatus(status);
+        return employees.save(e);
+    }
+
+    /**
+     * Sprint 27D — {@code findAllByTenantIdAndStatus} backs {@link
+     * com.ewos.leave.application.LeaveAccrualJob}'s sweep source: only {@code ACTIVE} employees of
+     * the given tenant, never a {@code TERMINATED}/{@code SUSPENDED} one even within the same
+     * tenant, and never another tenant's employee even though nothing about the query text itself
+     * references a manager id to accidentally collide on.
+     */
+    @Test
+    void findAllByTenantIdAndStatusReturnsOnlyThatTenantsActiveEmployees() {
+        UUID tenantA = tenant("StatusTenantA").getId();
+        Employee active1 = employeeWithStatus(tenantA, "StatusActive1", EmployeeStatus.ACTIVE);
+        Employee active2 = employeeWithStatus(tenantA, "StatusActive2", EmployeeStatus.ACTIVE);
+        employeeWithStatus(tenantA, "StatusTerminated", EmployeeStatus.TERMINATED);
+        employeeWithStatus(tenantA, "StatusSuspended", EmployeeStatus.SUSPENDED);
+
+        List<Employee> found =
+                employees
+                        .findAllByTenantIdAndStatus(
+                                tenantA, EmployeeStatus.ACTIVE, PageRequest.of(0, 20))
+                        .getContent();
+
+        assertThat(found)
+                .extracting(Employee::getId)
+                .containsExactlyInAnyOrder(active1.getId(), active2.getId());
+    }
+
+    @Test
+    void findAllByTenantIdAndStatusNeverReturnsAnotherTenantsActiveEmployee() {
+        UUID tenantA = tenant("StatusTenantB1").getId();
+        UUID tenantB = tenant("StatusTenantB2").getId();
+        Employee legitimateActive =
+                employeeWithStatus(tenantA, "StatusLegitActive", EmployeeStatus.ACTIVE);
+        employeeWithStatus(tenantB, "StatusOtherTenantActive", EmployeeStatus.ACTIVE);
+
+        List<Employee> found =
+                employees
+                        .findAllByTenantIdAndStatus(
+                                tenantA, EmployeeStatus.ACTIVE, PageRequest.of(0, 20))
+                        .getContent();
+
+        assertThat(found).extracting(Employee::getId).containsExactly(legitimateActive.getId());
+    }
+
+    @Test
+    void findAllByTenantIdAndStatusIsPaginated() {
+        UUID tenantA = tenant("StatusTenantC").getId();
+        for (int i = 0; i < 5; i++) {
+            employeeWithStatus(tenantA, "StatusPage" + i, EmployeeStatus.ACTIVE);
+        }
+
+        var firstPage =
+                employees.findAllByTenantIdAndStatus(
+                        tenantA, EmployeeStatus.ACTIVE, PageRequest.of(0, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(5);
+        assertThat(firstPage.getTotalPages()).isEqualTo(3);
+    }
 }
