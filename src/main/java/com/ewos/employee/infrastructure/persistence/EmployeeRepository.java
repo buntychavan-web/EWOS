@@ -76,6 +76,33 @@ public interface EmployeeRepository
             @Param("cursorEmployeeId") UUID cursorEmployeeId,
             Pageable pageable);
 
+    /**
+     * Sprint 27D — {@link com.ewos.leave.application.LeaveAccrualJob}'s bulk sweep source: every
+     * employee in a tenant matching a single given status (across every company that tenant has,
+     * since {@link com.ewos.leave.domain.LeaveType} is tenant-scoped, not company-scoped), paged so
+     * a large-tenant sweep never loads the whole workforce into memory at once. Superseded as the
+     * job's actual sweep source by {@link #findAllByTenantIdAndStatusIn} (Sprint 27D
+     * reconciliation, approved decision 5 — accrual eligibility is ACTIVE and ON_LEAVE, not ACTIVE
+     * alone) but kept for any single-status caller and its existing test coverage.
+     */
+    @Query("select e from Employee e where e.tenantId = :tenantId and e.status = :status")
+    Page<Employee> findAllByTenantIdAndStatus(
+            @Param("tenantId") UUID tenantId,
+            @Param("status") EmployeeStatus status,
+            Pageable pageable);
+
+    /**
+     * Sprint 27D reconciliation — {@link com.ewos.leave.application.LeaveAccrualJob}'s actual sweep
+     * source per the approved baseline (decision 5): ACTIVE and ON_LEAVE employees accrue,
+     * SUSPENDED and TERMINATED do not. Same tenant-scoping rationale as {@link
+     * #findAllByTenantIdAndStatus}.
+     */
+    @Query("select e from Employee e where e.tenantId = :tenantId and e.status in :statuses")
+    Page<Employee> findAllByTenantIdAndStatusIn(
+            @Param("tenantId") UUID tenantId,
+            @Param("statuses") Collection<EmployeeStatus> statuses,
+            Pageable pageable);
+
     List<Employee> findAllByUserIdAndTenantId(UUID userId, UUID tenantId);
 
     boolean existsByCompanyIdAndUserId(UUID companyId, UUID userId);
