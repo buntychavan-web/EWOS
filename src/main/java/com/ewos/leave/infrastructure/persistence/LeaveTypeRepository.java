@@ -25,4 +25,14 @@ public interface LeaveTypeRepository extends JpaRepository<LeaveType, UUID> {
      */
     @Query("select t from LeaveType t where t.active = true and t.accrualDaysPerYear > :zero")
     List<LeaveType> findAllActiveWithAccrual(@Param("zero") BigDecimal zero);
+
+    /**
+     * Sprint 27D reconciliation — {@code LeaveCarryForwardJob}'s sweep scope: every active leave
+     * type across every tenant that actually allows a non-zero carry-forward (approved baseline
+     * decision 7 — carry-forward must respect {@link LeaveType#getCarryForwardDays()}; a type
+     * configured with zero never carries anything forward, so it is skipped here the same way
+     * {@link #findAllActiveWithAccrual} skips zero-accrual types).
+     */
+    @Query("select t from LeaveType t where t.active = true and t.carryForwardDays > :zero")
+    List<LeaveType> findAllActiveWithCarryForward(@Param("zero") BigDecimal zero);
 }

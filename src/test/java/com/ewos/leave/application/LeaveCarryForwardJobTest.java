@@ -11,8 +11,8 @@ import static org.mockito.Mockito.when;
 import com.ewos.employee.domain.Employee;
 import com.ewos.employee.domain.EmployeeStatus;
 import com.ewos.employee.infrastructure.persistence.EmployeeRepository;
-import com.ewos.leave.application.LeaveAccrualService.AccrualOutcome;
-import com.ewos.leave.application.LeaveAccrualService.AccrualResult;
+import com.ewos.leave.application.LeaveCarryForwardService.CarryForwardOutcome;
+import com.ewos.leave.application.LeaveCarryForwardService.CarryForwardResult;
 import com.ewos.leave.domain.LeaveType;
 import com.ewos.leave.infrastructure.persistence.LeaveTypeRepository;
 import java.math.BigDecimal;
@@ -32,27 +32,27 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * Sprint 27D, revised by the Sprint 27D reconciliation — {@link LeaveAccrualJob}'s sweep
- * orchestration: disabled short-circuit, iterating every accrual-eligible leave type against every
- * ACTIVE-or-ON_LEAVE employee page (approved baseline decision 5), and delegating the actual
- * decision to {@link LeaveAccrualService}.
+ * Sprint 27D reconciliation — {@link LeaveCarryForwardJob}'s sweep orchestration: disabled
+ * short-circuit, iterating every carry-forward-eligible leave type against every ACTIVE-or-ON_LEAVE
+ * employee page, delegating to {@link LeaveCarryForwardService}, and never double-crediting on
+ * repeated (idempotent) runs.
  */
 @ExtendWith(MockitoExtension.class)
-class LeaveAccrualJobTest {
+class LeaveCarryForwardJobTest {
 
     private static final Set<EmployeeStatus> ACCRUING_STATUSES =
             EnumSet.of(EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE);
 
     @Mock LeaveTypeRepository leaveTypes;
     @Mock EmployeeRepository employees;
-    @Mock LeaveAccrualService accrualService;
+    @Mock LeaveCarryForwardService carryForwardService;
 
-    private LeaveAccrualJob job;
+    private LeaveCarryForwardJob job;
     private final UUID tenantId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        job = new LeaveAccrualJob(leaveTypes, employees, accrualService);
+        job = new LeaveCarryForwardJob(leaveTypes, employees, carryForwardService);
         ReflectionTestUtils.setField(job, "batchSize", 2);
         ReflectionTestUtils.setField(job, "zone", "UTC");
     }
@@ -61,7 +61,7 @@ class LeaveAccrualJobTest {
         LeaveType t = new LeaveType();
         t.setId(UUID.randomUUID());
         t.setTenantId(tenantId);
-        t.setAccrualDaysPerYear(new BigDecimal("24.00"));
+        t.setCarryForwardDays(new BigDecimal("5.00"));
         return t;
     }
 
@@ -78,60 +78,39 @@ class LeaveAccrualJobTest {
 
         job.runAll();
 
-        verify(leaveTypes, never()).findAllActiveWithAccrual(any());
+        verify(leaveTypes, never()).findAllActiveWithCarryForward(any());
         verify(employees, never()).findAllByTenantIdAndStatusIn(any(), any(), any());
-        verify(accrualService, never()).accrueForEmployee(any(), any(), anyInt(), anyInt());
+        verify(carryForwardService, never()).carryForwardForEmployee(any(), any(), anyInt());
     }
 
     @Test
     void callsTheServiceOnceForEveryEmployeeOfEveryEligibleType() {
         ReflectionTestUtils.setField(job, "enabled", true);
         LeaveType type = type();
-        when(leaveTypes.findAllActiveWithAccrual(any())).thenReturn(List.of(type));
+        when(leaveTypes.findAllActiveWithCarryForward(any())).thenReturn(List.of(type));
         Employee e1 = employee();
         Employee e2 = employee();
         Page<Employee> onlyPage = new PageImpl<>(List.of(e1, e2), PageRequest.of(0, 2), 2);
         when(employees.findAllByTenantIdAndStatusIn(eq(tenantId), eq(ACCRUING_STATUSES), any()))
                 .thenReturn(onlyPage);
-        when(accrualService.accrueForEmployee(any(), any(), anyInt(), anyInt()))
+        when(carryForwardService.carryForwardForEmployee(any(), any(), anyInt()))
                 .thenReturn(
-                        new AccrualResult(
-                                AccrualOutcome.CREDITED,
-                                new BigDecimal("2.00"),
-                                new BigDecimal("2.00"),
+                        new CarryForwardResult(
+                                CarryForwardOutcome.CREDITED,
+                                new BigDecimal("3.00"),
+                                new BigDecimal("3.00"),
                                 false));
 
         job.runAll();
 
-        verify(accrualService, times(2)).accrueForEmployee(any(), eq(type), anyInt(), anyInt());
-    }
-
-    /**
-     * Sprint 27D reconciliation — proves the sweep's employee query is scoped to exactly {ACTIVE,
-     * ON_LEAVE} (approved baseline decision 5), not the old ACTIVE-only set.
-     */
-    @Test
-    void sweepsBothActiveAndOnLeaveEmployeesNotJustActive() {
-        ReflectionTestUtils.setField(job, "enabled", true);
-        LeaveType type = type();
-        when(leaveTypes.findAllActiveWithAccrual(any())).thenReturn(List.of(type));
-        when(employees.findAllByTenantIdAndStatusIn(eq(tenantId), eq(ACCRUING_STATUSES), any()))
-                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 2), 0));
-
-        job.runAll();
-
-        verify(employees)
-                .findAllByTenantIdAndStatusIn(
-                        eq(tenantId),
-                        eq(EnumSet.of(EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE)),
-                        any());
+        verify(carryForwardService, times(2)).carryForwardForEmployee(any(), eq(type), anyInt());
     }
 
     @Test
     void pagesThroughMoreThanOneBatchOfEmployees() {
         ReflectionTestUtils.setField(job, "enabled", true);
         LeaveType type = type();
-        when(leaveTypes.findAllActiveWithAccrual(any())).thenReturn(List.of(type));
+        when(leaveTypes.findAllActiveWithCarryForward(any())).thenReturn(List.of(type));
         Employee e1 = employee();
         Employee e2 = employee();
         Employee e3 = employee();
@@ -144,17 +123,43 @@ class LeaveAccrualJobTest {
         when(employees.findAllByTenantIdAndStatusIn(
                         eq(tenantId), eq(ACCRUING_STATUSES), eq(firstPage.next())))
                 .thenReturn(page2);
-        when(accrualService.accrueForEmployee(any(), any(), anyInt(), anyInt()))
+        when(carryForwardService.carryForwardForEmployee(any(), any(), anyInt()))
                 .thenReturn(
-                        new AccrualResult(
-                                AccrualOutcome.CREDITED,
-                                new BigDecimal("2.00"),
-                                new BigDecimal("2.00"),
+                        new CarryForwardResult(
+                                CarryForwardOutcome.CREDITED,
+                                new BigDecimal("3.00"),
+                                new BigDecimal("3.00"),
                                 false));
 
         job.runAll();
 
-        verify(accrualService, times(3)).accrueForEmployee(any(), eq(type), anyInt(), anyInt());
+        verify(carryForwardService, times(3)).carryForwardForEmployee(any(), eq(type), anyInt());
+    }
+
+    /**
+     * Sprint 27D reconciliation — the sweep itself has no idempotency logic; it always calls the
+     * service, which is where duplicate-run protection actually lives (decision 7/13, verified in
+     * {@code LeaveCarryForwardServiceTest#alreadyProcessedYearIsSkippedEntirely}). This just proves
+     * the job survives an ALREADY_PROCESSED outcome from a re-run without throwing or
+     * short-circuiting the rest of the sweep.
+     */
+    @Test
+    void survivesAnAlreadyProcessedOutcomeOnRepeatedRuns() {
+        ReflectionTestUtils.setField(job, "enabled", true);
+        LeaveType type = type();
+        when(leaveTypes.findAllActiveWithCarryForward(any())).thenReturn(List.of(type));
+        Employee employee = employee();
+        Page<Employee> onlyPage = new PageImpl<>(List.of(employee), PageRequest.of(0, 2), 1);
+        when(employees.findAllByTenantIdAndStatusIn(eq(tenantId), eq(ACCRUING_STATUSES), any()))
+                .thenReturn(onlyPage);
+        when(carryForwardService.carryForwardForEmployee(any(), any(), anyInt()))
+                .thenReturn(alreadyProcessed());
+
+        job.runAll();
+        job.runAll();
+
+        verify(carryForwardService, times(2))
+                .carryForwardForEmployee(eq(employee), eq(type), anyInt());
     }
 
     @Test
@@ -163,6 +168,11 @@ class LeaveAccrualJobTest {
 
         job.runNow();
 
-        verify(leaveTypes, never()).findAllActiveWithAccrual(any());
+        verify(leaveTypes, never()).findAllActiveWithCarryForward(any());
+    }
+
+    private static CarryForwardResult alreadyProcessed() {
+        return new CarryForwardResult(
+                CarryForwardOutcome.ALREADY_PROCESSED, BigDecimal.ZERO, BigDecimal.ZERO, false);
     }
 }

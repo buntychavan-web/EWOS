@@ -8,7 +8,9 @@ import com.ewos.employee.domain.EmployeeStatus;
 import com.ewos.tenancy.domain.Tenant;
 import com.ewos.tenancy.infrastructure.persistence.TenantRepository;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -343,5 +345,50 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
         assertThat(firstPage.getContent()).hasSize(2);
         assertThat(firstPage.getTotalElements()).isEqualTo(5);
         assertThat(firstPage.getTotalPages()).isEqualTo(3);
+    }
+
+    /**
+     * Sprint 27D reconciliation — {@code findAllByTenantIdAndStatusIn} backs {@link
+     * com.ewos.leave.application.LeaveAccrualJob}'s and {@code LeaveCarryForwardJob}'s actual sweep
+     * source per approved Sprint 27D baseline decision 5: ACTIVE and ON_LEAVE employees accrue,
+     * SUSPENDED and TERMINATED do not, even within the same tenant, and never another tenant's
+     * employee.
+     */
+    @Test
+    void findAllByTenantIdAndStatusInReturnsOnlyEmployeesMatchingOneOfTheGivenStatuses() {
+        UUID tenantA = tenant("StatusInTenantA").getId();
+        Employee active = employeeWithStatus(tenantA, "StatusInActive", EmployeeStatus.ACTIVE);
+        Employee onLeave = employeeWithStatus(tenantA, "StatusInOnLeave", EmployeeStatus.ON_LEAVE);
+        employeeWithStatus(tenantA, "StatusInSuspended", EmployeeStatus.SUSPENDED);
+        employeeWithStatus(tenantA, "StatusInTerminated", EmployeeStatus.TERMINATED);
+
+        Set<EmployeeStatus> accruing = EnumSet.of(EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE);
+        List<Employee> found =
+                employees
+                        .findAllByTenantIdAndStatusIn(tenantA, accruing, PageRequest.of(0, 20))
+                        .getContent();
+
+        assertThat(found)
+                .extracting(Employee::getId)
+                .containsExactlyInAnyOrder(active.getId(), onLeave.getId());
+    }
+
+    @Test
+    void findAllByTenantIdAndStatusInNeverReturnsAnotherTenantsEmployee() {
+        UUID tenantA = tenant("StatusInTenantB1").getId();
+        UUID tenantB = tenant("StatusInTenantB2").getId();
+        Employee legitimateActive =
+                employeeWithStatus(tenantA, "StatusInLegitActive", EmployeeStatus.ACTIVE);
+        employeeWithStatus(tenantB, "StatusInOtherTenantActive", EmployeeStatus.ACTIVE);
+
+        List<Employee> found =
+                employees
+                        .findAllByTenantIdAndStatusIn(
+                                tenantA,
+                                EnumSet.of(EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE),
+                                PageRequest.of(0, 20))
+                        .getContent();
+
+        assertThat(found).extracting(Employee::getId).containsExactly(legitimateActive.getId());
     }
 }

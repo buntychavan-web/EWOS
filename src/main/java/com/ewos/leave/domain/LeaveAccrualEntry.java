@@ -4,6 +4,8 @@ import com.ewos.employee.domain.Employee;
 import com.ewos.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -13,17 +15,31 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Sprint 27D — append-only audit ledger for {@link LeaveAccrualService}: one row per (employee,
- * leaveType, accrualYear, accrualMonth), never updated after creation. {@code requestedDays} is the
- * uncapped pro-rata monthly share of {@link LeaveType#getAccrualDaysPerYear()}; {@code
- * creditedDays} is what was actually added to the employee's {@link LeaveBalance} once {@link
- * LeaveType#getMaxBalanceDays()} headroom is applied — {@code capped} is true whenever the two
- * differ. Existence of a row for a given (employee, leaveType, year, month) is the idempotency
- * guard that stops the scheduled job from double-crediting a period it already processed.
+ * Sprint 27D — append-only audit ledger for {@link LeaveAccrualService} (and, since the Sprint 27D
+ * reconciliation, {@code LeaveCarryForwardService}): one row per accrual or carry-forward
+ * transaction, never updated after creation. {@code requestedDays} is the uncapped amount a
+ * transaction would credit absent any cap; {@code creditedDays} is what was actually added to the
+ * employee's {@link LeaveBalance} once {@link LeaveType#getMaxBalanceDays()} headroom is applied —
+ * {@code capped} is true whenever the two differ.
+ *
+ * <p>{@link #entryType} distinguishes the two kinds of transaction this ledger records ({@link
+ * EntryType#MONTHLY_ACCRUAL} vs {@link EntryType#CARRY_FORWARD}) per the approved Sprint 27D
+ * baseline's audit requirement (decision 14) that every ledger row carry its reason/source. Each
+ * type has its own DB-level idempotency guard (V78's {@code ux_leave_accrual_employee_type_period},
+ * scoped to {@code MONTHLY_ACCRUAL} by V79, keyed on (employee, leaveType, year, month); V79's
+ * {@code ux_leave_accrual_carry_forward_employee_type_year}, scoped to {@code CARRY_FORWARD}, keyed
+ * on (employee, leaveType, year)) stopping either job from double-crediting a period it already
+ * processed.
  */
 @Entity
 @Table(name = "leave_accrual_entries")
 public class LeaveAccrualEntry extends AuditableEntity {
+
+    /** Sprint 27D reconciliation — {@link #entryType} discriminator values. */
+    public enum EntryType {
+        MONTHLY_ACCRUAL,
+        CARRY_FORWARD
+    }
 
     @Column(name = "tenant_id", nullable = false, updatable = false)
     private UUID tenantId;
@@ -57,6 +73,10 @@ public class LeaveAccrualEntry extends AuditableEntity {
 
     @Column(name = "capped", nullable = false, updatable = false)
     private boolean capped;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_type", nullable = false, updatable = false, length = 32)
+    private EntryType entryType = EntryType.MONTHLY_ACCRUAL;
 
     @Version
     @Column(name = "version_no", nullable = false)
@@ -140,6 +160,14 @@ public class LeaveAccrualEntry extends AuditableEntity {
 
     public void setCapped(boolean capped) {
         this.capped = capped;
+    }
+
+    public EntryType getEntryType() {
+        return entryType;
+    }
+
+    public void setEntryType(EntryType entryType) {
+        this.entryType = entryType;
     }
 
     public long getVersionNo() {
