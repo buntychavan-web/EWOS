@@ -285,6 +285,12 @@ class EmployeeRepositoryIntegrationTest extends AbstractIntegrationTest {
     private Employee employeeWithStatus(UUID tenantId, String label, EmployeeStatus status) {
         Employee e = employee(tenantId, label, null);
         e.setStatus(status);
+        if (status == EmployeeStatus.TERMINATED) {
+            // ck_employees_terminated_has_date (V10) requires a termination_date whenever status
+            // is TERMINATED — only enforced against real Postgres, not the H2/mock paths this
+            // fixture was previously only exercised through.
+            e.setTerminationDate(LocalDate.of(2025, 12, 31));
+        }
         return employees.save(e);
     }
 
