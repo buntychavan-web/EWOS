@@ -217,12 +217,10 @@ public class ReimbursementClaimService {
         a.setSizeBytes(request.sizeBytes());
         a.setStorageUri(request.storageUri());
         a.setNotes(request.notes());
-        a.setOcrAssisted(request.ocrAssisted());
-        a.setOcrRawResponse(request.ocrRawResponse());
+        // ocrAssisted/ocrRawResponse are deliberately left at their entity defaults
+        // (false/null) — this client-facing path can never set them; see
+        // UploadReimbursementAttachmentRequest's javadoc.
         a.setUploadedAt(Instant.now());
-        if (request.ocrAssisted()) {
-            c.setDataSource(ReimbursementDataSource.OCR_ASSISTED);
-        }
         a = attachments.save(a);
         return mapper.toResponse(a);
     }

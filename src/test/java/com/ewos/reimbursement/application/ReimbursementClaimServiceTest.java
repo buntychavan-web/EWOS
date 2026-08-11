@@ -586,8 +586,6 @@ class ReimbursementClaimServiceTest {
                                 "image/jpeg",
                                 1024,
                                 "https://storage/receipt.jpg",
-                                null,
-                                false,
                                 null));
 
         assertThat(response.filename()).isEqualTo("receipt.jpg");
@@ -611,32 +609,35 @@ class ReimbursementClaimServiceTest {
                                                 "image/jpeg",
                                                 1024,
                                                 "https://x/r.jpg",
-                                                null,
-                                                false,
                                                 null)))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void ocrAssistedAttachmentMarksTheClaimsDataSource() {
+    void normalAttachmentUploadCanNeverSetOcrProvenanceFields() {
+        // UploadReimbursementAttachmentRequest has no ocrAssisted/ocrRawResponse fields at all —
+        // a client cannot falsely mark an attachment as OCR-assisted or inject fabricated OCR
+        // output through this path. Only a trusted server-side OCR path may ever do that, and none
+        // exists yet.
         Employee employee = employeeWithManager();
         ReimbursementClaim c = draftClaim(employee);
         when(claims.findByIdAndTenantId(c.getId(), tenantId)).thenReturn(Optional.of(c));
 
-        service.addAttachment(
-                tenantId,
-                employeeId,
-                c.getId(),
-                new UploadReimbursementAttachmentRequest(
-                        "receipt.jpg",
-                        "image/jpeg",
-                        1024,
-                        "https://storage/receipt.jpg",
-                        null,
-                        true,
-                        "{\"total\":450}"));
+        var response =
+                service.addAttachment(
+                        tenantId,
+                        employeeId,
+                        c.getId(),
+                        new UploadReimbursementAttachmentRequest(
+                                "receipt.jpg",
+                                "image/jpeg",
+                                1024,
+                                "https://storage/receipt.jpg",
+                                null));
 
-        assertThat(c.getDataSource().name()).isEqualTo("OCR_ASSISTED");
+        assertThat(response.ocrAssisted()).isFalse();
+        assertThat(c.getDataSource())
+                .isEqualTo(com.ewos.reimbursement.domain.ReimbursementDataSource.MANUAL);
     }
 
     @Test
