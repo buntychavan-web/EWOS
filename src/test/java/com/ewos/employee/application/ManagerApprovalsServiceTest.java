@@ -27,6 +27,7 @@ import com.ewos.leave.domain.LeaveRequestStatus;
 import com.ewos.performance.application.AppraisalService;
 import com.ewos.probation.application.ProbationService;
 import com.ewos.recruitment.application.JobRequisitionService;
+import com.ewos.reimbursement.application.ReimbursementClaimService;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.TenantContext;
 import java.time.Instant;
@@ -55,6 +56,7 @@ class ManagerApprovalsServiceTest {
     @Mock AppraisalService performance;
     @Mock ProbationService probation;
     @Mock JobRequisitionService requisitions;
+    @Mock ReimbursementClaimService reimbursements;
     @Mock EmployeeRepository employees;
     @Mock EmployeeContext employeeContext;
     @Mock TenantContext tenantContext;
@@ -74,6 +76,7 @@ class ManagerApprovalsServiceTest {
                         performance,
                         probation,
                         requisitions,
+                        reimbursements,
                         employees,
                         employeeContext,
                         tenantContext,
@@ -108,6 +111,9 @@ class ManagerApprovalsServiceTest {
                 .thenReturn(new PageImpl<>(List.of()));
         lenient()
                 .when(requisitions.pendingForManager(any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        lenient()
+                .when(reimbursements.pendingForManager(any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
     }
 
@@ -216,6 +222,39 @@ class ManagerApprovalsServiceTest {
     }
 
     @Test
+    void decideApproveDispatchesToReimbursementClaimService() {
+        UUID id = UUID.randomUUID();
+        when(reimbursements.approve(any(), any(), any()))
+                .thenReturn(reimbursementResponse(UUID.randomUUID(), Instant.now()));
+
+        var result =
+                service.decide(
+                        ApprovalSourceModule.REIMBURSEMENT, id, null, ApprovalAction.APPROVE, "ok");
+
+        verify(reimbursements)
+                .approve(
+                        tenantId,
+                        id,
+                        new com.ewos.reimbursement.api.dto.DecideReimbursementClaimRequest("ok"));
+        assertThat(result.sourceModule()).isEqualTo(ApprovalSourceModule.REIMBURSEMENT);
+        assertThat(result.actionable()).isTrue();
+    }
+
+    @Test
+    void reimbursementClaimsAppearInTheMergedInbox() {
+        UUID employeeId = UUID.randomUUID();
+        when(reimbursements.pendingForManager(any(), any(), any()))
+                .thenReturn(
+                        new PageImpl<>(List.of(reimbursementResponse(employeeId, Instant.now()))));
+
+        var page = service.list(null, null, null);
+
+        assertThat(page.items())
+                .extracting(com.ewos.employee.api.dto.ApprovalItemResponse::sourceModule)
+                .contains(ApprovalSourceModule.REIMBURSEMENT);
+    }
+
+    @Test
     void decideRejectsActOnReadOnlyModules() {
         UUID id = UUID.randomUUID();
 
@@ -312,6 +351,36 @@ class ManagerApprovalsServiceTest {
         assertThat(response.succeeded()).isEqualTo(1);
         assertThat(response.failed()).isEqualTo(1);
         verify(leave).approve(tenantId, secondId, new DecideLeaveRequestRequest(null));
+    }
+
+    private static com.ewos.reimbursement.api.dto.ReimbursementClaimResponse reimbursementResponse(
+            UUID employeeId, Instant submittedAt) {
+        return new com.ewos.reimbursement.api.dto.ReimbursementClaimResponse(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                employeeId,
+                "RC-TEST0001",
+                UUID.randomUUID(),
+                "TRAVEL",
+                "Travel",
+                new java.math.BigDecimal("500.00"),
+                "INR",
+                java.time.LocalDate.now(),
+                "Taxi",
+                com.ewos.reimbursement.domain.ReimbursementClaimStatus.SUBMITTED,
+                com.ewos.reimbursement.domain.ReimbursementDataSource.MANUAL,
+                submittedAt,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                submittedAt,
+                submittedAt,
+                0L);
     }
 
     private static LeaveRequestResponse leaveResponse(UUID employeeId, Instant submittedAt) {

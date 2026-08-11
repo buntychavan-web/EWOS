@@ -103,5 +103,13 @@ public enum NotificationType {
     // waiting, nor the employee told of the outcome.
     ESS_MSS_APPROVAL_PENDING,
     ESS_MSS_APPROVAL_APPROVED,
-    ESS_MSS_APPROVAL_REJECTED
+    ESS_MSS_APPROVAL_REJECTED,
+
+    // Sprint 2 — Reimbursement. See
+    // com.ewos.reimbursement.application.ReimbursementNotificationEventListener.
+    REIMBURSEMENT_SUBMITTED,
+    REIMBURSEMENT_MANAGER_APPROVED,
+    REIMBURSEMENT_MANAGER_REJECTED,
+    REIMBURSEMENT_FINANCE_APPROVED,
+    REIMBURSEMENT_FINANCE_REJECTED
 }

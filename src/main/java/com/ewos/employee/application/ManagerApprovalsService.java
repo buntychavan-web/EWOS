@@ -22,6 +22,9 @@ import com.ewos.probation.api.dto.ProbationRecordResponse;
 import com.ewos.probation.application.ProbationService;
 import com.ewos.recruitment.api.dto.JobRequisitionResponse;
 import com.ewos.recruitment.application.JobRequisitionService;
+import com.ewos.reimbursement.api.dto.DecideReimbursementClaimRequest;
+import com.ewos.reimbursement.api.dto.ReimbursementClaimResponse;
+import com.ewos.reimbursement.application.ReimbursementClaimService;
 import com.ewos.shared.exception.ApiException;
 import com.ewos.tenancy.application.TenantContext;
 import java.nio.charset.StandardCharsets;
@@ -79,6 +82,7 @@ public class ManagerApprovalsService {
     private final AppraisalService performance;
     private final ProbationService probation;
     private final JobRequisitionService requisitions;
+    private final ReimbursementClaimService reimbursements;
     private final EmployeeRepository employees;
     private final EmployeeContext employeeContext;
     private final TenantContext tenantContext;
@@ -91,6 +95,7 @@ public class ManagerApprovalsService {
             AppraisalService performance,
             ProbationService probation,
             JobRequisitionService requisitions,
+            ReimbursementClaimService reimbursements,
             EmployeeRepository employees,
             EmployeeContext employeeContext,
             TenantContext tenantContext,
@@ -100,6 +105,7 @@ public class ManagerApprovalsService {
         this.performance = performance;
         this.probation = probation;
         this.requisitions = requisitions;
+        this.reimbursements = reimbursements;
         this.employees = employees;
         this.employeeContext = employeeContext;
         this.tenantContext = tenantContext;
@@ -134,12 +140,15 @@ public class ManagerApprovalsService {
                 probation.pendingForManager(tenantId, effectiveManagerId, window).getContent();
         List<JobRequisitionResponse> requisitionItems =
                 requisitions.pendingForManager(tenantId, effectiveManagerId, window).getContent();
+        List<ReimbursementClaimResponse> reimbursementItems =
+                reimbursements.pendingForManager(tenantId, effectiveManagerId, window).getContent();
 
         Set<UUID> subjectIds = new HashSet<>();
         leaveItems.forEach(r -> subjectIds.add(r.employeeId()));
         timesheetItems.forEach(r -> subjectIds.add(r.employeeId()));
         performanceItems.forEach(r -> subjectIds.add(r.employeeId()));
         probationItems.forEach(r -> subjectIds.add(r.employeeId()));
+        reimbursementItems.forEach(r -> subjectIds.add(r.employeeId()));
         Map<UUID, String> names = nameLookup(tenantId, subjectIds);
 
         List<ApprovalItemResponse> merged = new ArrayList<>();
@@ -148,6 +157,7 @@ public class ManagerApprovalsService {
         performanceItems.forEach(r -> merged.add(fromPerformance(r, names)));
         probationItems.forEach(r -> merged.add(fromProbation(r, names)));
         requisitionItems.forEach(r -> merged.add(fromRequisition(r)));
+        reimbursementItems.forEach(r -> merged.add(fromReimbursement(r, names)));
         merged.sort(ORDER);
 
         int startIndex = cursor == null || cursor.isBlank() ? 0 : indexAfterCursor(merged, cursor);
@@ -182,7 +192,8 @@ public class ManagerApprovalsService {
                 + timesheets.countPendingForManager(tenantId, effectiveManagerId)
                 + performance.countPendingForManager(tenantId, effectiveManagerId)
                 + probation.countPendingForManager(tenantId, effectiveManagerId)
-                + requisitions.countPendingForManager(tenantId, effectiveManagerId);
+                + requisitions.countPendingForManager(tenantId, effectiveManagerId)
+                + reimbursements.countPendingForManager(tenantId, effectiveManagerId);
     }
 
     public ApprovalItemResponse decide(
@@ -268,6 +279,19 @@ public class ManagerApprovalsService {
                                 : timesheets.reject(
                                         tenantId, sourceId, new DecideTimesheetRequest(notes));
                 yield fromTimesheet(r, nameLookup(tenantId, Set.of(r.employeeId())));
+            }
+            case REIMBURSEMENT -> {
+                ReimbursementClaimResponse r =
+                        action == ApprovalAction.APPROVE
+                                ? reimbursements.approve(
+                                        tenantId,
+                                        sourceId,
+                                        new DecideReimbursementClaimRequest(notes))
+                                : reimbursements.reject(
+                                        tenantId,
+                                        sourceId,
+                                        new DecideReimbursementClaimRequest(notes));
+                yield fromReimbursement(r, nameLookup(tenantId, Set.of(r.employeeId())));
             }
             case PERFORMANCE, PROBATION, REQUISITION ->
                     throw new ApiException(
@@ -373,6 +397,27 @@ public class ManagerApprovalsService {
                 "Probation confirmation pending approval",
                 r.updatedAt(),
                 "/probation/records/" + r.id());
+    }
+
+    private static ApprovalItemResponse fromReimbursement(
+            ReimbursementClaimResponse r, Map<UUID, String> names) {
+        return new ApprovalItemResponse(
+                ApprovalSourceModule.REIMBURSEMENT,
+                r.id(),
+                true,
+                r.employeeId(),
+                names.get(r.employeeId()),
+                r.status().name(),
+                "Reimbursement claim "
+                        + r.claimNumber()
+                        + ": "
+                        + r.categoryName()
+                        + ", "
+                        + r.amount()
+                        + " "
+                        + r.currency(),
+                r.submittedAt(),
+                "/reimbursements/" + r.id());
     }
 
     private static ApprovalItemResponse fromRequisition(JobRequisitionResponse r) {

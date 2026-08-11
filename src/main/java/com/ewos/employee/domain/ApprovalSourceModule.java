@@ -12,5 +12,6 @@ public enum ApprovalSourceModule {
     TIMESHEET,
     PERFORMANCE,
     PROBATION,
-    REQUISITION
+    REQUISITION,
+    REIMBURSEMENT
 }
